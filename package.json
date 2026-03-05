@@ -1,0 +1,51 @@
+{
+  "name": "@synergenius/flowweaver-pack-weaver",
+  "version": "0.1.0",
+  "description": "Autonomous workflow runner for Flow Weaver. Auto-detect providers, execute workflows, notify results.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "keywords": [
+    "flowweaver-marketplace-pack",
+    "flow-weaver",
+    "weaver",
+    "automation",
+    "ai-agent"
+  ],
+  "flowWeaver": {
+    "type": "marketplace-pack",
+    "engineVersion": ">=0.17.0",
+    "categories": [
+      "automation",
+      "ai"
+    ]
+  },
+  "peerDependencies": {
+    "@synergenius/flow-weaver": ">=0.17.0",
+    "@anthropic-ai/sdk": ">=0.30.0"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": {
+      "optional": true
+    }
+  },
+  "files": [
+    "dist",
+    "flowweaver.manifest.json",
+    "templates.js",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc && cp -r src/docs dist/docs && node -e \"require('fs').writeFileSync('templates.js','export{workflowTemplates}from\\\"./dist/templates/index.js\\\";\\n')\"",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/synergenius-fw/flowweaver-pack-weaver"
+  }
+}

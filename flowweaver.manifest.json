@@ -1,0 +1,42 @@
+{
+  "manifestVersion": 1,
+  "name": "@synergenius/flowweaver-pack-weaver",
+  "version": "0.1.0",
+  "description": "Autonomous workflow runner for Flow Weaver. Auto-detect providers, execute workflows, notify results.",
+  "engineVersion": ">=0.17.0",
+  "categories": [
+    "automation",
+    "ai"
+  ],
+  "nodeTypes": [],
+  "workflows": [],
+  "patterns": [],
+  "initContributions": {
+    "useCase": {
+      "id": "ai-runner",
+      "name": "AI Workflow Runner",
+      "description": "Autonomous workflow execution with AI providers and notifications"
+    },
+    "templates": [
+      "weaver"
+    ]
+  },
+  "docs": [
+    {
+      "slug": "weaver-config",
+      "name": "Weaver Configuration",
+      "description": "Configuration reference for .weaver.json and autonomous workflow execution",
+      "keywords": [
+        "weaver",
+        "config",
+        "provider",
+        "notifications",
+        "autonomous"
+      ],
+      "presets": [
+        "automation"
+      ],
+      "file": "dist/docs/weaver-config.md"
+    }
+  ]
+}
