@@ -24,7 +24,7 @@
     ]
   },
   "peerDependencies": {
-    "@synergenius/flow-weaver": ">=0.17.0",
+    "@synergenius/flow-weaver": ">=0.17.13",
     "@anthropic-ai/sdk": ">=0.30.0"
   },
   "peerDependenciesMeta": {
@@ -41,9 +41,11 @@
   "scripts": {
     "build": "tsc && cp -r src/docs dist/docs && node -e \"require('fs').writeFileSync('templates.js','export{workflowTemplates}from\\\"./dist/templates/index.js\\\";\\n')\"",
     "prepublishOnly": "npm run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "release": "tsx scripts/release.ts"
   },
   "devDependencies": {
+    "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   },
   "license": "SEE LICENSE IN LICENSE",
