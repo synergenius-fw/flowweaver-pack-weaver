@@ -1,4 +1,5 @@
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import type { WeaverEnv } from '../bot/types.js';
 
 /**
  * Git operations on created/modified files: stage, commit, branch.
@@ -7,30 +8,28 @@ import { execFileSync, execSync } from 'node:child_process';
  * @flowWeaver nodeType
  * @expression
  * @label Git Operations
- * @input projectDir [order:0] - Project root directory
+ * @input env [order:0] - Weaver environment bundle
  * @input filesModified [order:1] - Files modified (JSON array)
- * @input config [order:2] - Config (JSON)
- * @output projectDir [order:0] - Project root directory (pass-through)
+ * @output env [order:0] - Weaver environment bundle (pass-through)
  * @output gitResultJson [order:1] - Git operation result (JSON)
  */
 export function weaverGitOps(
-  projectDir: string,
+  env: WeaverEnv,
   filesModified: string,
-  config: string,
-): { projectDir: string; gitResultJson: string } {
+): { env: WeaverEnv; gitResultJson: string } {
+  const { projectDir, config } = env;
   const files: string[] = JSON.parse(filesModified);
-  const cfg = JSON.parse(config) as { git?: { enabled?: boolean; branch?: string; commitPrefix?: string } };
-  const gitConfig = cfg.git ?? {};
+  const gitConfig = (config as unknown as { git?: { enabled?: boolean; branch?: string; commitPrefix?: string } }).git ?? {};
 
   if (gitConfig.enabled === false || files.length === 0) {
-    return { projectDir, gitResultJson: JSON.stringify({ skipped: true, reason: files.length === 0 ? 'no files' : 'git disabled' }) };
+    return { env, gitResultJson: JSON.stringify({ skipped: true, reason: files.length === 0 ? 'no files' : 'git disabled' }) };
   }
 
   // Check if we're in a git repo
   try {
-    execSync('git rev-parse --is-inside-work-tree', { cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
   } catch {
-    return { projectDir, gitResultJson: JSON.stringify({ skipped: true, reason: 'not a git repo' }) };
+    return { env, gitResultJson: JSON.stringify({ skipped: true, reason: 'not a git repo' }) };
   }
 
   const results: string[] = [];
@@ -67,5 +66,5 @@ export function weaverGitOps(
     results.push('Nothing to commit');
   }
 
-  return { projectDir, gitResultJson: JSON.stringify({ skipped: false, results }) };
+  return { env, gitResultJson: JSON.stringify({ skipped: false, results }) };
 }

@@ -20,6 +20,7 @@ import { weaverReport } from '../node-types/report.js';
  * @path Start -> cfg -> detect -> target -> exec -> notify -> rep -> Exit
  * @position Start 0 0
  * @position Exit 1000 0
+ * @connect exec.targetPath -> rep.targetPath
  * @connect rep.summary -> Exit.summary
  * @param execute [order:-1] - Execute
  * @param params [order:0] - Params

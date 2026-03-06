@@ -1,5 +1,19 @@
 export type ProviderName = 'anthropic' | 'claude-cli' | 'copilot-cli' | (string & {});
 
+export interface ProviderInfo {
+  type: 'anthropic' | 'claude-cli' | 'copilot-cli';
+  model?: string;
+  maxTokens?: number;
+  apiKey?: string;
+}
+
+export interface WeaverEnv {
+  projectDir: string;
+  config: WeaverConfig;
+  providerType: string;
+  providerInfo: ProviderInfo;
+}
+
 export interface BotProviderConfig {
   name: ProviderName;
   model?: string;
@@ -31,12 +45,42 @@ export interface ProviderModule {
   metadata?: ProviderMetadata;
 }
 
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+
+export interface ToolUseResult {
+  toolName: string;
+  toolInput: Record<string, unknown>;
+}
+
+export interface StreamChunk {
+  type: 'text' | 'tool_use' | 'usage' | 'done';
+  text?: string;
+  toolUse?: ToolUseResult;
+  usage?: TokenUsage;
+}
+
 export interface BotAgentProvider {
   decide(request: {
     agentId: string;
     context: Record<string, unknown>;
     prompt: string;
   }): Promise<Record<string, unknown>>;
+  stream?(request: {
+    agentId: string;
+    context: Record<string, unknown>;
+    prompt: string;
+  }): AsyncIterable<StreamChunk>;
+  decideWithTools?(request: {
+    agentId: string;
+    context: Record<string, unknown>;
+    prompt: string;
+    tools: ToolDefinition[];
+  }): Promise<{ result: Record<string, unknown>; toolCalls?: ToolUseResult[] }>;
+  onUsage?: OnUsageCallback;
 }
 
 export type ApprovalMode = 'auto' | 'prompt' | 'webhook' | 'timeout-auto' | 'web';
@@ -373,4 +417,64 @@ export interface BotExecutionResult {
   stepsTotal: number;
   errors: string[];
   output: string;
+}
+
+// --- Genesis Self-Evolution ---
+
+export type GenesisImpactLevel = 'COSMETIC' | 'MINOR' | 'BREAKING' | 'CRITICAL';
+export type GenesisOperationType = 'addNode' | 'removeNode' | 'addConnection' | 'removeConnection' | 'implementNode';
+
+export interface GenesisConfig {
+  intent: string;
+  focus: string[];
+  constraints: string[];
+  approvalThreshold: GenesisImpactLevel;
+  budgetPerCycle: number;
+  stabilize: boolean;
+  targetWorkflow: string;
+  maxCyclesPerRun: number;
+}
+
+export interface GenesisOperation {
+  type: GenesisOperationType;
+  args: { file?: string; nodeId?: string; nodeType?: string; from?: string; to?: string; content?: string };
+  costUnits: number;
+  rationale: string;
+}
+
+export interface GenesisProposal {
+  operations: GenesisOperation[];
+  totalCost: number;
+  impactLevel: GenesisImpactLevel;
+  summary: string;
+  rationale: string;
+}
+
+export interface GenesisFingerprint {
+  timestamp: string;
+  files: Record<string, string>;
+  packageJson: Record<string, unknown> | null;
+  gitBranch: string | null;
+  gitCommit: string | null;
+  workflowHash: string;
+  existingWorkflows: string[];
+}
+
+export interface GenesisCycleRecord {
+  id: string;
+  timestamp: string;
+  durationMs: number;
+  fingerprint: GenesisFingerprint;
+  proposal: GenesisProposal | null;
+  outcome: 'applied' | 'rolled-back' | 'rejected' | 'stabilized' | 'no-change' | 'error';
+  diffSummary: string | null;
+  approvalRequired: boolean;
+  approved: boolean | null;
+  error: string | null;
+  snapshotFile: string | null;
+}
+
+export interface GenesisHistory {
+  configHash: string;
+  cycles: GenesisCycleRecord[];
 }

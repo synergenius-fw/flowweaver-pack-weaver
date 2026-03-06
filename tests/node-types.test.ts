@@ -6,6 +6,7 @@ import { weaverDetectProvider } from '../src/node-types/detect-provider.js';
 import { weaverResolveTarget } from '../src/node-types/resolve-target.js';
 import { weaverSendNotify } from '../src/node-types/send-notify.js';
 import { weaverReport } from '../src/node-types/report.js';
+import type { WeaverEnv } from '../src/bot/types.js';
 
 describe('weaverLoadConfig', () => {
   let tmpDir: string;
@@ -21,8 +22,7 @@ describe('weaverLoadConfig', () => {
   it('returns defaults when no .weaver.json exists', () => {
     const result = weaverLoadConfig(tmpDir);
     expect(result.projectDir).toBe(tmpDir);
-    const config = JSON.parse(result.config);
-    expect(config.provider).toBe('auto');
+    expect(result.config.provider).toBe('auto');
   });
 
   it('loads config from .weaver.json', () => {
@@ -31,9 +31,8 @@ describe('weaverLoadConfig', () => {
       JSON.stringify({ provider: 'anthropic', target: 'my-workflow.ts' }),
     );
     const result = weaverLoadConfig(tmpDir);
-    const config = JSON.parse(result.config);
-    expect(config.provider).toBe('anthropic');
-    expect(config.target).toBe('my-workflow.ts');
+    expect(result.config.provider).toBe('anthropic');
+    expect(result.config.target).toBe('my-workflow.ts');
   });
 
   it('merges config with defaults', () => {
@@ -42,9 +41,8 @@ describe('weaverLoadConfig', () => {
       JSON.stringify({ target: 'test.ts' }),
     );
     const result = weaverLoadConfig(tmpDir);
-    const config = JSON.parse(result.config);
-    expect(config.provider).toBe('auto');
-    expect(config.target).toBe('test.ts');
+    expect(result.config.provider).toBe('auto');
+    expect(result.config.target).toBe('test.ts');
   });
 
   it('defaults projectDir to cwd when not provided', () => {
@@ -54,18 +52,17 @@ describe('weaverLoadConfig', () => {
 });
 
 describe('weaverDetectProvider', () => {
-  const baseConfig = JSON.stringify({ provider: 'auto' });
+  const baseConfig = { provider: 'auto' as const };
 
   it('detects anthropic when ANTHROPIC_API_KEY is set', () => {
     const origKey = process.env.ANTHROPIC_API_KEY;
     process.env.ANTHROPIC_API_KEY = 'test-key-123';
     try {
       const result = weaverDetectProvider('/tmp', baseConfig);
-      expect(result.providerType).toBe('anthropic');
-      const info = JSON.parse(result.providerInfo);
-      expect(info.type).toBe('anthropic');
-      expect(info.apiKey).toBe('test-key-123');
-      expect(info.model).toBe('claude-sonnet-4-6');
+      expect(result.env.providerType).toBe('anthropic');
+      expect(result.env.providerInfo.type).toBe('anthropic');
+      expect(result.env.providerInfo.apiKey).toBe('test-key-123');
+      expect(result.env.providerInfo.model).toBe('claude-sonnet-4-6');
     } finally {
       if (origKey === undefined) delete process.env.ANTHROPIC_API_KEY;
       else process.env.ANTHROPIC_API_KEY = origKey;
@@ -76,9 +73,8 @@ describe('weaverDetectProvider', () => {
     const origKey = process.env.ANTHROPIC_API_KEY;
     process.env.ANTHROPIC_API_KEY = 'key';
     try {
-      const config = JSON.stringify({ provider: 'anthropic' });
-      const result = weaverDetectProvider('/tmp', config);
-      expect(result.providerType).toBe('anthropic');
+      const result = weaverDetectProvider('/tmp', { provider: 'anthropic' });
+      expect(result.env.providerType).toBe('anthropic');
     } finally {
       if (origKey === undefined) delete process.env.ANTHROPIC_API_KEY;
       else process.env.ANTHROPIC_API_KEY = origKey;
@@ -89,14 +85,12 @@ describe('weaverDetectProvider', () => {
     const origKey = process.env.ANTHROPIC_API_KEY;
     process.env.ANTHROPIC_API_KEY = 'key';
     try {
-      const config = JSON.stringify({
+      const result = weaverDetectProvider('/tmp', {
         provider: { name: 'anthropic', model: 'claude-opus-4-6', maxTokens: 8192 },
       });
-      const result = weaverDetectProvider('/tmp', config);
-      expect(result.providerType).toBe('anthropic');
-      const info = JSON.parse(result.providerInfo);
-      expect(info.model).toBe('claude-opus-4-6');
-      expect(info.maxTokens).toBe(8192);
+      expect(result.env.providerType).toBe('anthropic');
+      expect(result.env.providerInfo.model).toBe('claude-opus-4-6');
+      expect(result.env.providerInfo.maxTokens).toBe(8192);
     } finally {
       if (origKey === undefined) delete process.env.ANTHROPIC_API_KEY;
       else process.env.ANTHROPIC_API_KEY = origKey;
@@ -107,20 +101,19 @@ describe('weaverDetectProvider', () => {
     const origKey = process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
     try {
-      const config = JSON.stringify({ provider: 'anthropic' });
-      expect(() => weaverDetectProvider('/tmp', config)).toThrow('ANTHROPIC_API_KEY is not set');
+      expect(() => weaverDetectProvider('/tmp', { provider: 'anthropic' })).toThrow('ANTHROPIC_API_KEY is not set');
     } finally {
       if (origKey !== undefined) process.env.ANTHROPIC_API_KEY = origKey;
     }
   });
 
-  it('passes through projectDir and config', () => {
+  it('assembles env with projectDir and config', () => {
     const origKey = process.env.ANTHROPIC_API_KEY;
     process.env.ANTHROPIC_API_KEY = 'key';
     try {
       const result = weaverDetectProvider('/my/dir', baseConfig);
-      expect(result.projectDir).toBe('/my/dir');
-      expect(result.config).toBe(baseConfig);
+      expect(result.env.projectDir).toBe('/my/dir');
+      expect(result.env.config).toEqual(baseConfig);
     } finally {
       if (origKey === undefined) delete process.env.ANTHROPIC_API_KEY;
       else process.env.ANTHROPIC_API_KEY = origKey;
@@ -139,17 +132,24 @@ describe('weaverResolveTarget', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  function makeEnv(config = {}): WeaverEnv {
+    return {
+      projectDir: tmpDir,
+      config: { provider: 'auto', ...config },
+      providerType: 'anthropic',
+      providerInfo: { type: 'anthropic' },
+    };
+  }
+
   it('resolves explicit target from config', () => {
     const wfPath = path.join(tmpDir, 'my-workflow.ts');
     fs.writeFileSync(wfPath, '// workflow');
-    const config = JSON.stringify({ target: 'my-workflow.ts' });
-    const result = weaverResolveTarget(tmpDir, config, 'anthropic', '{}');
+    const result = weaverResolveTarget(makeEnv({ target: 'my-workflow.ts' }));
     expect(result.targetPath).toBe(wfPath);
   });
 
   it('throws when explicit target not found', () => {
-    const config = JSON.stringify({ target: 'nonexistent.ts' });
-    expect(() => weaverResolveTarget(tmpDir, config, 'anthropic', '{}')).toThrow(
+    expect(() => weaverResolveTarget(makeEnv({ target: 'nonexistent.ts' }))).toThrow(
       'Target workflow not found',
     );
   });
@@ -157,14 +157,12 @@ describe('weaverResolveTarget', () => {
   it('auto-scans for workflow files', () => {
     const wfPath = path.join(tmpDir, 'test.ts');
     fs.writeFileSync(wfPath, '/** @flowWeaver workflow */\nexport function test() {}');
-    const config = JSON.stringify({});
-    const result = weaverResolveTarget(tmpDir, config, 'anthropic', '{}');
+    const result = weaverResolveTarget(makeEnv());
     expect(result.targetPath).toBe(wfPath);
   });
 
   it('throws when no workflows found', () => {
-    const config = JSON.stringify({});
-    expect(() => weaverResolveTarget(tmpDir, config, 'anthropic', '{}')).toThrow(
+    expect(() => weaverResolveTarget(makeEnv())).toThrow(
       'No workflow files found',
     );
   });
@@ -172,53 +170,65 @@ describe('weaverResolveTarget', () => {
   it('throws when multiple workflows found', () => {
     fs.writeFileSync(path.join(tmpDir, 'a.ts'), '/** @flowWeaver workflow */');
     fs.writeFileSync(path.join(tmpDir, 'b.ts'), '/** @flowWeaver workflow */');
-    const config = JSON.stringify({});
-    expect(() => weaverResolveTarget(tmpDir, config, 'anthropic', '{}')).toThrow(
+    expect(() => weaverResolveTarget(makeEnv())).toThrow(
       'Multiple workflows found',
     );
   });
 
-  it('passes through all inputs', () => {
+  it('passes through env', () => {
     const wfPath = path.join(tmpDir, 'w.ts');
     fs.writeFileSync(wfPath, '// file');
-    const config = JSON.stringify({ target: 'w.ts' });
-    const result = weaverResolveTarget(tmpDir, config, 'myProvider', '{"foo":1}');
-    expect(result.projectDir).toBe(tmpDir);
-    expect(result.config).toBe(config);
-    expect(result.providerType).toBe('myProvider');
-    expect(result.providerInfo).toBe('{"foo":1}');
+    const env = makeEnv({ target: 'w.ts' });
+    const result = weaverResolveTarget(env);
+    expect(result.env).toBe(env);
   });
 });
 
 describe('weaverSendNotify', () => {
+  function makeEnv(config = {}): WeaverEnv {
+    return {
+      projectDir: '/proj',
+      config: { provider: 'auto', ...config },
+      providerType: 'anthropic',
+      providerInfo: { type: 'anthropic' },
+    };
+  }
+
   it('returns pass-through values when no notify config', () => {
-    const config = JSON.stringify({});
     const resultJson = JSON.stringify({ success: true, outcome: 'completed' });
-    const result = weaverSendNotify('/proj', config, '/proj/wf.ts', resultJson);
-    expect(result.projectDir).toBe('/proj');
-    expect(result.targetPath).toBe('/proj/wf.ts');
+    const result = weaverSendNotify(makeEnv(), resultJson);
+    expect(result.env.projectDir).toBe('/proj');
     expect(result.resultJson).toBe(resultJson);
   });
 
   it('handles notify as array', () => {
-    const config = JSON.stringify({
+    const env = makeEnv({
       notify: [{ channel: 'webhook', url: 'http://localhost:9999/hook', events: ['error'] }],
     });
     const resultJson = JSON.stringify({ success: true, outcome: 'completed' });
     // Should not send (event is workflow-complete, not error)
-    const result = weaverSendNotify('/proj', config, '/proj/wf.ts', resultJson);
-    expect(result.projectDir).toBe('/proj');
+    const result = weaverSendNotify(env, resultJson);
+    expect(result.env.projectDir).toBe('/proj');
   });
 });
 
 describe('weaverReport', () => {
+  function makeEnv(): WeaverEnv {
+    return {
+      projectDir: '/project',
+      config: { provider: 'auto' },
+      providerType: 'anthropic',
+      providerInfo: { type: 'anthropic' },
+    };
+  }
+
   it('formats summary with relative path', () => {
     const resultJson = JSON.stringify({
       outcome: 'completed',
       summary: 'All good',
       executionTime: 2.5,
     });
-    const result = weaverReport('/project', '/project/src/workflow.ts', resultJson);
+    const result = weaverReport(makeEnv(), '/project/src/workflow.ts', resultJson);
     expect(result.summary).toContain('src/workflow.ts');
     expect(result.summary).toContain('completed');
     expect(result.summary).toContain('All good');
@@ -230,7 +240,7 @@ describe('weaverReport', () => {
       outcome: 'failed',
       summary: 'Something broke',
     });
-    const result = weaverReport('/project', '/project/wf.ts', resultJson);
+    const result = weaverReport(makeEnv(), '/project/wf.ts', resultJson);
     expect(result.summary).toContain('failed');
     expect(result.summary).not.toContain('Time:');
   });

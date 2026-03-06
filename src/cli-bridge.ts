@@ -3,6 +3,7 @@ import {
   handleRun, handleHistory, handleCosts, handleWatch,
   handleCron, handlePipeline, handleDashboard, handleProviders,
   handleEject, handleBot, handleSession, handleSteer, handleQueue,
+  handleGenesis,
 } from './cli-handlers.js';
 
 const handlers: Record<string, (opts: ParsedArgs) => Promise<void>> = {
@@ -19,6 +20,7 @@ const handlers: Record<string, (opts: ParsedArgs) => Promise<void>> = {
   session: handleSession,
   steer: handleSteer,
   queue: handleQueue,
+  genesis: handleGenesis,
 };
 
 export async function handleCommand(

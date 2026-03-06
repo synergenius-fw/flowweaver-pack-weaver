@@ -9,6 +9,8 @@ export type {
   ExecutionEventType,
   ApprovalMode,
   WeaverConfig,
+  WeaverEnv,
+  ProviderInfo,
   WorkflowResult,
   ProviderName,
   RunRecord,
@@ -49,6 +51,17 @@ export type {
   BotValidationResult,
   BotExecutionResult,
   BotNotificationEventType,
+  ToolDefinition,
+  ToolUseResult,
+  StreamChunk,
+  GenesisImpactLevel,
+  GenesisOperationType,
+  GenesisConfig,
+  GenesisOperation,
+  GenesisProposal,
+  GenesisFingerprint,
+  GenesisCycleRecord,
+  GenesisHistory,
 } from './types.js';
 
 export {
@@ -91,6 +104,18 @@ export { openBrowser } from './utils.js';
 
 // Web Approval (F6)
 export { WebApprovalHandler } from './web-approval.js';
+
+// Genesis
+export { GenesisStore } from './genesis-store.js';
+
+// File locking
+export { withFileLock } from './file-lock.js';
+export type { FileLockOptions } from './file-lock.js';
+
+// Shared modules
+export { callCli, callApi, parseJsonResponse } from './ai-client.js';
+export { executeStep } from './step-executor.js';
+export { validateFiles } from './file-validator.js';
 
 // Bot infrastructure
 export { SteeringController } from './steering.js';

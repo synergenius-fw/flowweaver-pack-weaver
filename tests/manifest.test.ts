@@ -17,7 +17,7 @@ describe('flowweaver.manifest.json', () => {
 
   it('declares all node types', () => {
     const nodeTypes = manifest.nodeTypes as Array<Record<string, unknown>>;
-    expect(nodeTypes).toHaveLength(19);
+    expect(nodeTypes).toHaveLength(34);
 
     const names = nodeTypes.map((n) => n.name);
     // Original 6
@@ -41,6 +41,22 @@ describe('flowweaver.manifest.json', () => {
     expect(names).toContain('weaverFixErrors');
     expect(names).toContain('weaverGitOps');
     expect(names).toContain('weaverBotReport');
+    // Genesis node types (15)
+    expect(names).toContain('genesisLoadConfig');
+    expect(names).toContain('genesisObserve');
+    expect(names).toContain('genesisDiffFingerprint');
+    expect(names).toContain('genesisCheckStabilize');
+    expect(names).toContain('genesisPropose');
+    expect(names).toContain('genesisValidateProposal');
+    expect(names).toContain('genesisSnapshot');
+    expect(names).toContain('genesisApply');
+    expect(names).toContain('genesisCompileValidate');
+    expect(names).toContain('genesisDiffWorkflow');
+    expect(names).toContain('genesisCheckThreshold');
+    expect(names).toContain('genesisApprove');
+    expect(names).toContain('genesisCommit');
+    expect(names).toContain('genesisUpdateHistory');
+    expect(names).toContain('genesisReport');
   });
 
   it('each node type has required fields', () => {
@@ -66,6 +82,12 @@ describe('flowweaver.manifest.json', () => {
       'weaverExecValidateRetry',
       'weaverExecutePlan',
       'weaverFixErrors',
+      'genesisObserve',
+      'genesisPropose',
+      'genesisApply',
+      'genesisCompileValidate',
+      'genesisApprove',
+      'genesisCommit',
     ];
     for (const name of expectedAsync) {
       const nt = nodeTypes.find((n) => n.name === name);
@@ -88,6 +110,15 @@ describe('flowweaver.manifest.json', () => {
       'weaverValidateResult',
       'weaverGitOps',
       'weaverBotReport',
+      'genesisLoadConfig',
+      'genesisDiffFingerprint',
+      'genesisCheckStabilize',
+      'genesisValidateProposal',
+      'genesisSnapshot',
+      'genesisDiffWorkflow',
+      'genesisCheckThreshold',
+      'genesisUpdateHistory',
+      'genesisReport',
     ];
     for (const name of expectedSync) {
       const nt = nodeTypes.find((n) => n.name === name);
@@ -98,7 +129,7 @@ describe('flowweaver.manifest.json', () => {
   it('declares CLI extension', () => {
     expect(manifest.cliEntrypoint).toBe('dist/cli-bridge.js');
     const cliCommands = manifest.cliCommands as Array<Record<string, unknown>>;
-    expect(cliCommands.length).toBeGreaterThanOrEqual(9);
+    expect(cliCommands.length).toBeGreaterThanOrEqual(10);
 
     const names = cliCommands.map((c) => c.name);
     expect(names).toContain('run');
@@ -110,12 +141,13 @@ describe('flowweaver.manifest.json', () => {
     expect(names).toContain('pipeline');
     expect(names).toContain('dashboard');
     expect(names).toContain('eject');
+    expect(names).toContain('genesis');
   });
 
   it('declares MCP extension', () => {
     expect(manifest.mcpEntrypoint).toBe('dist/mcp-tools.js');
     const mcpTools = manifest.mcpTools as Array<Record<string, unknown>>;
-    expect(mcpTools).toHaveLength(8);
+    expect(mcpTools).toHaveLength(9);
 
     const names = mcpTools.map((t) => t.name);
     // Original 4
@@ -128,6 +160,8 @@ describe('flowweaver.manifest.json', () => {
     expect(names).toContain('fw_weaver_steer');
     expect(names).toContain('fw_weaver_queue');
     expect(names).toContain('fw_weaver_status');
+    // Genesis MCP tool
+    expect(names).toContain('fw_weaver_genesis');
   });
 
   it('declares init contributions', () => {

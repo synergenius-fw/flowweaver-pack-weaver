@@ -12,7 +12,7 @@ import { openBrowser } from './bot/utils.js';
 import type { ExecutionEvent, WeaverConfig, RunRecord, RunOutcome, RunCostSummary, CostSummary, StageStatus, WorkflowResult } from './bot/types.js';
 
 export interface ParsedArgs {
-  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue';
+  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'genesis';
   file?: string;
   verbose: boolean;
   dryRun: boolean;
@@ -51,6 +51,9 @@ export interface ParsedArgs {
   botTemplate?: string;
   botBatch?: number;
   autoApprove: boolean;
+  // genesis
+  genesisInit: boolean;
+  genesisWatch: boolean;
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -73,6 +76,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     dashboardPort: 4242,
     dashboardOpen: false,
     autoApprove: false,
+    genesisInit: false,
+    genesisWatch: false,
   };
 
   const args = argv.slice(2);
@@ -215,6 +220,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.botBatch = parseInt(args[i]!, 10) || undefined;
     } else if (arg === '--auto-approve') {
       result.autoApprove = true;
+    } else if (arg === 'genesis') {
+      result.command = 'genesis';
+    } else if (arg === '--init') {
+      result.genesisInit = true;
+    } else if (arg === '--watch') {
+      result.genesisWatch = true;
     } else if (arg === '--project-dir' && i + 1 < args.length) {
       i++;
       result.file = args[i];
@@ -952,13 +963,13 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
   const packRoot = new URL('..', import.meta.url);
   let workflowPath: string;
   try {
-    workflowPath = fileURLToPath(new URL('src/workflows/weaver-bot-session.ts', packRoot));
+    workflowPath = fileURLToPath(new URL('src/workflows/weaver-bot.ts', packRoot));
     const { existsSync } = await import('node:fs');
     if (!existsSync(workflowPath)) {
-      workflowPath = fileURLToPath(new URL('dist/workflows/weaver-bot-session.js', packRoot));
+      workflowPath = fileURLToPath(new URL('dist/workflows/weaver-bot.js', packRoot));
     }
   } catch {
-    workflowPath = fileURLToPath(new URL('dist/workflows/weaver-bot-session.js', packRoot));
+    workflowPath = fileURLToPath(new URL('dist/workflows/weaver-bot.js', packRoot));
   }
 
   const config = await loadConfig(opts.configPath);
@@ -1005,7 +1016,7 @@ export async function handleSteer(opts: ParsedArgs): Promise<void> {
     timestamp: Date.now(),
   };
 
-  controller.write(command);
+  await controller.write(command);
   console.log(`[weaver] Steering command sent: ${subcommand}${opts.botFile ? ' "' + opts.botFile + '"' : ''}`);
 }
 
@@ -1026,12 +1037,12 @@ export async function handleQueue(opts: ParsedArgs): Promise<void> {
         console.error('[weaver] Usage: flow-weaver weaver queue add "task instruction"');
         process.exit(1);
       }
-      const id = queue.add({ instruction, priority: 0 });
+      const id = await queue.add({ instruction, priority: 0 });
       console.log(`[weaver] Task added: ${id}`);
       break;
     }
     case 'list': {
-      const tasks = queue.list();
+      const tasks = await queue.list();
       if (tasks.length === 0) {
         console.log('No tasks in queue.');
       } else {
@@ -1043,7 +1054,7 @@ export async function handleQueue(opts: ParsedArgs): Promise<void> {
       break;
     }
     case 'clear': {
-      const count = queue.clear();
+      const count = await queue.clear();
       console.log(`Cleared ${count} task(s).`);
       break;
     }
@@ -1053,9 +1064,82 @@ export async function handleQueue(opts: ParsedArgs): Promise<void> {
         console.error('[weaver] Usage: flow-weaver weaver queue remove <id>');
         process.exit(1);
       }
-      const removed = queue.remove(id);
+      const removed = await queue.remove(id);
       console.log(removed ? `Removed task ${id}.` : `No task found with id "${id}".`);
       break;
     }
   }
+}
+
+export async function handleGenesis(opts: ParsedArgs): Promise<void> {
+  const projectDir = opts.file ?? process.cwd();
+
+  if (opts.genesisInit) {
+    const { GenesisStore } = await import('./bot/genesis-store.js');
+    const store = new GenesisStore(projectDir);
+    store.ensureDirs();
+    const config = store.loadConfig();
+    console.log('[weaver] Created .genesis/config.json');
+    console.log('[weaver] Set "targetWorkflow" to the workflow you want Genesis to evolve');
+    console.log(JSON.stringify(config, null, 2));
+    return;
+  }
+
+  const packRoot = new URL('..', import.meta.url);
+  let workflowPath: string;
+  try {
+    workflowPath = fileURLToPath(new URL('src/workflows/genesis-task.ts', packRoot));
+    if (!fs.existsSync(workflowPath)) {
+      workflowPath = fileURLToPath(new URL('dist/workflows/genesis-task.js', packRoot));
+    }
+  } catch {
+    workflowPath = fileURLToPath(new URL('dist/workflows/genesis-task.js', packRoot));
+  }
+
+  const config = await loadConfig(opts.configPath);
+
+  if (opts.genesisWatch) {
+    const { GenesisStore } = await import('./bot/genesis-store.js');
+    const store = new GenesisStore(projectDir);
+    const gConfig = store.loadConfig();
+    const maxCycles = gConfig.maxCyclesPerRun;
+
+    if (!opts.quiet) console.log(`[weaver] Genesis watch: up to ${maxCycles} cycles`);
+
+    for (let i = 0; i < maxCycles; i++) {
+      if (!opts.quiet) console.log(`\n[weaver] Genesis cycle ${i + 1}/${maxCycles}`);
+      const result = await runWorkflow(workflowPath, {
+        params: { projectDir },
+        verbose: opts.verbose,
+        dryRun: opts.dryRun,
+        config,
+      });
+
+      if (!result.success) {
+        if (!opts.quiet) console.log(`\x1b[33m[weaver] Cycle ${i + 1} ended: ${result.summary}\x1b[0m`);
+      }
+
+      if (i < maxCycles - 1) {
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+    return;
+  }
+
+  // Single cycle
+  if (!opts.quiet) console.log('[weaver] Running genesis cycle');
+
+  const result = await runWorkflow(workflowPath, {
+    params: { projectDir },
+    verbose: opts.verbose,
+    dryRun: opts.dryRun,
+    config,
+  });
+
+  if (!opts.quiet) {
+    const color = result.success ? '\x1b[32m' : '\x1b[33m';
+    console.log(`${color}Genesis: ${result.summary}\x1b[0m`);
+  }
+
+  process.exit(result.success ? 0 : 1);
 }
