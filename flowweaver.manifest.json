@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "name": "@synergenius/flowweaver-pack-weaver",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Autonomous workflow runner for Flow Weaver. Auto-detect providers, execute workflows, notify results.",
   "engineVersion": ">=0.17.13",
   "categories": [
@@ -16,11 +16,21 @@
       "functionName": "weaverLoadConfig",
       "isAsync": false,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (defaults to cwd)", "optional": true }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (defaults to cwd)",
+          "optional": true
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "config": { "dataType": "string", "description": "Weaver configuration (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Weaver configuration (JSON)"
+        }
       }
     },
     {
@@ -30,14 +40,32 @@
       "functionName": "weaverDetectProvider",
       "isAsync": false,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "config": { "dataType": "string", "description": "Weaver configuration (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Weaver configuration (JSON)"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "config": { "dataType": "string", "description": "Config (pass-through)" },
-        "providerType": { "dataType": "string", "description": "Resolved provider type" },
-        "providerInfo": { "dataType": "string", "description": "Provider details (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (pass-through)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Resolved provider type"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider details (JSON)"
+        }
       }
     },
     {
@@ -47,17 +75,44 @@
       "functionName": "weaverResolveTarget",
       "isAsync": false,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "config": { "dataType": "string", "description": "Config (JSON)" },
-        "providerType": { "dataType": "string", "description": "Provider type (pass-through)" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (pass-through)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (JSON)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type (pass-through)"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (pass-through)"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "config": { "dataType": "string", "description": "Config (pass-through)" },
-        "providerType": { "dataType": "string", "description": "Provider type (pass-through)" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (pass-through)" },
-        "targetPath": { "dataType": "string", "description": "Absolute path to target workflow" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (pass-through)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type (pass-through)"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (pass-through)"
+        },
+        "targetPath": {
+          "dataType": "string",
+          "description": "Absolute path to target workflow"
+        }
       }
     },
     {
@@ -67,17 +122,44 @@
       "functionName": "weaverExecuteTarget",
       "isAsync": true,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "config": { "dataType": "string", "description": "Config (JSON)" },
-        "providerType": { "dataType": "string", "description": "Provider type" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (JSON)" },
-        "targetPath": { "dataType": "string", "description": "Absolute path to target workflow" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (JSON)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (JSON)"
+        },
+        "targetPath": {
+          "dataType": "string",
+          "description": "Absolute path to target workflow"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "config": { "dataType": "string", "description": "Config (pass-through)" },
-        "targetPath": { "dataType": "string", "description": "Target path (pass-through)" },
-        "resultJson": { "dataType": "string", "description": "Workflow execution result (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (pass-through)"
+        },
+        "targetPath": {
+          "dataType": "string",
+          "description": "Target path (pass-through)"
+        },
+        "resultJson": {
+          "dataType": "string",
+          "description": "Workflow execution result (JSON)"
+        }
       }
     },
     {
@@ -87,15 +169,36 @@
       "functionName": "weaverSendNotify",
       "isAsync": false,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "config": { "dataType": "string", "description": "Config (JSON)" },
-        "targetPath": { "dataType": "string", "description": "Target path" },
-        "resultJson": { "dataType": "string", "description": "Result (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (JSON)"
+        },
+        "targetPath": {
+          "dataType": "string",
+          "description": "Target path"
+        },
+        "resultJson": {
+          "dataType": "string",
+          "description": "Result (JSON)"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "targetPath": { "dataType": "string", "description": "Target path (pass-through)" },
-        "resultJson": { "dataType": "string", "description": "Result (pass-through)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "targetPath": {
+          "dataType": "string",
+          "description": "Target path (pass-through)"
+        },
+        "resultJson": {
+          "dataType": "string",
+          "description": "Result (pass-through)"
+        }
       }
     },
     {
@@ -105,12 +208,24 @@
       "functionName": "weaverReport",
       "isAsync": false,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "targetPath": { "dataType": "string", "description": "Target workflow path" },
-        "resultJson": { "dataType": "string", "description": "Result (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "targetPath": {
+          "dataType": "string",
+          "description": "Target workflow path"
+        },
+        "resultJson": {
+          "dataType": "string",
+          "description": "Result (JSON)"
+        }
       },
       "outputs": {
-        "summary": { "dataType": "string", "description": "Summary string" }
+        "summary": {
+          "dataType": "string",
+          "description": "Summary string"
+        }
       }
     }
   ],
@@ -118,22 +233,67 @@
   "patterns": [],
   "cliEntrypoint": "dist/cli-bridge.js",
   "cliCommands": [
-    { "name": "run", "description": "Run a workflow file", "usage": "<file>" },
-    { "name": "history", "description": "List recent runs", "usage": "[id]" },
-    { "name": "costs", "description": "Show cost summary" },
-    { "name": "providers", "description": "List available providers" },
-    { "name": "watch", "description": "Watch file, re-run on change", "usage": "<file>" },
-    { "name": "cron", "description": "Run on cron schedule", "usage": "<schedule> <file>" },
-    { "name": "pipeline", "description": "Run multi-stage pipeline", "usage": "<config.json>" },
-    { "name": "dashboard", "description": "Start live dashboard", "usage": "[file]" },
-    { "name": "eject", "description": "Eject managed workflow for customization" }
+    {
+      "name": "run",
+      "description": "Run a workflow file",
+      "usage": "<file>"
+    },
+    {
+      "name": "history",
+      "description": "List recent runs",
+      "usage": "[id]"
+    },
+    {
+      "name": "costs",
+      "description": "Show cost summary"
+    },
+    {
+      "name": "providers",
+      "description": "List available providers"
+    },
+    {
+      "name": "watch",
+      "description": "Watch file, re-run on change",
+      "usage": "<file>"
+    },
+    {
+      "name": "cron",
+      "description": "Run on cron schedule",
+      "usage": "<schedule> <file>"
+    },
+    {
+      "name": "pipeline",
+      "description": "Run multi-stage pipeline",
+      "usage": "<config.json>"
+    },
+    {
+      "name": "dashboard",
+      "description": "Start live dashboard",
+      "usage": "[file]"
+    },
+    {
+      "name": "eject",
+      "description": "Eject managed workflow for customization"
+    }
   ],
   "mcpEntrypoint": "dist/mcp-tools.js",
   "mcpTools": [
-    { "name": "fw_weaver_run", "description": "Execute a workflow with the AI runner" },
-    { "name": "fw_weaver_history", "description": "Query run history" },
-    { "name": "fw_weaver_costs", "description": "Get cost summary" },
-    { "name": "fw_weaver_providers", "description": "List available providers" }
+    {
+      "name": "fw_weaver_run",
+      "description": "Execute a workflow with the AI runner"
+    },
+    {
+      "name": "fw_weaver_history",
+      "description": "Query run history"
+    },
+    {
+      "name": "fw_weaver_costs",
+      "description": "Get cost summary"
+    },
+    {
+      "name": "fw_weaver_providers",
+      "description": "List available providers"
+    }
   ],
   "initContributions": {
     "useCase": {
