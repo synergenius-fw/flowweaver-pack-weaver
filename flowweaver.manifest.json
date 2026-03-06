@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "name": "@synergenius/flowweaver-pack-weaver",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Autonomous workflow runner for Flow Weaver. Auto-detect providers, execute workflows, notify results.",
   "engineVersion": ">=0.19.4",
   "categories": [
