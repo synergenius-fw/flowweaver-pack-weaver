@@ -6,9 +6,12 @@ export interface BotProviderConfig {
   maxTokens?: number;
 }
 
+export type ApprovalMode = 'auto' | 'prompt' | 'webhook' | 'timeout-auto';
+
 export interface BotApprovalConfig {
-  mode: 'auto' | 'timeout-auto';
+  mode: ApprovalMode;
   timeoutSeconds?: number;
+  webhookUrl?: string;
 }
 
 export interface BotNotifyConfig {
@@ -38,9 +41,20 @@ export interface NotificationEvent {
   error?: string;
 }
 
+export type ExecutionEventType = 'node-start' | 'node-complete' | 'node-error';
+
+export interface ExecutionEvent {
+  type: ExecutionEventType;
+  nodeId: string;
+  nodeType?: string;
+  timestamp: number;
+  durationMs?: number;
+  error?: string;
+}
+
 export interface BotConfig {
   provider: 'auto' | ProviderName | BotProviderConfig;
-  approval?: 'auto' | 'timeout-auto' | BotApprovalConfig;
+  approval?: 'auto' | 'prompt' | 'webhook' | 'timeout-auto' | BotApprovalConfig;
   notify?: BotNotifyConfig | BotNotifyConfig[];
   target?: string;
 }

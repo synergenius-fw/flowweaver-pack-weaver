@@ -10,13 +10,19 @@ export interface NotificationChannel {
   send(event: NotificationEvent): Promise<void>;
 }
 
+export type NotificationErrorHandler = (
+  channel: string,
+  event: NotificationEvent,
+  error: string,
+) => void;
+
 const EVENT_COLORS: Record<NotificationEventType, number> = {
-  'workflow-start': 0x3498db, // blue
-  'workflow-complete': 0x2ecc71, // green
-  'cycle-start': 0x3498db, // blue
-  'cycle-complete': 0x2ecc71, // green
-  'approval-needed': 0xf1c40f, // yellow
-  error: 0xe74c3c, // red
+  'workflow-start': 0x3498db,
+  'workflow-complete': 0x2ecc71,
+  'cycle-start': 0x3498db,
+  'cycle-complete': 0x2ecc71,
+  'approval-needed': 0xf1c40f,
+  error: 0xe74c3c,
 };
 
 const EVENT_LABELS: Record<NotificationEventType, string> = {
@@ -30,7 +36,10 @@ const EVENT_LABELS: Record<NotificationEventType, string> = {
 
 function formatDiscordBody(event: NotificationEvent): object {
   const color = EVENT_COLORS[event.type];
-  const context = event.cycle != null ? `Cycle ${event.cycle}` : (event.workflowFile ?? 'Workflow');
+  const context =
+    event.cycle != null
+      ? `Cycle ${event.cycle}`
+      : (event.workflowFile ?? 'Workflow');
   const title = `Weaver: ${EVENT_LABELS[event.type]} (${context})`;
 
   const fields: Array<{ name: string; value: string; inline?: boolean }> = [];
@@ -102,14 +111,59 @@ function formatWebhookBody(event: NotificationEvent): object {
   return { event };
 }
 
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  maxAttempts: number,
+  onError?: NotificationErrorHandler,
+  channelName?: string,
+  event?: NotificationEvent,
+): Promise<Response | null> {
+  const delays = [1000, 2000, 4000];
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const resp = await fetch(url, init);
+      if (resp.ok) return resp;
+
+      const msg = `${resp.status} ${resp.statusText}`;
+      if (attempt < maxAttempts - 1) {
+        console.error(
+          `[weaver] ${channelName} notification failed (attempt ${attempt + 1}/${maxAttempts}): ${msg}`,
+        );
+        await new Promise((r) => setTimeout(r, delays[attempt] ?? 4000));
+      } else {
+        const errorMsg = `${channelName} notification failed after ${maxAttempts} attempts: ${msg}`;
+        console.error(`[weaver] ${errorMsg}`);
+        if (onError && event) onError(channelName ?? 'unknown', event, errorMsg);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (attempt < maxAttempts - 1) {
+        console.error(
+          `[weaver] ${channelName} notification error (attempt ${attempt + 1}/${maxAttempts}): ${msg}`,
+        );
+        await new Promise((r) => setTimeout(r, delays[attempt] ?? 4000));
+      } else {
+        const errorMsg = `${channelName} notification error after ${maxAttempts} attempts: ${msg}`;
+        console.error(`[weaver] ${errorMsg}`);
+        if (onError && event) onError(channelName ?? 'unknown', event, errorMsg);
+      }
+    }
+  }
+
+  return null;
+}
+
 export class WebhookNotificationChannel implements NotificationChannel {
   name: string;
   private url: string;
   private channelType: 'discord' | 'slack' | 'webhook';
   private events: Set<NotificationEventType>;
   private headers: Record<string, string>;
+  private onError?: NotificationErrorHandler;
 
-  constructor(config: BotNotifyConfig) {
+  constructor(config: BotNotifyConfig, onError?: NotificationErrorHandler) {
     this.name = config.channel;
     this.url = config.url;
     this.channelType = config.channel;
@@ -122,6 +176,7 @@ export class WebhookNotificationChannel implements NotificationChannel {
       ],
     );
     this.headers = config.headers ?? {};
+    this.onError = onError;
   }
 
   shouldSend(eventType: NotificationEventType): boolean {
@@ -143,26 +198,21 @@ export class WebhookNotificationChannel implements NotificationChannel {
         body = formatWebhookBody(event);
     }
 
-    try {
-      const resp = await fetch(this.url, {
+    await fetchWithRetry(
+      this.url,
+      {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...this.headers,
         },
         body: JSON.stringify(body),
-      });
-      if (!resp.ok) {
-        console.error(
-          `[genesis-bot] ${this.channelType} notification failed: ${resp.status} ${resp.statusText}`,
-        );
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(
-        `[genesis-bot] ${this.channelType} notification error: ${msg}`,
-      );
-    }
+      },
+      3,
+      this.onError,
+      this.channelType,
+      event,
+    );
   }
 }
 
