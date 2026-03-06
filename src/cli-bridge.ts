@@ -2,7 +2,7 @@ import type { ParsedArgs } from './cli-handlers.js';
 import {
   handleRun, handleHistory, handleCosts, handleWatch,
   handleCron, handlePipeline, handleDashboard, handleProviders,
-  handleEject,
+  handleEject, handleBot, handleSession, handleSteer, handleQueue,
 } from './cli-handlers.js';
 
 const handlers: Record<string, (opts: ParsedArgs) => Promise<void>> = {
@@ -15,6 +15,10 @@ const handlers: Record<string, (opts: ParsedArgs) => Promise<void>> = {
   dashboard: handleDashboard,
   providers: handleProviders,
   eject: handleEject,
+  bot: handleBot,
+  session: handleSession,
+  steer: handleSteer,
+  queue: handleQueue,
 };
 
 export async function handleCommand(

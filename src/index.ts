@@ -99,6 +99,25 @@ export { openBrowser } from './bot/index.js';
 // Web Approval
 export { WebApprovalHandler } from './bot/index.js';
 
+// Bot infrastructure
+export {
+  SteeringController,
+  TaskQueue,
+  SessionStore,
+  buildBotSystemPrompt,
+} from './bot/index.js';
+export type {
+  SteeringCommand,
+  QueuedTask,
+  SessionState,
+  BotTask,
+  BotPlan,
+  BotPlanStep,
+  BotValidationResult,
+  BotExecutionResult,
+  BotNotificationEventType,
+} from './bot/index.js';
+
 // Node types (for use in flow-weaver workflows)
 export {
   weaverLoadConfig,
@@ -107,4 +126,17 @@ export {
   weaverExecuteTarget,
   weaverSendNotify,
   weaverReport,
+  weaverReceiveTask,
+  weaverRouteTask,
+  weaverReadWorkflow,
+  weaverBuildContext,
+  weaverPlanTask,
+  weaverApprovalGate,
+  weaverAbortTask,
+  weaverExecValidateRetry,
+  weaverExecutePlan,
+  weaverValidateResult,
+  weaverFixErrors,
+  weaverGitOps,
+  weaverBotReport,
 } from './node-types/index.js';

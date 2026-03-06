@@ -206,3 +206,63 @@ export async function buildSystemPrompt(): Promise<string> {
 
   return cachedPrompt;
 }
+
+export function buildBotSystemPrompt(contextBundle?: string): string {
+  const planSchema = `## Bot Plan Schema
+
+When asked to plan a task, return a JSON object with this structure:
+{
+  "steps": [
+    {
+      "id": "step-1",
+      "operation": "<operation>",
+      "description": "What this step does",
+      "args": { ... operation-specific arguments ... }
+    }
+  ],
+  "summary": "Brief description of the overall plan"
+}
+
+Available operations:
+- create-workflow: Create a new workflow file. args: { file, name, description, nodes, connections }
+- implement-node: Write a node type implementation. args: { file, functionName, body }
+- add-node: Add a node to a workflow. args: { file, nodeId, nodeType }
+- remove-node: Remove a node. args: { file, nodeId }
+- add-connection: Add a connection. args: { file, from, to }
+- remove-connection: Remove a connection. args: { file, from, to }
+- compile: Compile a workflow. args: { file }
+- validate: Validate a workflow. args: { file }
+- modify-source: Direct source file modification. args: { file, content }
+- scaffold: Create from template. args: { template, file }
+- read-file: Read a file. args: { file }
+- write-file: Write a file. args: { file, content }
+- run-cli: Run a flow-weaver CLI command. args: { command, args }`;
+
+  const botInstructions = `## Bot Mode Instructions
+
+You are operating in autonomous bot mode. Your job is to plan and execute workflow creation or modification tasks.
+
+When planning:
+1. Break the task into concrete, ordered steps using the plan schema above
+2. For new workflows, plan: scaffold/create -> implement nodes -> compile -> validate
+3. For modifications, plan: read current state -> modify -> compile -> validate
+4. Each step should be independently executable via the flow-weaver CLI
+5. Use templates when they match the task
+6. Prefer @expression nodes for deterministic operations
+7. Use proper JSDoc annotations on all node types and workflows
+8. Include visualization metadata (colors, icons, positions) on workflow nodes
+
+When fixing validation errors:
+1. Read the error messages carefully
+2. Map each error to a specific fix operation
+3. Common fixes: add missing connections, fix port names, resolve type mismatches
+4. Return a new plan with only the fix steps`;
+
+  let prompt = planSchema + '\n\n' + botInstructions;
+
+  if (contextBundle) {
+    prompt += '\n\n## Project Context\n\n' + contextBundle;
+  }
+
+  return prompt;
+}

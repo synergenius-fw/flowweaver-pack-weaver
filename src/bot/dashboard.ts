@@ -9,6 +9,9 @@ import type {
   ExecutionEvent,
 } from './types.js';
 import type { ApprovalResult } from './approvals.js';
+import { SteeringController } from './steering.js';
+import { SessionStore } from './session-state.js';
+import { TaskQueue } from './task-queue.js';
 
 interface RunState {
   workflowFile: string;
@@ -267,8 +270,68 @@ export class DashboardServer {
       return;
     }
 
+    if (req.method === 'POST' && url.pathname.startsWith('/api/steer/')) {
+      const command = url.pathname.split('/').pop()!;
+      this.handleSteer(command, req, res);
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/bot/status') {
+      this.handleBotStatus(res);
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/bot/queue') {
+      this.handleBotQueue(res);
+      return;
+    }
+
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not found');
+  }
+
+  private handleSteer(command: string, req: http.IncomingMessage, res: http.ServerResponse): void {
+    const valid = ['pause', 'resume', 'cancel', 'redirect', 'queue'];
+    if (!valid.includes(command)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `Invalid command: ${command}. Valid: ${valid.join(', ')}` }));
+      return;
+    }
+
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => {
+      let payload: string | undefined;
+      try {
+        const parsed = JSON.parse(body);
+        payload = parsed.payload;
+      } catch { /* no body */ }
+
+      const steering = new SteeringController();
+      steering.write({ command: command as 'pause' | 'resume' | 'cancel' | 'redirect' | 'queue', payload, timestamp: Date.now() });
+
+      this.broadcast({
+        type: 'bot-steering-received' as DashboardEvent['type'],
+        timestamp: Date.now(),
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, command, payload }));
+    });
+  }
+
+  private handleBotStatus(res: http.ServerResponse): void {
+    const store = new SessionStore();
+    const session = store.load();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(session ?? { status: 'idle', currentTask: null, completedTasks: 0 }));
+  }
+
+  private handleBotQueue(res: http.ServerResponse): void {
+    const queue = new TaskQueue();
+    const tasks = queue.list();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(tasks));
   }
 
   private resolveApproval(id: string, approved: boolean, req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -351,6 +414,27 @@ function getDashboardHtml(): string {
   .btn-reject { background: #da3633; color: #fff; }
   .btn-reject:hover { background: #e5534b; }
   .empty { color: #484f58; padding: 40px; text-align: center; }
+  .steering-panel { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+  .steering-panel h3 { color: #f0f6fc; font-size: 14px; margin-bottom: 12px; }
+  .steering-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .btn-steer { padding: 6px 14px; border: 1px solid #30363d; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; background: #21262d; color: #c9d1d9; }
+  .btn-steer:hover { background: #30363d; }
+  .btn-steer.pause { border-color: #d29922; color: #d29922; }
+  .btn-steer.resume { border-color: #3fb950; color: #3fb950; }
+  .btn-steer.cancel { border-color: #f85149; color: #f85149; }
+  .redirect-row { display: flex; gap: 8px; }
+  .redirect-input { flex: 1; padding: 6px 10px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-family: inherit; font-size: 12px; }
+  .redirect-input:focus { outline: none; border-color: #58a6ff; }
+  .bot-status { color: #8b949e; font-size: 12px; margin-top: 8px; }
+  .queue-panel { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+  .queue-panel h3 { color: #f0f6fc; font-size: 14px; margin-bottom: 8px; }
+  .queue-item { padding: 6px 0; border-bottom: 1px solid #21262d; font-size: 12px; }
+  .queue-item:last-child { border-bottom: none; }
+  .queue-item .qi-status { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px; }
+  .queue-item .qi-status.pending { background: #1f3a5f; color: #58a6ff; }
+  .queue-item .qi-status.running { background: #1f3a5f; color: #58a6ff; animation: pulse 2s infinite; }
+  .queue-item .qi-status.completed { background: #12261e; color: #3fb950; }
+  .queue-item .qi-status.failed { background: #3d1214; color: #f85149; }
   @media (max-width: 768px) { .main { grid-template-columns: 1fr; } .log-panel { border-left: none; border-top: 1px solid #21262d; max-height: 300px; } }
 </style>
 </head>
@@ -363,7 +447,9 @@ function getDashboardHtml(): string {
 </div>
 <div class="main">
   <div class="nodes">
+    <div id="steering-container"></div>
     <div id="approvals"></div>
+    <div id="queue-container"></div>
     <div id="node-grid" class="node-grid"></div>
     <div id="empty" class="empty">Waiting for workflow execution...</div>
   </div>
@@ -499,6 +585,70 @@ function getDashboardHtml(): string {
       el.textContent = s + 's';
     });
   }, 200);
+
+  // Steering panel
+  const steeringEl = document.getElementById('steering-container');
+  const queueEl = document.getElementById('queue-container');
+
+  function renderSteering() {
+    steeringEl.innerHTML = '<div class="steering-panel">' +
+      '<h3>Bot Control</h3>' +
+      '<div class="steering-buttons">' +
+      '<button class="btn-steer pause" onclick="steer(\'pause\')">Pause</button>' +
+      '<button class="btn-steer resume" onclick="steer(\'resume\')">Resume</button>' +
+      '<button class="btn-steer cancel" onclick="steer(\'cancel\')">Cancel</button>' +
+      '</div>' +
+      '<div class="redirect-row">' +
+      '<input id="redirect-input" class="redirect-input" placeholder="Redirect instruction..." />' +
+      '<button class="btn-steer" onclick="steerRedirect()">Redirect</button>' +
+      '</div>' +
+      '<div id="bot-status" class="bot-status"></div>' +
+      '</div>';
+    fetchBotStatus();
+  }
+
+  function fetchBotStatus() {
+    fetch('/api/bot/status').then(r => r.json()).then(d => {
+      const el = document.getElementById('bot-status');
+      if (el) {
+        const parts = ['Status: ' + (d.status || 'idle')];
+        if (d.currentTask) parts.push('Task: ' + d.currentTask);
+        if (d.completedTasks) parts.push('Completed: ' + d.completedTasks);
+        el.textContent = parts.join(' | ');
+      }
+    }).catch(() => {});
+  }
+
+  function fetchQueue() {
+    fetch('/api/bot/queue').then(r => r.json()).then(tasks => {
+      if (!tasks || tasks.length === 0) {
+        queueEl.innerHTML = '';
+        return;
+      }
+      let html = '<div class="queue-panel"><h3>Task Queue</h3>';
+      for (const t of tasks) {
+        html += '<div class="queue-item"><span class="qi-status ' + esc(t.status) + '">' + esc(t.status) + '</span> ' + esc(t.instruction || t.id) + '</div>';
+      }
+      html += '</div>';
+      queueEl.innerHTML = html;
+    }).catch(() => {});
+  }
+
+  window.steer = function(cmd) {
+    fetch('/api/steer/' + cmd, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(() => { fetchBotStatus(); });
+  };
+  window.steerRedirect = function() {
+    const input = document.getElementById('redirect-input');
+    const text = input ? input.value.trim() : '';
+    if (!text) return;
+    fetch('/api/steer/redirect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: text }) })
+      .then(() => { if (input) input.value = ''; fetchBotStatus(); });
+  };
+
+  renderSteering();
+  fetchQueue();
+  setInterval(() => { fetchBotStatus(); fetchQueue(); }, 5000);
 
   connect();
 })();

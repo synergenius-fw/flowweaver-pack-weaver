@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { runWorkflow } from './bot/runner.js';
 import { RunStore } from './bot/run-store.js';
 import { CostStore } from './bot/cost-store.js';
@@ -11,7 +12,7 @@ import { openBrowser } from './bot/utils.js';
 import type { ExecutionEvent, WeaverConfig, RunRecord, RunOutcome, RunCostSummary, CostSummary, StageStatus, WorkflowResult } from './bot/types.js';
 
 export interface ParsedArgs {
-  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject';
+  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue';
   file?: string;
   verbose: boolean;
   dryRun: boolean;
@@ -44,6 +45,12 @@ export interface ParsedArgs {
   dashboardOpen: boolean;
   // approval override
   approvalMode?: string;
+  // bot
+  botTask?: string;
+  botFile?: string;
+  botTemplate?: string;
+  botBatch?: number;
+  autoApprove: boolean;
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -65,6 +72,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     dashboard: false,
     dashboardPort: 4242,
     dashboardOpen: false,
+    autoApprove: false,
   };
 
   const args = argv.slice(2);
@@ -163,6 +171,53 @@ export function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === 'dashboard') {
       result.command = 'dashboard';
       result.dashboard = true;
+    } else if (arg === 'bot') {
+      result.command = 'bot';
+      // Next non-flag arg is the task string
+      if (i + 1 < args.length && !args[i + 1]!.startsWith('-')) {
+        i++;
+        result.botTask = args[i];
+      }
+    } else if (arg === 'session') {
+      result.command = 'session';
+    } else if (arg === 'steer') {
+      result.command = 'steer';
+      // Next arg is the subcommand
+      if (i + 1 < args.length && !args[i + 1]!.startsWith('-')) {
+        i++;
+        result.botTask = args[i];
+        // Next arg after redirect/queue is payload
+        if ((args[i] === 'redirect' || args[i] === 'queue') && i + 1 < args.length && !args[i + 1]!.startsWith('-')) {
+          i++;
+          result.botFile = args[i];
+        }
+      }
+    } else if (arg === 'queue') {
+      result.command = 'queue';
+      // Next arg is action (add/list/clear/remove)
+      if (i + 1 < args.length && !args[i + 1]!.startsWith('-')) {
+        i++;
+        result.botTask = args[i];
+        // Next arg is task/id
+        if (i + 1 < args.length && !args[i + 1]!.startsWith('-')) {
+          i++;
+          result.botFile = args[i];
+        }
+      }
+    } else if (arg === '--file' && i + 1 < args.length) {
+      i++;
+      result.botFile = args[i];
+    } else if (arg === '--template' && i + 1 < args.length) {
+      i++;
+      result.botTemplate = args[i];
+    } else if (arg === '--batch' && i + 1 < args.length) {
+      i++;
+      result.botBatch = parseInt(args[i]!, 10) || undefined;
+    } else if (arg === '--auto-approve') {
+      result.autoApprove = true;
+    } else if (arg === '--project-dir' && i + 1 < args.length) {
+      i++;
+      result.file = args[i];
     } else if (arg === 'run') {
       // skip, next arg is the file
     } else if (!arg.startsWith('-')) {
@@ -781,5 +836,226 @@ export async function handleRun(opts: ParsedArgs): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`\x1b[31m[weaver] Fatal: ${msg}\x1b[0m`);
     process.exit(1);
+  }
+}
+
+export async function handleBot(opts: ParsedArgs): Promise<void> {
+  if (!opts.botTask) {
+    console.error('[weaver] No task specified');
+    console.error('Usage: flow-weaver weaver bot "Create a workflow that..."');
+    process.exit(1);
+  }
+
+  const task = {
+    instruction: opts.botTask,
+    mode: opts.botFile ? 'modify' : 'create',
+    targets: opts.botFile ? [opts.botFile] : undefined,
+    options: {
+      template: opts.botTemplate,
+      batchCount: opts.botBatch,
+      dryRun: opts.dryRun,
+      autoApprove: opts.autoApprove,
+    },
+  };
+
+  // Use the batch workflow if --batch specified
+  const workflowName = opts.botBatch ? 'weaver-bot-batch' : 'weaver-bot';
+
+  // Find the workflow file in the pack
+  const packRoot = new URL('..', import.meta.url);
+  let workflowPath: string;
+  try {
+    workflowPath = fileURLToPath(new URL(`src/workflows/${workflowName}.ts`, packRoot));
+    const { existsSync } = await import('node:fs');
+    if (!existsSync(workflowPath)) {
+      workflowPath = fileURLToPath(new URL(`dist/workflows/${workflowName}.js`, packRoot));
+    }
+  } catch {
+    workflowPath = fileURLToPath(new URL(`dist/workflows/${workflowName}.js`, packRoot));
+  }
+
+  const config = await loadConfig(opts.configPath);
+  const nodeTimings = new Map<string, number>();
+
+  // Start dashboard if requested
+  let dashboard: DashboardServer | null = null;
+  if (opts.dashboard) {
+    dashboard = new DashboardServer({ port: opts.dashboardPort ?? 4242 });
+    const port = await dashboard.start();
+    console.log(`[weaver] Dashboard: http://127.0.0.1:${port}`);
+    openBrowser(`http://127.0.0.1:${port}`);
+    dashboard.broadcastWorkflowStart(workflowPath);
+  }
+
+  const onEvent = opts.quiet
+    ? undefined
+    : (event: ExecutionEvent) => {
+        const icon = STATUS_ICONS[event.type] ?? ' ';
+        const label = event.nodeType ? `${event.nodeId} (${event.nodeType})` : event.nodeId;
+
+        if (dashboard) dashboard.broadcastExecution(event);
+
+        if (event.type === 'node-start') {
+          nodeTimings.set(event.nodeId, event.timestamp);
+          if (opts.verbose) console.log(`  ${icon} ${label}`);
+        } else if (event.type === 'node-complete') {
+          const start = nodeTimings.get(event.nodeId);
+          const dur = start ? ` ${formatDuration(event.timestamp - start)}` : '';
+          console.log(`  ${icon} ${label}${dur}`);
+        } else if (event.type === 'node-error') {
+          console.log(`  ${icon} ${label}: ${event.error ?? 'unknown error'}`);
+        }
+      };
+
+  const startTime = Date.now();
+  if (!opts.quiet) {
+    console.log(`[weaver] Bot: ${opts.botTask.slice(0, 80)}`);
+  }
+
+  try {
+    const result = await runWorkflow(workflowPath, {
+      params: { taskJson: JSON.stringify(task), projectDir: opts.file ?? process.cwd() },
+      verbose: opts.verbose,
+      dryRun: opts.dryRun,
+      config,
+      onEvent,
+      onNotificationError: (channel, _event, error) => {
+        console.error(`[weaver] Notification error (${channel}): ${error}`);
+      },
+    });
+
+    const elapsed = formatDuration(Date.now() - startTime);
+    if (!opts.quiet) {
+      const color = result.success ? '\x1b[32m' : '\x1b[31m';
+      console.log(`\n${color}Bot: ${result.outcome}\x1b[0m (${elapsed})`);
+      console.log(`  ${result.summary}`);
+    }
+
+    if (dashboard) {
+      dashboard.broadcastWorkflowComplete(result.summary ?? '', result.success);
+      await dashboard.stop();
+    }
+
+    process.exit(result.success ? 0 : 1);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`\x1b[31m[weaver] Fatal: ${msg}\x1b[0m`);
+    if (dashboard) {
+      dashboard.broadcastWorkflowError(msg);
+      await dashboard.stop();
+    }
+    process.exit(1);
+  }
+}
+
+export async function handleSession(opts: ParsedArgs): Promise<void> {
+  const packRoot = new URL('..', import.meta.url);
+  let workflowPath: string;
+  try {
+    workflowPath = fileURLToPath(new URL('src/workflows/weaver-bot-session.ts', packRoot));
+    const { existsSync } = await import('node:fs');
+    if (!existsSync(workflowPath)) {
+      workflowPath = fileURLToPath(new URL('dist/workflows/weaver-bot-session.js', packRoot));
+    }
+  } catch {
+    workflowPath = fileURLToPath(new URL('dist/workflows/weaver-bot-session.js', packRoot));
+  }
+
+  const config = await loadConfig(opts.configPath);
+
+  if (!opts.quiet) {
+    console.log('[weaver] Starting bot session (Ctrl+C to stop)');
+    console.log('[weaver] Add tasks with: flow-weaver weaver queue add "task"');
+  }
+
+  try {
+    const result = await runWorkflow(workflowPath, {
+      params: { projectDir: opts.file ?? process.cwd() },
+      verbose: opts.verbose,
+      dryRun: opts.dryRun,
+      config,
+    });
+
+    if (!opts.quiet) {
+      const color = result.success ? '\x1b[32m' : '\x1b[31m';
+      console.log(`${color}Session: ${result.outcome}\x1b[0m`);
+    }
+
+    process.exit(result.success ? 0 : 1);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`\x1b[31m[weaver] Fatal: ${msg}\x1b[0m`);
+    process.exit(1);
+  }
+}
+
+export async function handleSteer(opts: ParsedArgs): Promise<void> {
+  const { SteeringController } = await import('./bot/steering.js');
+  const controller = new SteeringController();
+
+  const subcommand = opts.botTask;
+  if (!subcommand || !['pause', 'resume', 'cancel', 'redirect', 'queue'].includes(subcommand)) {
+    console.error('[weaver] Usage: flow-weaver weaver steer <pause|resume|cancel|redirect|queue> [payload]');
+    process.exit(1);
+  }
+
+  const command = {
+    command: subcommand as 'pause' | 'resume' | 'cancel' | 'redirect' | 'queue',
+    payload: opts.botFile,
+    timestamp: Date.now(),
+  };
+
+  controller.write(command);
+  console.log(`[weaver] Steering command sent: ${subcommand}${opts.botFile ? ' "' + opts.botFile + '"' : ''}`);
+}
+
+export async function handleQueue(opts: ParsedArgs): Promise<void> {
+  const { TaskQueue } = await import('./bot/task-queue.js');
+  const queue = new TaskQueue();
+
+  const action = opts.botTask;
+  if (!action || !['add', 'list', 'clear', 'remove'].includes(action)) {
+    console.error('[weaver] Usage: flow-weaver weaver queue <add|list|clear|remove> [task|id]');
+    process.exit(1);
+  }
+
+  switch (action) {
+    case 'add': {
+      const instruction = opts.botFile;
+      if (!instruction) {
+        console.error('[weaver] Usage: flow-weaver weaver queue add "task instruction"');
+        process.exit(1);
+      }
+      const id = queue.add({ instruction, priority: 0 });
+      console.log(`[weaver] Task added: ${id}`);
+      break;
+    }
+    case 'list': {
+      const tasks = queue.list();
+      if (tasks.length === 0) {
+        console.log('No tasks in queue.');
+      } else {
+        console.log('ID'.padEnd(10) + 'STATUS'.padEnd(12) + 'INSTRUCTION');
+        for (const t of tasks) {
+          console.log(t.id.padEnd(10) + t.status.padEnd(12) + t.instruction.slice(0, 60));
+        }
+      }
+      break;
+    }
+    case 'clear': {
+      const count = queue.clear();
+      console.log(`Cleared ${count} task(s).`);
+      break;
+    }
+    case 'remove': {
+      const id = opts.botFile;
+      if (!id) {
+        console.error('[weaver] Usage: flow-weaver weaver queue remove <id>');
+        process.exit(1);
+      }
+      const removed = queue.remove(id);
+      console.log(removed ? `Removed task ${id}.` : `No task found with id "${id}".`);
+      break;
+    }
   }
 }

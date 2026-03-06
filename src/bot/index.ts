@@ -43,6 +43,12 @@ export type {
   DashboardEvent,
   DashboardNodeState,
   DashboardServerOptions,
+  BotTask,
+  BotPlan,
+  BotPlanStep,
+  BotValidationResult,
+  BotExecutionResult,
+  BotNotificationEventType,
 } from './types.js';
 
 export {
@@ -85,3 +91,12 @@ export { openBrowser } from './utils.js';
 
 // Web Approval (F6)
 export { WebApprovalHandler } from './web-approval.js';
+
+// Bot infrastructure
+export { SteeringController } from './steering.js';
+export type { SteeringCommand } from './steering.js';
+export { TaskQueue } from './task-queue.js';
+export type { QueuedTask } from './task-queue.js';
+export { SessionStore } from './session-state.js';
+export type { SessionState } from './session-state.js';
+export { buildBotSystemPrompt } from './system-prompt.js';

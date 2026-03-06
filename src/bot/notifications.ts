@@ -27,6 +27,15 @@ const EVENT_COLORS: Record<NotificationEventType, number> = {
   'pipeline-complete': 0x2ecc71,
   'stage-start': 0x3498db,
   'stage-complete': 0x2ecc71,
+  'bot-task-start': 0x3498db,
+  'bot-task-complete': 0x2ecc71,
+  'bot-plan-ready': 0x9b59b6,
+  'bot-step-complete': 0x1abc9c,
+  'bot-validation-failed': 0xe67e22,
+  'bot-fix-attempt': 0xf39c12,
+  'bot-session-start': 0x3498db,
+  'bot-session-end': 0x2ecc71,
+  'bot-steering-received': 0x95a5a6,
 };
 
 const EVENT_LABELS: Record<NotificationEventType, string> = {
@@ -40,6 +49,15 @@ const EVENT_LABELS: Record<NotificationEventType, string> = {
   'pipeline-complete': 'Pipeline Complete',
   'stage-start': 'Stage Started',
   'stage-complete': 'Stage Complete',
+  'bot-task-start': 'Bot Task Started',
+  'bot-task-complete': 'Bot Task Complete',
+  'bot-plan-ready': 'Bot Plan Ready',
+  'bot-step-complete': 'Bot Step Complete',
+  'bot-validation-failed': 'Bot Validation Failed',
+  'bot-fix-attempt': 'Bot Fix Attempt',
+  'bot-session-start': 'Bot Session Started',
+  'bot-session-end': 'Bot Session Ended',
+  'bot-steering-received': 'Bot Steering Received',
 };
 
 function formatDiscordBody(event: NotificationEvent): object {

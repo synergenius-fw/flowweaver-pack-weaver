@@ -13,6 +13,10 @@
     "./node-types": {
       "types": "./dist/node-types/index.d.ts",
       "default": "./dist/node-types/index.js"
+    },
+    "./bot": {
+      "types": "./dist/bot/index.d.ts",
+      "default": "./dist/bot/index.js"
     }
   },
   "keywords": [
