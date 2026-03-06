@@ -70,6 +70,51 @@ export class RunStore {
     );
   }
 
+  /** Mark a run as in-progress. Creates a small marker file that survives crashes. */
+  markRunning(runId: string, workflowFile: string): void {
+    const marker = path.join(this.dir, `running-${runId}.json`);
+    fs.writeFileSync(marker, JSON.stringify({ id: runId, workflowFile, startedAt: new Date().toISOString(), pid: process.pid }), 'utf-8');
+  }
+
+  /** Remove the in-progress marker after the run completes. */
+  clearRunning(runId: string): void {
+    const marker = path.join(this.dir, `running-${runId}.json`);
+    try { fs.unlinkSync(marker); } catch { /* already gone */ }
+  }
+
+  /** Check for orphaned in-progress markers (runs killed mid-execution). */
+  checkOrphans(): Array<{ id: string; workflowFile: string; startedAt: string; pid: number }> {
+    const orphans: Array<{ id: string; workflowFile: string; startedAt: string; pid: number }> = [];
+    try {
+      const files = fs.readdirSync(this.dir).filter((f) => f.startsWith('running-') && f.endsWith('.json'));
+      for (const file of files) {
+        try {
+          const data = JSON.parse(fs.readFileSync(path.join(this.dir, file), 'utf-8'));
+          // Check if the PID is still alive
+          let alive = false;
+          try { process.kill(data.pid, 0); alive = true; } catch { /* process gone */ }
+          if (!alive) {
+            orphans.push(data);
+            // Record the orphaned run as an error and clean up
+            this.append({
+              id: data.id,
+              workflowFile: data.workflowFile,
+              startedAt: data.startedAt,
+              finishedAt: new Date().toISOString(),
+              durationMs: Date.now() - new Date(data.startedAt).getTime(),
+              success: false,
+              outcome: 'error',
+              summary: 'Process killed during execution (recovered on next start)',
+              dryRun: false,
+            });
+            fs.unlinkSync(path.join(this.dir, file));
+          }
+        } catch { /* skip corrupt marker */ }
+      }
+    } catch { /* dir read failed */ }
+    return orphans;
+  }
+
   prune(policy: RetentionPolicy): number {
     const all = this.readAll();
     if (all.length === 0) return 0;
