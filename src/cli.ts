@@ -494,7 +494,14 @@ async function handlePipeline(opts: ParsedArgs): Promise<void> {
     process.exit(1);
   }
 
-  const config = PipelineRunner.load(opts.file);
+  let config;
+  try {
+    config = PipelineRunner.load(opts.file);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`\x1b[31m[weaver] Pipeline config error: ${msg}\x1b[0m`);
+    process.exit(1);
+  }
   const runner = new PipelineRunner();
 
   if (!opts.quiet) {
@@ -525,24 +532,30 @@ async function handlePipeline(opts: ParsedArgs): Promise<void> {
 
   const weaverConfig = await loadConfig(opts.configPath);
 
-  const pipelineResult = await runner.run(config, {
-    verbose: opts.verbose,
-    dryRun: opts.dryRun,
-    config: weaverConfig,
-    stage: opts.pipelineStage,
-    onStageEvent,
-    onNotificationError: (channel, _event, error) => {
-      console.error(`[weaver] Notification error (${channel}): ${error}`);
-    },
-  });
+  try {
+    const pipelineResult = await runner.run(config, {
+      verbose: opts.verbose,
+      dryRun: opts.dryRun,
+      config: weaverConfig,
+      stage: opts.pipelineStage,
+      onStageEvent,
+      onNotificationError: (channel, _event, error) => {
+        console.error(`[weaver] Notification error (${channel}): ${error}`);
+      },
+    });
 
-  if (!opts.quiet) {
-    const elapsed = formatDuration(pipelineResult.durationMs);
-    const color = pipelineResult.success ? '\x1b[32m' : '\x1b[31m';
-    console.log(`\n${color}Pipeline: ${pipelineResult.outcome}\x1b[0m (${elapsed})`);
+    if (!opts.quiet) {
+      const elapsed = formatDuration(pipelineResult.durationMs);
+      const color = pipelineResult.success ? '\x1b[32m' : '\x1b[31m';
+      console.log(`\n${color}Pipeline: ${pipelineResult.outcome}\x1b[0m (${elapsed})`);
+    }
+
+    process.exit(pipelineResult.success ? 0 : 1);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`\x1b[31m[weaver] Pipeline error: ${msg}\x1b[0m`);
+    process.exit(1);
   }
-
-  process.exit(pipelineResult.success ? 0 : 1);
 }
 
 // --- Dashboard ---
@@ -677,6 +690,15 @@ async function handleProviders(): Promise<void> {
 async function main(): Promise<void> {
   const opts = parseArgs(process.argv);
 
+  // Recover orphaned runs from previous crashes
+  try {
+    const store = new RunStore();
+    const orphans = store.checkOrphans();
+    for (const orphan of orphans) {
+      console.error(`[weaver] Recovered orphaned run ${orphan.id.slice(0, 8)} (${orphan.workflowFile}) killed at PID ${orphan.pid}`);
+    }
+  } catch { /* non-fatal */ }
+
   if (opts.showHelp) {
     console.log(HELP);
     process.exit(0);
@@ -720,7 +742,7 @@ async function main(): Promise<void> {
 
   if (opts.command === 'pipeline') {
     await handlePipeline(opts);
-    return; // handlePipeline calls process.exit
+    return;
   }
 
   if (opts.command === 'dashboard' || opts.dashboard) {

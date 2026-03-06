@@ -105,6 +105,9 @@ export async function runWorkflow(
   const runId = RunStore.newId();
   const startedAt = new Date().toISOString();
 
+  // Mark run as in-progress so abrupt kills leave a trace
+  try { store?.markRunning(runId, absPath); } catch { /* non-fatal */ }
+
   if (!fs.existsSync(absPath)) {
     throw new Error(`Workflow file not found: ${absPath}`);
   }
@@ -269,6 +272,7 @@ function recordRun(
       finishedAt,
       durationMs: new Date(finishedAt).getTime() - new Date(data.startedAt).getTime(),
     });
+    store.clearRunning(data.id);
   } catch (err) {
     if (verbose) console.error(`[weaver] Failed to record run history: ${err}`);
   }
