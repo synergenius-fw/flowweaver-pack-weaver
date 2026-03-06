@@ -29,11 +29,12 @@ const pkgPath = path.join(rootDir, 'package.json');
 const manifestPath = path.join(rootDir, 'flowweaver.manifest.json');
 
 function run(cmd: string, opts?: { cwd?: string; stdio?: 'inherit' | 'pipe' }): string {
-  return execSync(cmd, {
+  const result = execSync(cmd, {
     cwd: opts?.cwd ?? rootDir,
     stdio: opts?.stdio ?? 'pipe',
     encoding: 'utf-8',
-  }).trim();
+  });
+  return (result ?? '').trim();
 }
 
 function fail(msg: string): never {
