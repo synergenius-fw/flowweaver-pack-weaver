@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import type { WeaverEnv } from '../bot/types.js';
 
 /**
  * Format the result summary, suitable for display or further processing.
@@ -6,14 +7,14 @@ import * as path from 'node:path';
  * @flowWeaver nodeType
  * @expression
  * @label Report
- * @input projectDir [order:0] - Project root directory
+ * @input env [order:0] - Weaver environment bundle
  * @input targetPath [order:1] - Target workflow path
  * @input resultJson [order:2] - Result (JSON)
  * @output summary [order:0] - Summary string
  */
-export function weaverReport(projectDir: string, targetPath: string, resultJson: string): { summary: string } {
+export function weaverReport(env: WeaverEnv, targetPath: string, resultJson: string): { summary: string } {
   const result = JSON.parse(resultJson);
-  const relPath = path.relative(projectDir, targetPath);
+  const relPath = path.relative(env.projectDir, targetPath);
   const lines = [
     `Weaver: ${result.outcome} (${relPath})`,
     result.summary,

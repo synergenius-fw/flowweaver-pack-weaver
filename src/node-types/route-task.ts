@@ -1,3 +1,5 @@
+import type { WeaverEnv } from '../bot/types.js';
+
 /**
  * Routes based on task mode. onSuccess fires for actionable tasks
  * (create/modify/batch). onFailure fires for read-only tasks.
@@ -5,24 +7,15 @@
  * @flowWeaver nodeType
  * @expression
  * @label Route Task
- * @input projectDir [order:0] - Project root directory
- * @input config [order:1] - Config (JSON)
- * @input providerType [order:2] - Provider type
- * @input providerInfo [order:3] - Provider info (JSON)
- * @input taskJson [order:4] - Task (JSON)
- * @output projectDir [order:0] - Project root directory (pass-through)
- * @output config [order:1] - Config (pass-through)
- * @output providerType [order:2] - Provider type (pass-through)
- * @output providerInfo [order:3] - Provider info (pass-through)
- * @output taskJson [order:4] - Task (pass-through)
+ * @input env [order:0] - Weaver environment bundle
+ * @input taskJson [order:1] - Task (JSON)
+ * @output env [order:0] - Weaver environment bundle (pass-through)
+ * @output taskJson [order:1] - Task (pass-through)
  */
 export function weaverRouteTask(
-  projectDir: string,
-  config: string,
-  providerType: string,
-  providerInfo: string,
+  env: WeaverEnv,
   taskJson: string,
-): { projectDir: string; config: string; providerType: string; providerInfo: string; taskJson: string } {
+): { env: WeaverEnv; taskJson: string } {
   const task = JSON.parse(taskJson) as { mode?: string };
   const mode = task.mode ?? 'create';
 
@@ -32,5 +25,5 @@ export function weaverRouteTask(
   }
 
   console.log(`\x1b[36m→ Routing to ${mode} path\x1b[0m`);
-  return { projectDir, config, providerType, providerInfo, taskJson };
+  return { env, taskJson };
 }

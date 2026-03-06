@@ -10,6 +10,8 @@ export type {
   ExecutionEventType,
   ApprovalMode,
   WeaverConfig,
+  WeaverEnv,
+  ProviderInfo,
   WorkflowResult,
   ProviderName,
   RunRecord,
@@ -116,7 +118,21 @@ export type {
   BotValidationResult,
   BotExecutionResult,
   BotNotificationEventType,
+  ToolDefinition,
+  ToolUseResult,
+  StreamChunk,
+  GenesisImpactLevel,
+  GenesisOperationType,
+  GenesisConfig,
+  GenesisOperation,
+  GenesisProposal,
+  GenesisFingerprint,
+  GenesisCycleRecord,
+  GenesisHistory,
 } from './bot/index.js';
+
+// Genesis store
+export { GenesisStore } from './bot/index.js';
 
 // Node types (for use in flow-weaver workflows)
 export {
@@ -139,4 +155,19 @@ export {
   weaverFixErrors,
   weaverGitOps,
   weaverBotReport,
+  genesisLoadConfig,
+  genesisObserve,
+  genesisDiffFingerprint,
+  genesisCheckStabilize,
+  genesisPropose,
+  genesisValidateProposal,
+  genesisSnapshot,
+  genesisApply,
+  genesisCompileValidate,
+  genesisDiffWorkflow,
+  genesisCheckThreshold,
+  genesisApprove,
+  genesisCommit,
+  genesisUpdateHistory,
+  genesisReport,
 } from './node-types/index.js';

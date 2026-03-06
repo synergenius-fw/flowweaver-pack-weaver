@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
+import { withFileLock } from './file-lock.js';
 
 export interface SessionState {
   sessionId: string;
@@ -21,7 +22,7 @@ export class SessionStore {
     this.filePath = path.join(base, 'session.json');
   }
 
-  create(): SessionState {
+  async create(): Promise<SessionState> {
     const state: SessionState = {
       sessionId: crypto.randomUUID().slice(0, 8),
       status: 'idle',
@@ -31,7 +32,7 @@ export class SessionStore {
       startedAt: Date.now(),
       lastActivity: Date.now(),
     };
-    this.save(state);
+    await this.save(state);
     return state;
   }
 
@@ -44,19 +45,26 @@ export class SessionStore {
     }
   }
 
-  save(state: SessionState): void {
-    const dir = path.dirname(this.filePath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    state.lastActivity = Date.now();
-    fs.writeFileSync(this.filePath, JSON.stringify(state, null, 2), 'utf-8');
+  async save(state: SessionState): Promise<void> {
+    return withFileLock(this.filePath, () => {
+      const dir = path.dirname(this.filePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      state.lastActivity = Date.now();
+      fs.writeFileSync(this.filePath, JSON.stringify(state, null, 2), 'utf-8');
+    });
   }
 
-  update(patch: Partial<SessionState>): SessionState | null {
-    const state = this.load();
-    if (!state) return null;
-    Object.assign(state, patch);
-    this.save(state);
-    return state;
+  async update(patch: Partial<SessionState>): Promise<SessionState | null> {
+    return withFileLock(this.filePath, () => {
+      const state = this.load();
+      if (!state) return null;
+      Object.assign(state, patch);
+      const dir = path.dirname(this.filePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      state.lastActivity = Date.now();
+      fs.writeFileSync(this.filePath, JSON.stringify(state, null, 2), 'utf-8');
+      return state;
+    });
   }
 
   clear(): void {

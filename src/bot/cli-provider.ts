@@ -1,9 +1,10 @@
 import { execSync } from 'node:child_process';
-import type { BotAgentProvider } from './agent-provider.js';
+import type { BotAgentProvider, OnUsageCallback, StreamChunk, ToolDefinition, ToolUseResult } from './types.js';
 import { buildSystemPrompt } from './system-prompt.js';
 
 export class CliAgentProvider implements BotAgentProvider {
   private cli: 'claude-cli' | 'copilot-cli';
+  onUsage?: OnUsageCallback;
 
   constructor(cli: 'claude-cli' | 'copilot-cli') {
     this.cli = cli;
@@ -41,6 +42,26 @@ export class CliAgentProvider implements BotAgentProvider {
     }
 
     return this.parseJson(raw);
+  }
+
+  async *stream(request: {
+    agentId: string;
+    context: Record<string, unknown>;
+    prompt: string;
+  }): AsyncIterable<StreamChunk> {
+    const result = await this.decide(request);
+    yield { type: 'text', text: JSON.stringify(result) };
+    yield { type: 'done' };
+  }
+
+  async decideWithTools(request: {
+    agentId: string;
+    context: Record<string, unknown>;
+    prompt: string;
+    tools: ToolDefinition[];
+  }): Promise<{ result: Record<string, unknown>; toolCalls?: ToolUseResult[] }> {
+    const result = await this.decide(request);
+    return { result };
   }
 
   private parseJson(text: string): Record<string, unknown> {

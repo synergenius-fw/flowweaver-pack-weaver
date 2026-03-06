@@ -42,11 +42,9 @@ import { weaverBotReport } from '../node-types/bot-report.js';
  *
  * @connect approve.rejectionReason -> abort.rejectionReason
  * @connect approve.taskJson -> abort.taskJson
- * @connect approve.projectDir -> abort.projectDir
  * @connect abort.resultJson -> report.abortResult
  *
  * @connect execRetry.resultJson -> notify.resultJson
- * @connect execRetry.projectDir -> notify.targetPath
  *
  * @connect execRetry.resultJson -> report.mainResult
  * @connect execRetry.filesModified -> report.filesModified

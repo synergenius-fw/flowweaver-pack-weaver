@@ -1,4 +1,5 @@
 import * as readline from 'node:readline';
+import type { WeaverEnv } from '../bot/types.js';
 
 /**
  * Presents the plan to the user for approval. Branching:
@@ -7,49 +8,38 @@ import * as readline from 'node:readline';
  *
  * @flowWeaver nodeType
  * @label Approval Gate
- * @input projectDir [order:0] - Project root directory (pass-through)
- * @input config [order:1] - Config (JSON)
- * @input providerType [order:2] - Provider type (pass-through)
- * @input providerInfo [order:3] - Provider info (pass-through)
- * @input planJson [order:4] - Plan (JSON)
- * @input taskJson [order:5] - Task (JSON)
- * @output projectDir [order:0] - Project root directory (pass-through)
- * @output config [order:1] - Config (pass-through)
- * @output providerType [order:2] - Provider type (pass-through)
- * @output providerInfo [order:3] - Provider info (pass-through)
- * @output planJson [order:4] - Plan (pass-through)
- * @output taskJson [order:5] - Task (pass-through)
- * @output rejectionReason [order:6] - Rejection reason (on failure path)
+ * @input env [order:0] - Weaver environment bundle
+ * @input planJson [order:1] - Plan (JSON)
+ * @input taskJson [order:2] - Task (JSON)
+ * @output env [order:0] - Weaver environment bundle (pass-through)
+ * @output planJson [order:1] - Plan (pass-through)
+ * @output taskJson [order:2] - Task (pass-through)
+ * @output rejectionReason [order:3] - Rejection reason (on failure path)
  * @output onSuccess [order:-2] - On Success
  * @output onFailure [order:-1] - On Failure
  */
 export async function weaverApprovalGate(
   execute: boolean,
-  projectDir: string,
-  config: string,
-  providerType: string,
-  providerInfo: string,
+  env: WeaverEnv,
   planJson: string,
   taskJson: string,
 ): Promise<{
   onSuccess: boolean; onFailure: boolean;
-  projectDir: string; config: string; providerType: string; providerInfo: string;
+  env: WeaverEnv;
   planJson: string; taskJson: string; rejectionReason: string;
 }> {
-  const passthrough = { projectDir, config, providerType, providerInfo, planJson, taskJson };
-
   if (!execute) {
-    return { onSuccess: true, onFailure: false, ...passthrough, rejectionReason: '' };
+    return { onSuccess: true, onFailure: false, env, planJson, taskJson, rejectionReason: '' };
   }
 
-  const cfg = JSON.parse(config) as { approval?: string | { mode: string } };
-  const approvalMode = typeof cfg.approval === 'string' ? cfg.approval : cfg.approval?.mode ?? 'prompt';
+  const { config } = env;
+  const approvalMode = typeof config.approval === 'string' ? config.approval : config.approval?.mode ?? 'prompt';
 
   // Check for autoApprove in task options
   const task = JSON.parse(taskJson) as { options?: { autoApprove?: boolean } };
   if (task.options?.autoApprove || approvalMode === 'auto') {
     console.log('\x1b[36m→ Auto-approved\x1b[0m');
-    return { onSuccess: true, onFailure: false, ...passthrough, rejectionReason: '' };
+    return { onSuccess: true, onFailure: false, env, planJson, taskJson, rejectionReason: '' };
   }
 
   // Display the plan
@@ -73,10 +63,10 @@ export async function weaverApprovalGate(
 
   if (approved) {
     console.log('\x1b[32m→ Plan approved\x1b[0m');
-    return { onSuccess: true, onFailure: false, ...passthrough, rejectionReason: '' };
+    return { onSuccess: true, onFailure: false, env, planJson, taskJson, rejectionReason: '' };
   }
 
   const reason = answer || 'rejected by user';
   console.log(`\x1b[33m→ Plan rejected: ${reason}\x1b[0m`);
-  return { onSuccess: false, onFailure: true, ...passthrough, rejectionReason: reason };
+  return { onSuccess: false, onFailure: true, env, planJson, taskJson, rejectionReason: reason };
 }

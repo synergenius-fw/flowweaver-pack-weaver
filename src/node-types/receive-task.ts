@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import type { WeaverEnv } from '../bot/types.js';
 
 interface QueuedTask {
   id: string;
@@ -19,36 +20,25 @@ interface QueuedTask {
  *
  * @flowWeaver nodeType
  * @label Receive Task
- * @input projectDir [order:0] - Project root directory
- * @input config [order:1] - Weaver configuration (JSON)
- * @input providerType [order:2] - Provider type (pass-through)
- * @input providerInfo [order:3] - Provider info (JSON, pass-through)
- * @input [taskJson] [order:4] - Pre-supplied task (JSON, optional)
- * @output projectDir [order:0] - Project root directory (pass-through)
- * @output config [order:1] - Config (pass-through)
- * @output providerType [order:2] - Provider type (pass-through)
- * @output providerInfo [order:3] - Provider info (pass-through)
- * @output taskJson [order:4] - Parsed task (JSON)
- * @output hasTask [order:5] - Whether a task was found
+ * @input env [order:0] - Weaver environment bundle
+ * @input [taskJson] [order:1] - Pre-supplied task (JSON, optional)
+ * @output env [order:0] - Weaver environment bundle (pass-through)
+ * @output taskJson [order:1] - Parsed task (JSON)
+ * @output hasTask [order:2] - Whether a task was found
  * @output onSuccess [order:-2] - On Success
  * @output onFailure [order:-1] - On Failure
  */
 export async function weaverReceiveTask(
   execute: boolean,
-  projectDir: string,
-  config: string,
-  providerType: string,
-  providerInfo: string,
+  env: WeaverEnv,
   taskJson?: string,
 ): Promise<{
   onSuccess: boolean; onFailure: boolean;
-  projectDir: string; config: string; providerType: string; providerInfo: string;
+  env: WeaverEnv;
   taskJson: string; hasTask: boolean;
 }> {
-  const passthrough = { projectDir, config, providerType, providerInfo };
-
   if (!execute) {
-    return { onSuccess: true, onFailure: false, ...passthrough, taskJson: '{}', hasTask: false };
+    return { onSuccess: true, onFailure: false, env, taskJson: '{}', hasTask: false };
   }
 
   // If taskJson is pre-supplied, use it directly
@@ -57,7 +47,7 @@ export async function weaverReceiveTask(
       const parsed = JSON.parse(taskJson);
       if (parsed.instruction) {
         console.log(`\x1b[36m→ Task received: ${parsed.instruction.slice(0, 80)}\x1b[0m`);
-        return { onSuccess: true, onFailure: false, ...passthrough, taskJson, hasTask: true };
+        return { onSuccess: true, onFailure: false, env, taskJson, hasTask: true };
       }
     } catch { /* fall through to queue check */ }
   }
@@ -87,12 +77,12 @@ export async function weaverReceiveTask(
             queueId: task.id,
           };
           console.log(`\x1b[36m→ Task from queue [${task.id}]: ${task.instruction.slice(0, 80)}\x1b[0m`);
-          return { onSuccess: true, onFailure: false, ...passthrough, taskJson: JSON.stringify(botTask), hasTask: true };
+          return { onSuccess: true, onFailure: false, env, taskJson: JSON.stringify(botTask), hasTask: true };
         }
       }
     }
   } catch { /* ignore queue errors */ }
 
   console.log('\x1b[33m→ No task found\x1b[0m');
-  return { onSuccess: false, onFailure: true, ...passthrough, taskJson: '{}', hasTask: false };
+  return { onSuccess: false, onFailure: true, env, taskJson: '{}', hasTask: false };
 }

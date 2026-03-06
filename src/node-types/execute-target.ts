@@ -1,68 +1,5 @@
-import { execSync } from 'node:child_process';
-import type { WeaverConfig } from '../bot/types.js';
-
-interface ProviderInfo {
-  type: 'anthropic' | 'claude-cli' | 'copilot-cli';
-  model?: string;
-  maxTokens?: number;
-  apiKey?: string;
-}
-
-function callCli(provider: string, prompt: string): string {
-  if (provider === 'claude-cli') {
-    return execSync('claude -p --output-format text', {
-      input: prompt,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 120_000,
-    }).trim();
-  }
-  if (provider === 'copilot-cli') {
-    return execSync('copilot -p --silent --allow-all-tools', {
-      input: prompt,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 120_000,
-    }).trim();
-  }
-  throw new Error(`Unknown CLI provider: ${provider}`);
-}
-
-async function callApiAsync(
-  apiKey: string, model: string, maxTokens: number,
-  systemPrompt: string, userPrompt: string,
-): Promise<string> {
-  const body = JSON.stringify({
-    model, max_tokens: maxTokens, system: systemPrompt,
-    messages: [{ role: 'user', content: userPrompt }],
-  });
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body,
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Anthropic API error ${response.status}: ${text.slice(0, 200)}`);
-  }
-  const json = await response.json() as { content: Array<{ type: string; text: string }> };
-  return json.content[0]?.text ?? '';
-}
-
-function parseJsonResponse(text: string): Record<string, unknown> {
-  let cleaned = text.trim();
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-  }
-  try { return JSON.parse(cleaned); } catch { /* fallthrough */ }
-  const match = cleaned.match(/\{[\s\S]*\}/);
-  if (match) return JSON.parse(match[0]);
-  throw new Error(`Failed to parse AI response as JSON: ${text.slice(0, 200)}`);
-}
+import type { WeaverEnv, ProviderInfo } from '../bot/types.js';
+import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function buildWeaverPrompt(): Promise<string> {
@@ -210,42 +147,34 @@ Return ONLY valid JSON. No markdown, no code fences, no explanation outside the 
  *
  * @flowWeaver nodeType
  * @label Execute Target
- * @input projectDir [order:0] - Project root directory
- * @input config [order:1] - Config (JSON)
- * @input providerType [order:2] - Provider type
- * @input providerInfo [order:3] - Provider info (JSON)
- * @input targetPath [order:4] - Absolute path to target workflow
- * @output projectDir [order:0] - Project root directory (pass-through)
- * @output config [order:1] - Config (pass-through)
- * @output targetPath [order:2] - Target path (pass-through)
- * @output resultJson [order:3] - Workflow execution result (JSON)
+ * @input env [order:0] - Weaver environment bundle
+ * @input targetPath [order:1] - Absolute path to target workflow
+ * @output env [order:0] - Weaver environment bundle (pass-through)
+ * @output targetPath [order:1] - Target path (pass-through)
+ * @output resultJson [order:2] - Workflow execution result (JSON)
  * @output onSuccess [order:-2] - On Success
  * @output onFailure [order:-1] - On Failure
  */
 export async function weaverExecuteTarget(
   execute: boolean,
-  projectDir: string,
-  config: string,
-  providerType: string,
-  providerInfo: string,
+  env: WeaverEnv,
   targetPath: string,
 ): Promise<{
   onSuccess: boolean; onFailure: boolean;
-  projectDir: string; config: string; targetPath: string; resultJson: string;
+  env: WeaverEnv; targetPath: string; resultJson: string;
 }> {
   if (!execute) {
     return {
       onSuccess: true, onFailure: false,
-      projectDir, config, targetPath,
+      env, targetPath,
       resultJson: JSON.stringify({ success: true, summary: 'Dry run', outcome: 'skipped' }),
     };
   }
 
-  const pInfo: ProviderInfo = JSON.parse(providerInfo);
-  const cfg: WeaverConfig = JSON.parse(config);
+  const { config, providerInfo: pInfo } = env;
   const systemPrompt = await buildWeaverPrompt();
 
-  const approvalSetting = cfg.approval ?? 'auto';
+  const approvalSetting = config.approval ?? 'auto';
   const approvalMode = typeof approvalSetting === 'string' ? approvalSetting : approvalSetting.mode;
 
   const agentChannel = {
@@ -271,7 +200,7 @@ export async function weaverExecuteTarget(
 
       let text: string;
       if (pInfo.type === 'anthropic') {
-        text = await callApiAsync(
+        text = await callApi(
           pInfo.apiKey!,
           pInfo.model ?? 'claude-sonnet-4-6',
           pInfo.maxTokens ?? 4096,
@@ -332,7 +261,7 @@ export async function weaverExecuteTarget(
 
     return {
       onSuccess: ok, onFailure: !ok,
-      projectDir, config, targetPath,
+      env, targetPath,
       resultJson: JSON.stringify(resultObj),
     };
   } catch (err: unknown) {
@@ -340,7 +269,7 @@ export async function weaverExecuteTarget(
     console.log(`\x1b[33m! Error: ${msg}\x1b[0m`);
     return {
       onSuccess: false, onFailure: true,
-      projectDir, config, targetPath,
+      env, targetPath,
       resultJson: JSON.stringify({ success: false, summary: msg, outcome: 'error' }),
     };
   }

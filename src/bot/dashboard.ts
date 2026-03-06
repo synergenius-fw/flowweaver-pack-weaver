@@ -327,9 +327,9 @@ export class DashboardServer {
     res.end(JSON.stringify(session ?? { status: 'idle', currentTask: null, completedTasks: 0 }));
   }
 
-  private handleBotQueue(res: http.ServerResponse): void {
+  private async handleBotQueue(res: http.ServerResponse): Promise<void> {
     const queue = new TaskQueue();
-    const tasks = queue.list();
+    const tasks = await queue.list();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(tasks));
   }

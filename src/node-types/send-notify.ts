@@ -1,5 +1,4 @@
-import { execSync } from 'node:child_process';
-import type { WeaverConfig } from '../bot/types.js';
+import type { WeaverEnv } from '../bot/types.js';
 
 function sendWebhook(
   config: { channel: string; url: string; headers?: Record<string, string> },
@@ -35,15 +34,12 @@ function sendWebhook(
   } else {
     body = JSON.stringify(event);
   }
-  const headerFlags = Object.entries(headers).map(([k, v]) => `-H "${k}: ${v}"`).join(' ');
-  try {
-    execSync(`curl -sS -X POST ${headerFlags} -d @- "${config.url}"`, {
-      input: body,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 10_000,
-    });
-  } catch { /* notification failure is non-fatal */ }
+  fetch(config.url, {
+    method: 'POST',
+    headers,
+    body,
+    signal: AbortSignal.timeout(10_000),
+  }).catch(() => {});
 }
 
 /**
@@ -52,28 +48,25 @@ function sendWebhook(
  * @flowWeaver nodeType
  * @expression
  * @label Notify Result
- * @input projectDir [order:0] - Project root directory
- * @input config [order:1] - Config (JSON)
- * @input targetPath [order:2] - Target path
- * @input resultJson [order:3] - Result (JSON)
- * @output projectDir [order:0] - Project root directory (pass-through)
- * @output targetPath [order:1] - Target path (pass-through)
- * @output resultJson [order:2] - Result (pass-through)
+ * @input env [order:0] - Weaver environment bundle
+ * @input resultJson [order:1] - Result (JSON)
+ * @output env [order:0] - Weaver environment bundle (pass-through)
+ * @output resultJson [order:1] - Result (pass-through)
  */
 export function weaverSendNotify(
-  projectDir: string, config: string, targetPath: string, resultJson: string,
-): { projectDir: string; targetPath: string; resultJson: string } {
-  const cfg: WeaverConfig = JSON.parse(config);
+  env: WeaverEnv, resultJson: string,
+): { env: WeaverEnv; resultJson: string } {
+  const { config, projectDir } = env;
   const result = JSON.parse(resultJson);
-  const channels = (Array.isArray(cfg.notify) ? cfg.notify : cfg.notify ? [cfg.notify] : []);
+  const channels = (Array.isArray(config.notify) ? config.notify : config.notify ? [config.notify] : []);
 
   for (const ch of channels) {
     const events = ch.events ?? ['workflow-complete', 'error'];
     const eventType = result.success ? 'workflow-complete' : 'error';
     if (!events.includes(eventType)) continue;
-    sendWebhook(ch, { ...result, targetPath, providerType: cfg.provider, projectDir });
+    sendWebhook(ch, { ...result, targetPath: projectDir, providerType: config.provider, projectDir });
   }
 
   if (channels.length > 0) console.log(`\x1b[36m→ Sent ${channels.length} notification(s)\x1b[0m`);
-  return { projectDir, targetPath, resultJson };
+  return { env, resultJson };
 }

@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { WeaverConfig } from '../bot/types.js';
+import type { WeaverEnv } from '../bot/types.js';
 
 /**
  * Find the target workflow file from config or by scanning the project directory.
@@ -8,29 +8,23 @@ import type { WeaverConfig } from '../bot/types.js';
  * @flowWeaver nodeType
  * @expression
  * @label Resolve Target
- * @input projectDir [order:0] - Project root directory
- * @input config [order:1] - Config (JSON)
- * @input providerType [order:2] - Provider type (pass-through)
- * @input providerInfo [order:3] - Provider info (pass-through)
- * @output projectDir [order:0] - Project root directory (pass-through)
- * @output config [order:1] - Config (pass-through)
- * @output providerType [order:2] - Provider type (pass-through)
- * @output providerInfo [order:3] - Provider info (pass-through)
- * @output targetPath [order:4] - Absolute path to target workflow
+ * @input env [order:0] - Weaver environment bundle
+ * @output env [order:0] - Weaver environment bundle (pass-through)
+ * @output targetPath [order:1] - Absolute path to target workflow
  */
 export function weaverResolveTarget(
-  projectDir: string, config: string, providerType: string, providerInfo: string,
+  env: WeaverEnv,
 ): {
-  projectDir: string; config: string; providerType: string; providerInfo: string;
+  env: WeaverEnv;
   targetPath: string;
 } {
-  const cfg: WeaverConfig = JSON.parse(config);
+  const { projectDir, config } = env;
 
-  if (cfg.target) {
-    const abs = path.resolve(projectDir, cfg.target);
+  if (config.target) {
+    const abs = path.resolve(projectDir, config.target);
     if (!fs.existsSync(abs)) throw new Error(`Target workflow not found: ${abs}`);
     console.log(`\x1b[36m→ Target: ${abs}\x1b[0m`);
-    return { projectDir, config, providerType, providerInfo, targetPath: abs };
+    return { env, targetPath: abs };
   }
 
   const found: string[] = [];
@@ -63,5 +57,5 @@ export function weaverResolveTarget(
   }
 
   console.log(`\x1b[36m→ Target: ${found[0]}\x1b[0m`);
-  return { projectDir, config, providerType, providerInfo, targetPath: found[0]! };
+  return { env, targetPath: found[0]! };
 }

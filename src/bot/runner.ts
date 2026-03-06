@@ -10,7 +10,6 @@ import type {
   WorkflowResult,
 } from './types.js';
 import {
-  AnthropicAgentProvider,
   createProvider,
   resolveProviderConfig,
 } from './agent-provider.js';
@@ -120,9 +119,7 @@ export async function runWorkflow(
   const provider = await createProvider(providerConfig);
 
   const costTracker = new CostTracker(providerConfig.model ?? 'unknown', providerConfig.name);
-  if (provider instanceof AnthropicAgentProvider) {
-    provider.onUsage = (step, model, usage) => costTracker.track(step, model, usage);
-  }
+  provider.onUsage = (step, model, usage) => costTracker.track(step, model, usage);
   const channels = notifyConfigs.map(
     (c) => new WebhookNotificationChannel(c, options?.onNotificationError),
   );

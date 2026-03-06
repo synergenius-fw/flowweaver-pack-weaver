@@ -1,6 +1,7 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type { WeaverEnv } from '../bot/types.js';
 
 /**
  * Reads and analyzes a workflow file. Produces structured description
@@ -9,34 +10,24 @@ import * as path from 'node:path';
  * @flowWeaver nodeType
  * @expression
  * @label Read Workflow
- * @input projectDir [order:0] - Project root directory
- * @input config [order:1] - Config (JSON, pass-through)
- * @input providerType [order:2] - Provider type (pass-through)
- * @input providerInfo [order:3] - Provider info (JSON, pass-through)
- * @input taskJson [order:4] - Task (JSON)
- * @output projectDir [order:0] - Project root directory (pass-through)
- * @output config [order:1] - Config (pass-through)
- * @output providerType [order:2] - Provider type (pass-through)
- * @output providerInfo [order:3] - Provider info (pass-through)
- * @output taskJson [order:4] - Task (pass-through)
- * @output resultJson [order:5] - Workflow description and diagram (JSON)
- * @output filesModified [order:6] - Files modified (empty array, JSON)
+ * @input env [order:0] - Weaver environment bundle
+ * @input taskJson [order:1] - Task (JSON)
+ * @output env [order:0] - Weaver environment bundle (pass-through)
+ * @output taskJson [order:1] - Task (pass-through)
+ * @output resultJson [order:2] - Workflow description and diagram (JSON)
+ * @output filesModified [order:3] - Files modified (empty array, JSON)
  */
 export function weaverReadWorkflow(
-  projectDir: string,
-  config: string,
-  providerType: string,
-  providerInfo: string,
+  env: WeaverEnv,
   taskJson: string,
-): { projectDir: string; config: string; providerType: string; providerInfo: string; taskJson: string; resultJson: string; filesModified: string } {
+): { env: WeaverEnv; taskJson: string; resultJson: string; filesModified: string } {
   const task = JSON.parse(taskJson) as { targets?: string[]; instruction?: string };
   const targets = task.targets ?? [];
-
-  const passthrough = { projectDir, config, providerType, providerInfo, taskJson };
+  const { projectDir } = env;
 
   if (targets.length === 0) {
     return {
-      ...passthrough,
+      env, taskJson,
       resultJson: JSON.stringify({ success: false, error: 'No target files specified for read' }),
       filesModified: '[]',
     };
@@ -57,7 +48,7 @@ export function weaverReadWorkflow(
     let description = '';
 
     try {
-      diagram = execSync(`flow-weaver diagram "${filePath}" -f ascii-compact`, {
+      diagram = execFileSync('flow-weaver', ['diagram', filePath, '-f', 'ascii-compact'], {
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
         timeout: 30_000,
@@ -66,7 +57,7 @@ export function weaverReadWorkflow(
     } catch { /* diagram generation failed, continue without it */ }
 
     try {
-      description = execSync(`flow-weaver describe "${filePath}"`, {
+      description = execFileSync('flow-weaver', ['describe', filePath], {
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
         timeout: 30_000,
@@ -79,7 +70,7 @@ export function weaverReadWorkflow(
   }
 
   return {
-    ...passthrough,
+    env, taskJson,
     resultJson: JSON.stringify({ success: true, results }),
     filesModified: '[]',
   };

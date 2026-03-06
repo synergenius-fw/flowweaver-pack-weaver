@@ -1,5 +1,5 @@
 import type { BotAgentProvider } from './agent-provider.js';
-import type { ApprovalMode, NotificationEvent } from './types.js';
+import type { ApprovalMode, NotificationEvent, StreamChunk, ToolDefinition, ToolUseResult } from './types.js';
 import { createApprovalHandler } from './approvals.js';
 import type { DashboardServer } from './dashboard.js';
 
@@ -63,6 +63,31 @@ export class BotAgentChannel {
     };
 
     return this.approvalHandler.handle(request, event);
+  }
+
+  async requestWithTools(
+    agentRequest: { agentId: string; context: Record<string, unknown>; prompt: string },
+    tools: ToolDefinition[],
+  ): Promise<{ result: Record<string, unknown>; toolCalls?: ToolUseResult[] }> {
+    if (this.provider.decideWithTools) {
+      return this.provider.decideWithTools({ ...agentRequest, tools });
+    }
+    const result = await this.provider.decide(agentRequest);
+    return { result };
+  }
+
+  async *streamRequest(agentRequest: {
+    agentId: string;
+    context: Record<string, unknown>;
+    prompt: string;
+  }): AsyncIterable<StreamChunk> {
+    if (this.provider.stream) {
+      yield* this.provider.stream(agentRequest);
+      return;
+    }
+    const result = await this.provider.decide(agentRequest);
+    yield { type: 'text', text: JSON.stringify(result) };
+    yield { type: 'done' };
   }
 
   // Compat stubs for AgentChannel interface (used by executor, not by nodes)

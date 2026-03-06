@@ -182,7 +182,7 @@ export async function registerMcpTools(mcp: McpServer): Promise<void> {
     async (args) => {
       const { SteeringController } = await import('./bot/steering.js');
       const controller = new SteeringController();
-      controller.write({
+      await controller.write({
         command: args.command as 'pause' | 'resume' | 'cancel' | 'redirect' | 'queue',
         payload: args.payload as string | undefined,
         timestamp: Date.now(),
@@ -206,18 +206,18 @@ export async function registerMcpTools(mcp: McpServer): Promise<void> {
       switch (args.action) {
         case 'add': {
           if (!args.task) return { content: [{ type: 'text', text: 'Error: task instruction required' }] };
-          const id = queue.add({ instruction: args.task as string, priority: 0 });
+          const id = await queue.add({ instruction: args.task as string, priority: 0 });
           return { content: [{ type: 'text', text: `Task added: ${id}` }] };
         }
         case 'list':
-          return { content: [{ type: 'text', text: JSON.stringify(queue.list(), null, 2) }] };
+          return { content: [{ type: 'text', text: JSON.stringify(await queue.list(), null, 2) }] };
         case 'clear': {
-          const count = queue.clear();
+          const count = await queue.clear();
           return { content: [{ type: 'text', text: `Cleared ${count} task(s)` }] };
         }
         case 'remove': {
           if (!args.id) return { content: [{ type: 'text', text: 'Error: task ID required' }] };
-          const removed = queue.remove(args.id as string);
+          const removed = await queue.remove(args.id as string);
           return { content: [{ type: 'text', text: removed ? `Removed ${args.id}` : `Not found: ${args.id}` }] };
         }
         default:
@@ -240,6 +240,35 @@ export async function registerMcpTools(mcp: McpServer): Promise<void> {
       }
 
       return { content: [{ type: 'text', text: JSON.stringify(state, null, 2) }] };
+    },
+  );
+
+  mcp.tool(
+    'fw_weaver_genesis',
+    'Run a single Genesis self-evolution cycle on a target workflow. Genesis observes the project, proposes changes within a budget, validates, and commits or rolls back.',
+    {
+      projectDir: z.string().optional().describe('Project directory (defaults to cwd)'),
+      dryRun: z.boolean().optional().describe('Preview without executing'),
+    },
+    async (args) => {
+      const packRoot = new URL('..', import.meta.url);
+      let workflowPath: string;
+      try {
+        const { existsSync } = await import('node:fs');
+        workflowPath = fileURLToPath(new URL('src/workflows/genesis-task.ts', packRoot));
+        if (!existsSync(workflowPath)) {
+          workflowPath = fileURLToPath(new URL('dist/workflows/genesis-task.js', packRoot));
+        }
+      } catch {
+        workflowPath = fileURLToPath(new URL('dist/workflows/genesis-task.js', packRoot));
+      }
+
+      const result = await runWorkflow(workflowPath, {
+        params: { projectDir: (args.projectDir as string) ?? process.cwd() },
+        dryRun: args.dryRun as boolean | undefined,
+      });
+
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     },
   );
 }

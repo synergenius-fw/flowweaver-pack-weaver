@@ -10,9 +10,9 @@ import type { WeaverConfig } from '../bot/types.js';
  * @label Load Config
  * @input [projectDir] [order:0] - Project root directory (defaults to cwd)
  * @output projectDir [order:0] - Project root directory (pass-through)
- * @output config [order:1] - Weaver configuration (JSON)
+ * @output config [order:1] - Weaver configuration
  */
-export function weaverLoadConfig(projectDir?: string): { projectDir: string; config: string } {
+export function weaverLoadConfig(projectDir?: string): { projectDir: string; config: WeaverConfig } {
   const dir = projectDir || process.cwd();
   const configPath = path.join(dir, '.weaver.json');
   let config: WeaverConfig = { provider: 'auto' };
@@ -22,5 +22,5 @@ export function weaverLoadConfig(projectDir?: string): { projectDir: string; con
   } else {
     console.log('\x1b[36m→ No .weaver.json found, using defaults (provider: auto)\x1b[0m');
   }
-  return { projectDir: dir, config: JSON.stringify(config) };
+  return { projectDir: dir, config };
 }

@@ -1,18 +1,11 @@
-import { execSync } from 'node:child_process';
-import type { WeaverConfig } from '../bot/types.js';
+import { execFileSync } from 'node:child_process';
+import type { WeaverConfig, WeaverEnv, ProviderInfo } from '../bot/types.js';
 
 const WHICH_CMD = process.platform === 'win32' ? 'where' : 'which';
 
-interface ProviderInfo {
-  type: 'anthropic' | 'claude-cli' | 'copilot-cli';
-  model?: string;
-  maxTokens?: number;
-  apiKey?: string;
-}
-
 function whichSafe(cmd: string, cwd: string): string {
   try {
-    return execSync(`${WHICH_CMD} ${cmd}`, { cwd, encoding: 'utf-8', stdio: 'pipe' }).trim();
+    return execFileSync(WHICH_CMD, [cmd], { cwd, encoding: 'utf-8', stdio: 'pipe' }).trim();
   } catch {
     return '';
   }
@@ -20,23 +13,19 @@ function whichSafe(cmd: string, cwd: string): string {
 
 /**
  * Auto-detect or resolve the configured AI provider.
+ * Assembles the WeaverEnv bundle from projectDir, config, and detected provider.
  *
  * @flowWeaver nodeType
  * @expression
  * @label Detect Provider
  * @input projectDir [order:0] - Project root directory
- * @input config [order:1] - Weaver configuration (JSON)
- * @output projectDir [order:0] - Project root directory (pass-through)
- * @output config [order:1] - Config (pass-through)
- * @output providerType [order:2] - Resolved provider type
- * @output providerInfo [order:3] - Provider details (JSON)
+ * @input config [order:1] - Weaver configuration
+ * @output env [order:0] - Weaver environment bundle
  */
-export function weaverDetectProvider(projectDir: string, config: string): {
-  projectDir: string; config: string;
-  providerType: string; providerInfo: string;
+export function weaverDetectProvider(projectDir: string, config: WeaverConfig): {
+  env: WeaverEnv;
 } {
-  const cfg: WeaverConfig = JSON.parse(config);
-  const providerSetting = cfg.provider ?? 'auto';
+  const providerSetting = config.provider ?? 'auto';
 
   let type: string;
   let model: string | undefined;
@@ -80,8 +69,6 @@ export function weaverDetectProvider(projectDir: string, config: string): {
   console.log(`\x1b[36m→ Provider: ${label}\x1b[0m`);
 
   return {
-    projectDir, config,
-    providerType: type,
-    providerInfo: JSON.stringify(providerInfo),
+    env: { projectDir, config, providerType: type, providerInfo },
   };
 }
