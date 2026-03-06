@@ -25,9 +25,6 @@ export async function handleCommand(
   name: string,
   args: string[],
 ): Promise<void> {
-  // Build a minimal ParsedArgs from the raw args.
-  // The flow-weaver CLI already parsed the subcommand name,
-  // we just get the remaining args.
   const handler = handlers[name];
   if (!handler) {
     throw new Error(`Unknown weaver command: ${name}`);
