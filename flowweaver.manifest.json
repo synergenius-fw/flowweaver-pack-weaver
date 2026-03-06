@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "name": "@synergenius/flowweaver-pack-weaver",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Autonomous workflow runner for Flow Weaver. Auto-detect providers, execute workflows, notify results.",
   "engineVersion": ">=0.17.13",
   "categories": [
@@ -235,19 +235,53 @@
       "functionName": "weaverReceiveTask",
       "isAsync": true,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "config": { "dataType": "string", "description": "Config (JSON)" },
-        "providerType": { "dataType": "string", "description": "Provider type" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (JSON)" },
-        "taskJson": { "dataType": "string", "description": "Pre-supplied task (JSON)", "optional": true }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (JSON)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (JSON)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Pre-supplied task (JSON)",
+          "optional": true
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "config": { "dataType": "string", "description": "Config (pass-through)" },
-        "providerType": { "dataType": "string", "description": "Provider type (pass-through)" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (pass-through)" },
-        "taskJson": { "dataType": "string", "description": "Parsed task (JSON)" },
-        "hasTask": { "dataType": "boolean", "description": "Whether a task was found" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (pass-through)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type (pass-through)"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (pass-through)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Parsed task (JSON)"
+        },
+        "hasTask": {
+          "dataType": "boolean",
+          "description": "Whether a task was found"
+        }
       }
     },
     {
@@ -257,18 +291,48 @@
       "functionName": "weaverRouteTask",
       "isAsync": false,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "config": { "dataType": "string", "description": "Config (JSON)" },
-        "providerType": { "dataType": "string", "description": "Provider type" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (JSON)" },
-        "taskJson": { "dataType": "string", "description": "Task (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (JSON)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (JSON)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (JSON)"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "config": { "dataType": "string", "description": "Config (pass-through)" },
-        "providerType": { "dataType": "string", "description": "Provider type (pass-through)" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (pass-through)" },
-        "taskJson": { "dataType": "string", "description": "Task (pass-through)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (pass-through)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type (pass-through)"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (pass-through)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (pass-through)"
+        }
       }
     },
     {
@@ -278,14 +342,32 @@
       "functionName": "weaverReadWorkflow",
       "isAsync": false,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "taskJson": { "dataType": "string", "description": "Task (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (JSON)"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "taskJson": { "dataType": "string", "description": "Task (pass-through)" },
-        "resultJson": { "dataType": "string", "description": "Workflow description and diagram (JSON)" },
-        "filesModified": { "dataType": "string", "description": "Files modified (empty, JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (pass-through)"
+        },
+        "resultJson": {
+          "dataType": "string",
+          "description": "Workflow description and diagram (JSON)"
+        },
+        "filesModified": {
+          "dataType": "string",
+          "description": "Files modified (empty, JSON)"
+        }
       }
     },
     {
@@ -295,19 +377,52 @@
       "functionName": "weaverBuildContext",
       "isAsync": false,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "config": { "dataType": "string", "description": "Config (JSON)" },
-        "providerType": { "dataType": "string", "description": "Provider type" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (JSON)" },
-        "taskJson": { "dataType": "string", "description": "Task (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (JSON)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (JSON)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (JSON)"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "config": { "dataType": "string", "description": "Config (pass-through)" },
-        "providerType": { "dataType": "string", "description": "Provider type (pass-through)" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (pass-through)" },
-        "taskJson": { "dataType": "string", "description": "Task (pass-through)" },
-        "contextBundle": { "dataType": "string", "description": "Knowledge bundle (markdown)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (pass-through)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type (pass-through)"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (pass-through)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (pass-through)"
+        },
+        "contextBundle": {
+          "dataType": "string",
+          "description": "Knowledge bundle (markdown)"
+        }
       }
     },
     {
@@ -317,20 +432,56 @@
       "functionName": "weaverPlanTask",
       "isAsync": true,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "config": { "dataType": "string", "description": "Config (JSON)" },
-        "providerType": { "dataType": "string", "description": "Provider type" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (JSON)" },
-        "taskJson": { "dataType": "string", "description": "Task (JSON)" },
-        "contextBundle": { "dataType": "string", "description": "Knowledge bundle" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (JSON)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (JSON)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (JSON)"
+        },
+        "contextBundle": {
+          "dataType": "string",
+          "description": "Knowledge bundle"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "config": { "dataType": "string", "description": "Config (pass-through)" },
-        "providerType": { "dataType": "string", "description": "Provider type (pass-through)" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (pass-through)" },
-        "taskJson": { "dataType": "string", "description": "Task (pass-through)" },
-        "planJson": { "dataType": "string", "description": "Execution plan (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (pass-through)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type (pass-through)"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (pass-through)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (pass-through)"
+        },
+        "planJson": {
+          "dataType": "string",
+          "description": "Execution plan (JSON)"
+        }
       }
     },
     {
@@ -340,21 +491,60 @@
       "functionName": "weaverApprovalGate",
       "isAsync": true,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "config": { "dataType": "string", "description": "Config (JSON)" },
-        "providerType": { "dataType": "string", "description": "Provider type" },
-        "providerInfo": { "dataType": "string", "description": "Provider info" },
-        "planJson": { "dataType": "string", "description": "Plan (JSON)" },
-        "taskJson": { "dataType": "string", "description": "Task (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (JSON)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info"
+        },
+        "planJson": {
+          "dataType": "string",
+          "description": "Plan (JSON)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (JSON)"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "config": { "dataType": "string", "description": "Config (pass-through)" },
-        "providerType": { "dataType": "string", "description": "Provider type (pass-through)" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (pass-through)" },
-        "planJson": { "dataType": "string", "description": "Plan (pass-through)" },
-        "taskJson": { "dataType": "string", "description": "Task (pass-through)" },
-        "rejectionReason": { "dataType": "string", "description": "Rejection reason (on failure)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (pass-through)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type (pass-through)"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (pass-through)"
+        },
+        "planJson": {
+          "dataType": "string",
+          "description": "Plan (pass-through)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (pass-through)"
+        },
+        "rejectionReason": {
+          "dataType": "string",
+          "description": "Rejection reason (on failure)"
+        }
       }
     },
     {
@@ -364,15 +554,36 @@
       "functionName": "weaverAbortTask",
       "isAsync": false,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "taskJson": { "dataType": "string", "description": "Task (JSON)" },
-        "rejectionReason": { "dataType": "string", "description": "Rejection reason" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (JSON)"
+        },
+        "rejectionReason": {
+          "dataType": "string",
+          "description": "Rejection reason"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "taskJson": { "dataType": "string", "description": "Task (pass-through)" },
-        "resultJson": { "dataType": "string", "description": "Abort result (JSON)" },
-        "filesModified": { "dataType": "string", "description": "Files modified (empty, JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (pass-through)"
+        },
+        "resultJson": {
+          "dataType": "string",
+          "description": "Abort result (JSON)"
+        },
+        "filesModified": {
+          "dataType": "string",
+          "description": "Files modified (empty, JSON)"
+        }
       }
     },
     {
@@ -382,19 +593,52 @@
       "functionName": "weaverExecValidateRetry",
       "isAsync": true,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "config": { "dataType": "string", "description": "Config (JSON)" },
-        "providerType": { "dataType": "string", "description": "Provider type" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (JSON)" },
-        "planJson": { "dataType": "string", "description": "Execution plan (JSON)" },
-        "taskJson": { "dataType": "string", "description": "Task (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (JSON)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (JSON)"
+        },
+        "planJson": {
+          "dataType": "string",
+          "description": "Execution plan (JSON)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (JSON)"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "resultJson": { "dataType": "string", "description": "Final execution result (JSON)" },
-        "validationResultJson": { "dataType": "string", "description": "Final validation result (JSON)" },
-        "filesModified": { "dataType": "string", "description": "All modified files (JSON array)" },
-        "allValid": { "dataType": "boolean", "description": "Whether all files are valid" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "resultJson": {
+          "dataType": "string",
+          "description": "Final execution result (JSON)"
+        },
+        "validationResultJson": {
+          "dataType": "string",
+          "description": "Final validation result (JSON)"
+        },
+        "filesModified": {
+          "dataType": "string",
+          "description": "All modified files (JSON array)"
+        },
+        "allValid": {
+          "dataType": "boolean",
+          "description": "Whether all files are valid"
+        }
       }
     },
     {
@@ -404,21 +648,60 @@
       "functionName": "weaverExecutePlan",
       "isAsync": true,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "config": { "dataType": "string", "description": "Config (JSON)" },
-        "providerType": { "dataType": "string", "description": "Provider type" },
-        "providerInfo": { "dataType": "string", "description": "Provider info" },
-        "planJson": { "dataType": "string", "description": "Plan (JSON)" },
-        "taskJson": { "dataType": "string", "description": "Task (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (JSON)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info"
+        },
+        "planJson": {
+          "dataType": "string",
+          "description": "Plan (JSON)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (JSON)"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "config": { "dataType": "string", "description": "Config (pass-through)" },
-        "providerType": { "dataType": "string", "description": "Provider type (pass-through)" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (pass-through)" },
-        "executionResultJson": { "dataType": "string", "description": "Execution result (JSON)" },
-        "taskJson": { "dataType": "string", "description": "Task (pass-through)" },
-        "filesModified": { "dataType": "string", "description": "Files modified (JSON array)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (pass-through)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type (pass-through)"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (pass-through)"
+        },
+        "executionResultJson": {
+          "dataType": "string",
+          "description": "Execution result (JSON)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (pass-through)"
+        },
+        "filesModified": {
+          "dataType": "string",
+          "description": "Files modified (JSON array)"
+        }
       }
     },
     {
@@ -428,22 +711,64 @@
       "functionName": "weaverValidateResult",
       "isAsync": false,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "config": { "dataType": "string", "description": "Config (JSON)" },
-        "providerType": { "dataType": "string", "description": "Provider type" },
-        "providerInfo": { "dataType": "string", "description": "Provider info" },
-        "executionResultJson": { "dataType": "string", "description": "Execution result (JSON)" },
-        "taskJson": { "dataType": "string", "description": "Task (JSON)" },
-        "filesModified": { "dataType": "string", "description": "Files modified (JSON array)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (JSON)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info"
+        },
+        "executionResultJson": {
+          "dataType": "string",
+          "description": "Execution result (JSON)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (JSON)"
+        },
+        "filesModified": {
+          "dataType": "string",
+          "description": "Files modified (JSON array)"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "config": { "dataType": "string", "description": "Config (pass-through)" },
-        "providerType": { "dataType": "string", "description": "Provider type (pass-through)" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (pass-through)" },
-        "validationResultJson": { "dataType": "string", "description": "Validation results (JSON)" },
-        "taskJson": { "dataType": "string", "description": "Task (pass-through)" },
-        "allValid": { "dataType": "boolean", "description": "Whether all files passed validation" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (pass-through)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type (pass-through)"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (pass-through)"
+        },
+        "validationResultJson": {
+          "dataType": "string",
+          "description": "Validation results (JSON)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (pass-through)"
+        },
+        "allValid": {
+          "dataType": "boolean",
+          "description": "Whether all files passed validation"
+        }
       }
     },
     {
@@ -453,20 +778,56 @@
       "functionName": "weaverFixErrors",
       "isAsync": true,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "config": { "dataType": "string", "description": "Config (JSON)" },
-        "providerType": { "dataType": "string", "description": "Provider type" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (JSON)" },
-        "validationResultJson": { "dataType": "string", "description": "Validation results (JSON)" },
-        "taskJson": { "dataType": "string", "description": "Task (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (JSON)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (JSON)"
+        },
+        "validationResultJson": {
+          "dataType": "string",
+          "description": "Validation results (JSON)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (JSON)"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "config": { "dataType": "string", "description": "Config (pass-through)" },
-        "providerType": { "dataType": "string", "description": "Provider type (pass-through)" },
-        "providerInfo": { "dataType": "string", "description": "Provider info (pass-through)" },
-        "fixPlanJson": { "dataType": "string", "description": "Fix plan (JSON)" },
-        "taskJson": { "dataType": "string", "description": "Task (pass-through)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (pass-through)"
+        },
+        "providerType": {
+          "dataType": "string",
+          "description": "Provider type (pass-through)"
+        },
+        "providerInfo": {
+          "dataType": "string",
+          "description": "Provider info (pass-through)"
+        },
+        "fixPlanJson": {
+          "dataType": "string",
+          "description": "Fix plan (JSON)"
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (pass-through)"
+        }
       }
     },
     {
@@ -476,13 +837,28 @@
       "functionName": "weaverGitOps",
       "isAsync": false,
       "inputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory" },
-        "filesModified": { "dataType": "string", "description": "Files modified (JSON array)" },
-        "config": { "dataType": "string", "description": "Config (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory"
+        },
+        "filesModified": {
+          "dataType": "string",
+          "description": "Files modified (JSON array)"
+        },
+        "config": {
+          "dataType": "string",
+          "description": "Config (JSON)"
+        }
       },
       "outputs": {
-        "projectDir": { "dataType": "string", "description": "Project root directory (pass-through)" },
-        "gitResultJson": { "dataType": "string", "description": "Git operation result (JSON)" }
+        "projectDir": {
+          "dataType": "string",
+          "description": "Project root directory (pass-through)"
+        },
+        "gitResultJson": {
+          "dataType": "string",
+          "description": "Git operation result (JSON)"
+        }
       }
     },
     {
@@ -492,16 +868,45 @@
       "functionName": "weaverBotReport",
       "isAsync": false,
       "inputs": {
-        "readResult": { "dataType": "string", "description": "From read-only path (JSON)", "optional": true },
-        "mainResult": { "dataType": "string", "description": "From main execution path (JSON)", "optional": true },
-        "abortResult": { "dataType": "string", "description": "From abort path (JSON)", "optional": true },
-        "taskJson": { "dataType": "string", "description": "Task (JSON)" },
-        "filesModified": { "dataType": "string", "description": "Files modified (JSON array)", "optional": true },
-        "gitResultJson": { "dataType": "string", "description": "Git result (JSON)", "optional": true }
+        "readResult": {
+          "dataType": "string",
+          "description": "From read-only path (JSON)",
+          "optional": true
+        },
+        "mainResult": {
+          "dataType": "string",
+          "description": "From main execution path (JSON)",
+          "optional": true
+        },
+        "abortResult": {
+          "dataType": "string",
+          "description": "From abort path (JSON)",
+          "optional": true
+        },
+        "taskJson": {
+          "dataType": "string",
+          "description": "Task (JSON)"
+        },
+        "filesModified": {
+          "dataType": "string",
+          "description": "Files modified (JSON array)",
+          "optional": true
+        },
+        "gitResultJson": {
+          "dataType": "string",
+          "description": "Git result (JSON)",
+          "optional": true
+        }
       },
       "outputs": {
-        "summary": { "dataType": "string", "description": "Summary text" },
-        "reportJson": { "dataType": "string", "description": "Full report (JSON)" }
+        "summary": {
+          "dataType": "string",
+          "description": "Summary text"
+        },
+        "reportJson": {
+          "dataType": "string",
+          "description": "Full report (JSON)"
+        }
       }
     }
   ],
