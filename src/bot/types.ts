@@ -66,7 +66,16 @@ export type NotificationEventType =
   | 'pipeline-start'
   | 'pipeline-complete'
   | 'stage-start'
-  | 'stage-complete';
+  | 'stage-complete'
+  | 'bot-task-start'
+  | 'bot-task-complete'
+  | 'bot-plan-ready'
+  | 'bot-step-complete'
+  | 'bot-validation-failed'
+  | 'bot-fix-attempt'
+  | 'bot-session-start'
+  | 'bot-session-end'
+  | 'bot-steering-received';
 
 export interface NotificationEvent {
   type: NotificationEventType;
@@ -313,4 +322,55 @@ export interface DashboardServerOptions {
   open: boolean;
   keepAlive: boolean;
   keepAliveSeconds: number;
+}
+
+// --- Bot Task Types ---
+
+export type BotNotificationEventType =
+  | 'bot-task-start'
+  | 'bot-task-complete'
+  | 'bot-plan-ready'
+  | 'bot-step-complete'
+  | 'bot-validation-failed'
+  | 'bot-fix-attempt'
+  | 'bot-session-start'
+  | 'bot-session-end'
+  | 'bot-steering-received';
+
+export interface BotTask {
+  instruction: string;
+  mode: 'create' | 'modify' | 'read' | 'batch';
+  targets?: string[];
+  options?: { template?: string; batchCount?: number; dryRun?: boolean };
+}
+
+export interface BotPlanStep {
+  id: string;
+  operation: 'create-workflow' | 'implement-node' | 'add-node' | 'remove-node' |
+             'add-connection' | 'remove-connection' | 'compile' | 'validate' |
+             'modify-source' | 'scaffold' | 'read-file' | 'write-file' | 'run-cli';
+  description: string;
+  args: Record<string, unknown>;
+}
+
+export interface BotPlan {
+  steps: BotPlanStep[];
+  summary: string;
+}
+
+export interface BotValidationResult {
+  file: string;
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export interface BotExecutionResult {
+  success: boolean;
+  filesModified: string[];
+  filesCreated: string[];
+  stepsCompleted: number;
+  stepsTotal: number;
+  errors: string[];
+  output: string;
 }

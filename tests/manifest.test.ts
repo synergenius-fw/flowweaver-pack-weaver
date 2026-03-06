@@ -15,17 +15,32 @@ describe('flowweaver.manifest.json', () => {
     expect(typeof manifest.version).toBe('string');
   });
 
-  it('declares 6 node types', () => {
+  it('declares all node types', () => {
     const nodeTypes = manifest.nodeTypes as Array<Record<string, unknown>>;
-    expect(nodeTypes).toHaveLength(6);
+    expect(nodeTypes).toHaveLength(19);
 
     const names = nodeTypes.map((n) => n.name);
+    // Original 6
     expect(names).toContain('weaverLoadConfig');
     expect(names).toContain('weaverDetectProvider');
     expect(names).toContain('weaverResolveTarget');
     expect(names).toContain('weaverExecuteTarget');
     expect(names).toContain('weaverSendNotify');
     expect(names).toContain('weaverReport');
+    // Bot node types (13)
+    expect(names).toContain('weaverReceiveTask');
+    expect(names).toContain('weaverRouteTask');
+    expect(names).toContain('weaverReadWorkflow');
+    expect(names).toContain('weaverBuildContext');
+    expect(names).toContain('weaverPlanTask');
+    expect(names).toContain('weaverApprovalGate');
+    expect(names).toContain('weaverAbortTask');
+    expect(names).toContain('weaverExecValidateRetry');
+    expect(names).toContain('weaverExecutePlan');
+    expect(names).toContain('weaverValidateResult');
+    expect(names).toContain('weaverFixErrors');
+    expect(names).toContain('weaverGitOps');
+    expect(names).toContain('weaverBotReport');
   });
 
   it('each node type has required fields', () => {
@@ -41,17 +56,42 @@ describe('flowweaver.manifest.json', () => {
     }
   });
 
-  it('declares executeTarget as async', () => {
+  it('declares async node types correctly', () => {
     const nodeTypes = manifest.nodeTypes as Array<Record<string, unknown>>;
-    const exec = nodeTypes.find((n) => n.name === 'weaverExecuteTarget');
-    expect(exec?.isAsync).toBe(true);
+    const expectedAsync = [
+      'weaverExecuteTarget',
+      'weaverReceiveTask',
+      'weaverPlanTask',
+      'weaverApprovalGate',
+      'weaverExecValidateRetry',
+      'weaverExecutePlan',
+      'weaverFixErrors',
+    ];
+    for (const name of expectedAsync) {
+      const nt = nodeTypes.find((n) => n.name === name);
+      expect(nt?.isAsync, `${name} should be async`).toBe(true);
+    }
   });
 
-  it('declares other node types as sync', () => {
+  it('declares sync node types correctly', () => {
     const nodeTypes = manifest.nodeTypes as Array<Record<string, unknown>>;
-    const syncNodes = nodeTypes.filter((n) => n.name !== 'weaverExecuteTarget');
-    for (const nt of syncNodes) {
-      expect(nt.isAsync).toBe(false);
+    const expectedSync = [
+      'weaverLoadConfig',
+      'weaverDetectProvider',
+      'weaverResolveTarget',
+      'weaverSendNotify',
+      'weaverReport',
+      'weaverRouteTask',
+      'weaverReadWorkflow',
+      'weaverBuildContext',
+      'weaverAbortTask',
+      'weaverValidateResult',
+      'weaverGitOps',
+      'weaverBotReport',
+    ];
+    for (const name of expectedSync) {
+      const nt = nodeTypes.find((n) => n.name === name);
+      expect(nt?.isAsync, `${name} should be sync`).toBe(false);
     }
   });
 
@@ -75,13 +115,19 @@ describe('flowweaver.manifest.json', () => {
   it('declares MCP extension', () => {
     expect(manifest.mcpEntrypoint).toBe('dist/mcp-tools.js');
     const mcpTools = manifest.mcpTools as Array<Record<string, unknown>>;
-    expect(mcpTools).toHaveLength(4);
+    expect(mcpTools).toHaveLength(8);
 
     const names = mcpTools.map((t) => t.name);
+    // Original 4
     expect(names).toContain('fw_weaver_run');
     expect(names).toContain('fw_weaver_history');
     expect(names).toContain('fw_weaver_costs');
     expect(names).toContain('fw_weaver_providers');
+    // Bot MCP tools (4)
+    expect(names).toContain('fw_weaver_bot');
+    expect(names).toContain('fw_weaver_steer');
+    expect(names).toContain('fw_weaver_queue');
+    expect(names).toContain('fw_weaver_status');
   });
 
   it('declares init contributions', () => {
