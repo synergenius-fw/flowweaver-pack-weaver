@@ -23,6 +23,10 @@ const EVENT_COLORS: Record<NotificationEventType, number> = {
   'cycle-complete': 0x2ecc71,
   'approval-needed': 0xf1c40f,
   error: 0xe74c3c,
+  'pipeline-start': 0x9b59b6,
+  'pipeline-complete': 0x2ecc71,
+  'stage-start': 0x3498db,
+  'stage-complete': 0x2ecc71,
 };
 
 const EVENT_LABELS: Record<NotificationEventType, string> = {
@@ -32,6 +36,10 @@ const EVENT_LABELS: Record<NotificationEventType, string> = {
   'cycle-complete': 'Cycle Complete',
   'approval-needed': 'Approval Needed',
   error: 'Error',
+  'pipeline-start': 'Pipeline Started',
+  'pipeline-complete': 'Pipeline Complete',
+  'stage-start': 'Stage Started',
+  'stage-complete': 'Stage Complete',
 };
 
 function formatDiscordBody(event: NotificationEvent): object {
@@ -65,6 +73,15 @@ function formatDiscordBody(event: NotificationEvent): object {
       });
     }
   }
+  if (event.pipelineName) {
+    fields.push({ name: 'Pipeline', value: event.pipelineName, inline: true });
+  }
+  if (event.stageId) {
+    fields.push({ name: 'Stage', value: event.stageId, inline: true });
+  }
+  if (event.totalStages != null) {
+    fields.push({ name: 'Progress', value: `${event.completedStages ?? 0}/${event.totalStages}`, inline: true });
+  }
   if (event.error) {
     fields.push({ name: 'Error', value: event.error.slice(0, 1024) });
   }
@@ -97,6 +114,9 @@ function formatSlackBody(event: NotificationEvent): object {
   const parts: string[] = [`*Project:* ${event.projectDir}`];
   if (event.summary) parts.push(`*Summary:* ${event.summary}`);
   if (event.outcome) parts.push(`*Outcome:* ${event.outcome}`);
+  if (event.pipelineName) parts.push(`*Pipeline:* ${event.pipelineName}`);
+  if (event.stageId) parts.push(`*Stage:* ${event.stageId}`);
+  if (event.totalStages != null) parts.push(`*Progress:* ${event.completedStages ?? 0}/${event.totalStages}`);
   if (event.error) parts.push(`*Error:* ${event.error.slice(0, 500)}`);
 
   blocks.push({

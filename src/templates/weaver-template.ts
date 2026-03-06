@@ -365,9 +365,9 @@ function detectProvider(projectDir: string, config: string): {
     // Auto-detection
     if (process.env.ANTHROPIC_API_KEY) {
       type = 'anthropic';
-    } else if (runSafe('which claude', projectDir)) {
+    } else if (runSafe(process.platform === 'win32' ? 'where claude' : 'which claude', projectDir)) {
       type = 'claude-cli';
-    } else if (runSafe('which copilot', projectDir)) {
+    } else if (runSafe(process.platform === 'win32' ? 'where copilot' : 'which copilot', projectDir)) {
       type = 'copilot-cli';
     } else {
       throw new Error(

@@ -5,10 +5,12 @@ import type {
   BotConfig,
   BotNotifyConfig,
   ExecutionEvent,
+  RunOutcome,
   WeaverConfig,
   WorkflowResult,
 } from './types.js';
 import {
+  AnthropicAgentProvider,
   createProvider,
   resolveProviderConfig,
 } from './agent-provider.js';
@@ -18,10 +20,13 @@ import {
   createNotifier,
 } from './notifications.js';
 import type { NotificationErrorHandler } from './notifications.js';
+import { RunStore } from './run-store.js';
+import { CostTracker } from './cost-tracker.js';
+import { CostStore } from './cost-store.js';
 
 function resolveApproval(
   approval: BotConfig['approval'],
-): { mode: ApprovalMode; timeoutSeconds: number; webhookUrl?: string } {
+): { mode: ApprovalMode; timeoutSeconds: number; webhookUrl?: string; webOpen?: boolean } {
   if (!approval || approval === 'auto') {
     return { mode: 'auto', timeoutSeconds: 300 };
   }
@@ -32,6 +37,7 @@ function resolveApproval(
     mode: approval.mode,
     timeoutSeconds: approval.timeoutSeconds ?? 300,
     webhookUrl: approval.webhookUrl,
+    webOpen: approval.webOpen,
   };
 }
 
@@ -88,10 +94,16 @@ export async function runWorkflow(
     config?: WeaverConfig;
     onEvent?: (event: ExecutionEvent) => void;
     onNotificationError?: NotificationErrorHandler;
+    dashboardServer?: import('./dashboard.js').DashboardServer;
   },
 ): Promise<WorkflowResult> {
   const absPath = path.resolve(filePath);
   const verbose = options?.verbose ?? false;
+
+  let store: RunStore | null = null;
+  try { store = new RunStore(); } catch { /* non-fatal */ }
+  const runId = RunStore.newId();
+  const startedAt = new Date().toISOString();
 
   if (!fs.existsSync(absPath)) {
     throw new Error(`Workflow file not found: ${absPath}`);
@@ -102,7 +114,12 @@ export async function runWorkflow(
   const approvalConfig = resolveApproval(config.approval);
   const notifyConfigs = resolveNotify(config.notify);
 
-  const provider = createProvider(providerConfig);
+  const provider = await createProvider(providerConfig);
+
+  const costTracker = new CostTracker(providerConfig.model ?? 'unknown', providerConfig.name);
+  if (provider instanceof AnthropicAgentProvider) {
+    provider.onUsage = (step, model, usage) => costTracker.track(step, model, usage);
+  }
   const channels = notifyConfigs.map(
     (c) => new WebhookNotificationChannel(c, options?.onNotificationError),
   );
@@ -130,6 +147,8 @@ export async function runWorkflow(
     approvalMode: approvalConfig.mode,
     approvalTimeoutSeconds: approvalConfig.timeoutSeconds,
     approvalWebhookUrl: approvalConfig.webhookUrl,
+    approvalWebOpen: approvalConfig.webOpen,
+    dashboardServer: options?.dashboardServer,
     notifier,
     context: { projectDir, workflowFile: absPath },
   });
@@ -141,7 +160,9 @@ export async function runWorkflow(
 
     if (options?.dryRun) {
       if (verbose) console.log('[weaver] Dry run, skipping execution');
-      return { success: true, summary: 'Dry run', outcome: 'skipped' };
+      const dryResult: WorkflowResult = { success: true, summary: 'Dry run', outcome: 'skipped' };
+      recordRun(store, { id: runId, workflowFile: absPath, startedAt, success: true, outcome: 'skipped', summary: 'Dry run', dryRun: true, provider: providerConfig.name, params: options?.params }, verbose);
+      return dryResult;
     }
 
     // Forward trace events as ExecutionEvents
@@ -193,12 +214,21 @@ export async function runWorkflow(
       outcome,
     });
 
+    const costSummary = costTracker.hasEntries() ? costTracker.getRunSummary() : undefined;
+    persistCost(costSummary, absPath, providerConfig.name, verbose);
+    recordRun(store, {
+      id: runId, workflowFile: absPath, startedAt, success, outcome: outcome as RunOutcome, summary,
+      functionName: execResult.functionName, executionTime: execResult.executionTime,
+      dryRun: false, provider: providerConfig.name, params: options?.params,
+    }, verbose);
+
     return {
       success,
       summary,
       outcome,
       functionName: execResult.functionName,
       executionTime: execResult.executionTime,
+      cost: costSummary,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -210,6 +240,59 @@ export async function runWorkflow(
       error: msg,
     });
 
-    return { success: false, summary: msg, outcome: 'error' };
+    const costSummary = costTracker.hasEntries() ? costTracker.getRunSummary() : undefined;
+    persistCost(costSummary, absPath, providerConfig.name, verbose);
+    recordRun(store, {
+      id: runId, workflowFile: absPath, startedAt, success: false, outcome: 'error', summary: msg,
+      dryRun: options?.dryRun ?? false, provider: providerConfig.name, params: options?.params,
+    }, verbose);
+
+    return { success: false, summary: msg, outcome: 'error', cost: costSummary };
+  }
+}
+
+function recordRun(
+  store: RunStore | null,
+  data: {
+    id: string; workflowFile: string; startedAt: string; success: boolean;
+    outcome: RunOutcome; summary: string; functionName?: string;
+    executionTime?: number; dryRun: boolean; provider?: string;
+    params?: Record<string, unknown>;
+  },
+  verbose: boolean,
+): void {
+  if (!store) return;
+  const finishedAt = new Date().toISOString();
+  try {
+    store.append({
+      ...data,
+      finishedAt,
+      durationMs: new Date(finishedAt).getTime() - new Date(data.startedAt).getTime(),
+    });
+  } catch (err) {
+    if (verbose) console.error(`[weaver] Failed to record run history: ${err}`);
+  }
+}
+
+function persistCost(
+  costSummary: import('./types.js').RunCostSummary | undefined,
+  workflowFile: string,
+  provider: string,
+  verbose: boolean,
+): void {
+  if (!costSummary || costSummary.totalInputTokens === 0) return;
+  try {
+    new CostStore().append({
+      timestamp: Date.now(),
+      workflowFile,
+      provider,
+      model: costSummary.model,
+      inputTokens: costSummary.totalInputTokens,
+      outputTokens: costSummary.totalOutputTokens,
+      estimatedCost: costSummary.totalCost,
+      steps: costSummary.entries.length,
+    });
+  } catch (err) {
+    if (verbose) console.error(`[weaver] Failed to persist cost data: ${err}`);
   }
 }
