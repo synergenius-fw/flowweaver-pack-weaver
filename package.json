@@ -5,8 +5,15 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "bin": {
-    "weaver": "./dist/cli.js"
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./node-types": {
+      "types": "./dist/node-types/index.d.ts",
+      "default": "./dist/node-types/index.js"
+    }
   },
   "keywords": [
     "flowweaver-marketplace-pack",
@@ -25,10 +32,14 @@
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.30.0",
-    "@synergenius/flow-weaver": ">=0.17.13"
+    "@synergenius/flow-weaver": ">=0.17.13",
+    "zod": ">=3.22.0"
   },
   "peerDependenciesMeta": {
     "@anthropic-ai/sdk": {
+      "optional": true
+    },
+    "zod": {
       "optional": true
     }
   },
@@ -41,13 +52,16 @@
   "scripts": {
     "build": "tsc && cp -r src/docs dist/docs && node -e \"require('fs').writeFileSync('templates.js','export{workflowTemplates}from\\\"./dist/templates/index.js\\\";\\n')\"",
     "prepublishOnly": "npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "release": "tsx scripts/release.ts"
   },
   "devDependencies": {
     "@types/node": "^25.3.5",
     "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^4.0.18"
   },
   "license": "SEE LICENSE IN LICENSE",
   "repository": {

@@ -1,6 +1,5 @@
-#!/usr/bin/env node
-
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import { runWorkflow } from './bot/runner.js';
 import { RunStore } from './bot/run-store.js';
 import { CostStore } from './bot/cost-store.js';
@@ -11,66 +10,8 @@ import { DashboardServer } from './bot/dashboard.js';
 import { openBrowser } from './bot/utils.js';
 import type { ExecutionEvent, WeaverConfig, RunRecord, RunOutcome, RunCostSummary, CostSummary, StageStatus, WorkflowResult } from './bot/types.js';
 
-const HELP = `
-weaver - Autonomous workflow runner for Flow Weaver
-
-Usage:
-  weaver <file>                    Run a workflow file
-  weaver run <file>                Same as above
-  weaver history                   List recent runs
-  weaver history <id>              Show details of a specific run
-  weaver costs                     Show cost summary
-  weaver watch <file>               Watch file, re-run on change
-  weaver cron "<schedule>" <file>   Run on cron schedule
-  weaver pipeline <config.json>     Run multi-stage pipeline
-  weaver dashboard [file]           Start live dashboard (optionally run file)
-  weaver providers                  List available providers
-  weaver --help                     Show this help
-
-Options:
-  -v, --verbose                    Show detailed execution info
-  -n, --dry-run                    Preview without executing
-  -p, --params <json>              Input parameters as JSON
-  -c, --config <path>              Path to .weaver.json config
-  --quiet                          Suppress progress output
-  --version                        Show version
-  --dashboard                      Enable live dashboard for run
-  --port <number>                  Dashboard port (default 4242)
-  --open                           Auto-open browser
-  --approval <mode>                Override approval mode
-
-Watch/Cron options:
-  --cron "<schedule>"              Add cron trigger to watch mode
-  --debounce <ms>                  File watch debounce (default 500)
-  --log <path>                     Write output to log file
-
-Pipeline options:
-  --stage <id>                     Run single stage + its dependencies
-
-History options:
-  --limit <n>                      Number of entries (default: 20)
-  --outcome <type>                 Filter: completed|failed|error|skipped
-  --workflow <path>                Filter by workflow file
-  --since <date>                   Show runs after date (ISO-8601)
-  --json                           JSON output
-  --prune                          Prune old entries (keep 500, 90 days)
-  --clear                          Delete all history
-
-Cost options:
-  --since <duration|date>          Filter: 7d, 30d, or ISO-8601 date
-  --model <name>                   Filter by model
-
-Examples:
-  weaver my-workflow.ts
-  weaver run pipeline.ts --verbose --params '{"env":"prod"}'
-  weaver watch my-workflow.ts --cron "*/5 * * * *"
-  weaver pipeline deploy.json --stage test
-  weaver history --outcome failed --limit 10
-  weaver costs --since 7d
-`.trim();
-
-interface ParsedArgs {
-  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard';
+export interface ParsedArgs {
+  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject';
   file?: string;
   verbose: boolean;
   dryRun: boolean;
@@ -105,7 +46,7 @@ interface ParsedArgs {
   approvalMode?: string;
 }
 
-function parseArgs(argv: string[]): ParsedArgs {
+export function parseArgs(argv: string[]): ParsedArgs {
   const result: ParsedArgs = {
     command: 'run',
     file: undefined,
@@ -184,6 +125,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       result.command = 'costs';
     } else if (arg === 'providers') {
       result.command = 'providers';
+    } else if (arg === 'eject') {
+      result.command = 'eject';
     } else if (arg === 'watch') {
       result.command = 'watch';
     } else if (arg === 'cron') {
@@ -230,7 +173,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       }
     } else {
       console.error(`[weaver] Unknown option: ${arg}`);
-      console.error('Run "weaver --help" for usage');
+      console.error('Run "flow-weaver weaver --help" for usage');
       process.exit(1);
     }
     i++;
@@ -239,7 +182,9 @@ function parseArgs(argv: string[]): ParsedArgs {
   return result;
 }
 
-function formatDuration(ms: number): string {
+// --- Formatting helpers ---
+
+export function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
 }
@@ -258,7 +203,13 @@ const OUTCOME_COLORS: Record<string, string> = {
 };
 const RESET = '\x1b[0m';
 
-// --- History ---
+const STAGE_ICONS: Record<string, string> = {
+  running: '\x1b[36m>\x1b[0m',
+  completed: '\x1b[32m+\x1b[0m',
+  failed: '\x1b[31mx\x1b[0m',
+  skipped: '\x1b[33m-\x1b[0m',
+  cancelled: '\x1b[33m~\x1b[0m',
+};
 
 function printRunTable(records: RunRecord[]): void {
   console.log(
@@ -309,7 +260,61 @@ function printRunDetail(r: RunRecord): void {
   console.log('');
 }
 
-async function handleHistory(opts: ParsedArgs): Promise<void> {
+function parseSince(spec?: string): number | undefined {
+  if (!spec) return undefined;
+  const match = spec.match(/^(\d+)([dhm])$/);
+  if (match) {
+    const n = parseInt(match[1]!, 10);
+    const unit = match[2];
+    const ms = unit === 'd' ? n * 86_400_000 : unit === 'h' ? n * 3_600_000 : n * 60_000;
+    return Date.now() - ms;
+  }
+  const ts = new Date(spec).getTime();
+  return isNaN(ts) ? undefined : ts;
+}
+
+function formatCostTable(summary: CostSummary): string {
+  const lines: string[] = [];
+  lines.push(`Weaver Cost Summary (${summary.totalRuns} runs)`);
+  lines.push(`Total: ~$${summary.totalCost.toFixed(4)}`);
+  lines.push(`Tokens: ${summary.totalInputTokens.toLocaleString()} in / ${summary.totalOutputTokens.toLocaleString()} out`);
+
+  const models = Object.entries(summary.byModel);
+  if (models.length > 0) {
+    lines.push('');
+    lines.push('By model:');
+    for (const [model, data] of models) {
+      lines.push(`  ${model}: ${data.runs} runs, ~$${data.cost.toFixed(4)}, ${data.inputTokens.toLocaleString()} in / ${data.outputTokens.toLocaleString()} out`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function formatRunCost(cost: RunCostSummary): string {
+  const inp = cost.totalInputTokens.toLocaleString();
+  const out = cost.totalOutputTokens.toLocaleString();
+  const usd = cost.totalCost < 0.01
+    ? `$${cost.totalCost.toFixed(4)}`
+    : `$${cost.totalCost.toFixed(2)}`;
+  return `tokens: ${inp} in / ${out} out | cost: ~${usd} (${cost.model})`;
+}
+
+async function loadConfig(configPath?: string): Promise<WeaverConfig | undefined> {
+  if (!configPath) return undefined;
+  try {
+    const { readFileSync } = await import('node:fs');
+    return JSON.parse(readFileSync(path.resolve(configPath), 'utf-8'));
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[weaver] Failed to read config: ${msg}`);
+    process.exit(1);
+  }
+}
+
+// --- Handlers ---
+
+export async function handleHistory(opts: ParsedArgs): Promise<void> {
   const store = new RunStore();
 
   if (opts.historyClear) {
@@ -357,49 +362,7 @@ async function handleHistory(opts: ParsedArgs): Promise<void> {
   }
 }
 
-// --- Costs ---
-
-function parseSince(spec?: string): number | undefined {
-  if (!spec) return undefined;
-  const match = spec.match(/^(\d+)([dhm])$/);
-  if (match) {
-    const n = parseInt(match[1]!, 10);
-    const unit = match[2];
-    const ms = unit === 'd' ? n * 86_400_000 : unit === 'h' ? n * 3_600_000 : n * 60_000;
-    return Date.now() - ms;
-  }
-  const ts = new Date(spec).getTime();
-  return isNaN(ts) ? undefined : ts;
-}
-
-function formatCostTable(summary: CostSummary): string {
-  const lines: string[] = [];
-  lines.push(`Weaver Cost Summary (${summary.totalRuns} runs)`);
-  lines.push(`Total: ~$${summary.totalCost.toFixed(4)}`);
-  lines.push(`Tokens: ${summary.totalInputTokens.toLocaleString()} in / ${summary.totalOutputTokens.toLocaleString()} out`);
-
-  const models = Object.entries(summary.byModel);
-  if (models.length > 0) {
-    lines.push('');
-    lines.push('By model:');
-    for (const [model, data] of models) {
-      lines.push(`  ${model}: ${data.runs} runs, ~$${data.cost.toFixed(4)}, ${data.inputTokens.toLocaleString()} in / ${data.outputTokens.toLocaleString()} out`);
-    }
-  }
-
-  return lines.join('\n');
-}
-
-function formatRunCost(cost: RunCostSummary): string {
-  const inp = cost.totalInputTokens.toLocaleString();
-  const out = cost.totalOutputTokens.toLocaleString();
-  const usd = cost.totalCost < 0.01
-    ? `$${cost.totalCost.toFixed(4)}`
-    : `$${cost.totalCost.toFixed(2)}`;
-  return `tokens: ${inp} in / ${out} out | cost: ~${usd} (${cost.model})`;
-}
-
-async function handleCosts(opts: ParsedArgs): Promise<void> {
+export async function handleCosts(opts: ParsedArgs): Promise<void> {
   const store = new CostStore();
   const sinceTs = parseSince(opts.costsSince);
   const summary = store.summarize({ since: sinceTs, model: opts.costsModel });
@@ -412,21 +375,7 @@ async function handleCosts(opts: ParsedArgs): Promise<void> {
   console.log(formatCostTable(summary));
 }
 
-async function loadConfig(configPath?: string): Promise<WeaverConfig | undefined> {
-  if (!configPath) return undefined;
-  try {
-    const { readFileSync } = await import('node:fs');
-    return JSON.parse(readFileSync(path.resolve(configPath), 'utf-8'));
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[weaver] Failed to read config: ${msg}`);
-    process.exit(1);
-  }
-}
-
-// --- Watch/Cron ---
-
-async function handleWatch(opts: ParsedArgs): Promise<void> {
+export async function handleWatch(opts: ParsedArgs): Promise<void> {
   if (!opts.file) {
     console.error('[weaver] No workflow file specified for watch');
     process.exit(1);
@@ -449,10 +398,10 @@ async function handleWatch(opts: ParsedArgs): Promise<void> {
   await daemon.start();
 }
 
-async function handleCron(opts: ParsedArgs): Promise<void> {
+export async function handleCron(opts: ParsedArgs): Promise<void> {
   if (!opts.cronSchedule) {
     console.error('[weaver] No cron schedule specified');
-    console.error('Usage: weaver cron "*/5 * * * *" <file>');
+    console.error('Usage: flow-weaver weaver cron "*/5 * * * *" <file>');
     process.exit(1);
   }
   if (!opts.file) {
@@ -477,20 +426,10 @@ async function handleCron(opts: ParsedArgs): Promise<void> {
   await daemon.start();
 }
 
-// --- Pipeline ---
-
-const STAGE_ICONS: Record<string, string> = {
-  running: '\x1b[36m>\x1b[0m',
-  completed: '\x1b[32m+\x1b[0m',
-  failed: '\x1b[31mx\x1b[0m',
-  skipped: '\x1b[33m-\x1b[0m',
-  cancelled: '\x1b[33m~\x1b[0m',
-};
-
-async function handlePipeline(opts: ParsedArgs): Promise<void> {
+export async function handlePipeline(opts: ParsedArgs): Promise<void> {
   if (!opts.file) {
     console.error('[weaver] No pipeline config specified');
-    console.error('Usage: weaver pipeline <config.json>');
+    console.error('Usage: flow-weaver weaver pipeline <config.json>');
     process.exit(1);
   }
 
@@ -558,9 +497,7 @@ async function handlePipeline(opts: ParsedArgs): Promise<void> {
   }
 }
 
-// --- Dashboard ---
-
-async function handleDashboard(opts: ParsedArgs): Promise<void> {
+export async function handleDashboard(opts: ParsedArgs): Promise<void> {
   const dashboard = new DashboardServer({ port: opts.dashboardPort });
   const port = await dashboard.start();
   const url = dashboard.getUrl();
@@ -655,9 +592,7 @@ async function handleDashboard(opts: ParsedArgs): Promise<void> {
   }
 }
 
-// --- Providers ---
-
-async function handleProviders(): Promise<void> {
+export async function handleProviders(): Promise<void> {
   await discoverProviders(defaultRegistry);
   const providers = defaultRegistry.list();
 
@@ -685,74 +620,97 @@ async function handleProviders(): Promise<void> {
   }
 }
 
-// --- Main ---
+export async function handleEject(): Promise<void> {
+  // Resolve the pack's own workflows/weaver.ts relative to this file
+  const packRoot = new URL('..', import.meta.url);
+  const srcPath = new URL('src/workflows/weaver.ts', packRoot);
 
-async function main(): Promise<void> {
-  const opts = parseArgs(process.argv);
-
-  // Recover orphaned runs from previous crashes
+  let source: string;
   try {
-    const store = new RunStore();
-    const orphans = store.checkOrphans();
-    for (const orphan of orphans) {
-      console.error(`[weaver] Recovered orphaned run ${orphan.id.slice(0, 8)} (${orphan.workflowFile}) killed at PID ${orphan.pid}`);
-    }
-  } catch { /* non-fatal */ }
-
-  if (opts.showHelp) {
-    console.log(HELP);
-    process.exit(0);
-  }
-
-  if (opts.showVersion) {
+    source = fs.readFileSync(srcPath, 'utf-8');
+  } catch {
+    // Fallback: try dist location (when running from compiled output)
+    const distPath = new URL('dist/workflows/weaver.ts', packRoot);
     try {
-      const pkgPath = new URL('../package.json', import.meta.url);
-      const { default: pkg } = await import(pkgPath.href, { with: { type: 'json' } });
-      console.log(`weaver v${pkg.version}`);
+      source = fs.readFileSync(distPath, 'utf-8');
     } catch {
-      console.log('weaver (version unknown)');
+      // Last resort: read the .js and note it
+      const jsPath = new URL('dist/workflows/weaver.js', packRoot);
+      try {
+        source = fs.readFileSync(jsPath, 'utf-8');
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[weaver] Could not find managed workflow source: ${msg}`);
+        process.exit(1);
+        return;
+      }
     }
-    process.exit(0);
   }
 
-  if (opts.command === 'history') {
-    await handleHistory(opts);
-    process.exit(0);
+  // Replace pack-relative imports with package imports
+  const rewritten = source
+    .replace(/from\s+['"]\.\.\/node-types\/load-config\.js['"]/g, "from '@synergenius/flowweaver-pack-weaver/node-types'")
+    .replace(/from\s+['"]\.\.\/node-types\/detect-provider\.js['"]/g, "from '@synergenius/flowweaver-pack-weaver/node-types'")
+    .replace(/from\s+['"]\.\.\/node-types\/resolve-target\.js['"]/g, "from '@synergenius/flowweaver-pack-weaver/node-types'")
+    .replace(/from\s+['"]\.\.\/node-types\/execute-target\.js['"]/g, "from '@synergenius/flowweaver-pack-weaver/node-types'")
+    .replace(/from\s+['"]\.\.\/node-types\/send-notify\.js['"]/g, "from '@synergenius/flowweaver-pack-weaver/node-types'")
+    .replace(/from\s+['"]\.\.\/node-types\/report\.js['"]/g, "from '@synergenius/flowweaver-pack-weaver/node-types'");
+
+  // Deduplicate import lines: collapse multiple imports from the same module
+  const lines = rewritten.split('\n');
+  const importMap = new Map<string, Set<string>>();
+  const nonImportLines: string[] = [];
+  let pastImports = false;
+
+  for (const line of lines) {
+    const importMatch = line.match(/^import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"]\s*;?\s*$/);
+    if (importMatch && !pastImports) {
+      const names = importMatch[1]!.split(',').map((s) => s.trim()).filter(Boolean);
+      const mod = importMatch[2]!;
+      if (!importMap.has(mod)) importMap.set(mod, new Set());
+      for (const n of names) importMap.get(mod)!.add(n);
+    } else {
+      if (line.trim() !== '' && !line.match(/^import\s/)) pastImports = true;
+      nonImportLines.push(line);
+    }
   }
 
-  if (opts.command === 'costs') {
-    await handleCosts(opts);
-    process.exit(0);
+  const dedupedImports: string[] = [];
+  for (const [mod, names] of importMap) {
+    dedupedImports.push(`import { ${[...names].join(', ')} } from '${mod}';`);
   }
 
-  if (opts.command === 'providers') {
-    await handleProviders();
-    process.exit(0);
-  }
+  const finalSource = [...dedupedImports, ...nonImportLines].join('\n');
 
-  if (opts.command === 'watch') {
-    await handleWatch(opts);
-    process.exit(0);
-  }
+  const destPath = path.resolve(process.cwd(), 'weaver.ts');
+  fs.writeFileSync(destPath, finalSource, 'utf-8');
 
-  if (opts.command === 'cron') {
-    await handleCron(opts);
-    process.exit(0);
-  }
+  // Read pack version
+  let packVersion = 'unknown';
+  try {
+    const pkgPath = new URL('package.json', packRoot);
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    packVersion = pkg.version;
+  } catch { /* ignore */ }
 
-  if (opts.command === 'pipeline') {
-    await handlePipeline(opts);
-    return;
-  }
+  // Write/update .weaver-meta.json
+  const metaPath = path.resolve(process.cwd(), '.weaver-meta.json');
+  const meta = {
+    ejected: true,
+    packVersion,
+    workflowFile: 'weaver.ts',
+  };
+  fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n', 'utf-8');
 
-  if (opts.command === 'dashboard' || opts.dashboard) {
-    await handleDashboard(opts);
-    return;
-  }
+  console.log(`[weaver] Ejected managed workflow to ${destPath}`);
+  console.log(`[weaver] Metadata written to ${metaPath}`);
+  console.log('[weaver] You can now customize weaver.ts freely.');
+}
 
+export async function handleRun(opts: ParsedArgs): Promise<void> {
   if (!opts.file) {
     console.error('[weaver] No workflow file specified');
-    console.error('Run "weaver --help" for usage');
+    console.error('Run "flow-weaver weaver --help" for usage');
     process.exit(1);
   }
 
@@ -825,5 +783,3 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 }
-
-main();

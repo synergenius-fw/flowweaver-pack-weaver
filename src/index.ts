@@ -98,3 +98,13 @@ export { openBrowser } from './bot/index.js';
 
 // Web Approval
 export { WebApprovalHandler } from './bot/index.js';
+
+// Node types (for use in flow-weaver workflows)
+export {
+  weaverLoadConfig,
+  weaverDetectProvider,
+  weaverResolveTarget,
+  weaverExecuteTarget,
+  weaverSendNotify,
+  weaverReport,
+} from './node-types/index.js';
