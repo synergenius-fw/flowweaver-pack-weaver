@@ -550,7 +550,7 @@ async function executeTarget(
     info(\`Executing: \${targetPath}\`);
     const startTime = Date.now();
 
-    const mod = '@synergenius/flow-weaver/dist/mcp/workflow-executor.js';
+    const mod = '@synergenius/flow-weaver/executor';
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { executeWorkflowFromFile } = await (import(mod) as Promise<any>);
     const execResult = await executeWorkflowFromFile(targetPath, {}, {
