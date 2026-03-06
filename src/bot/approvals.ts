@@ -1,5 +1,6 @@
 import * as readline from 'node:readline';
 import type { ApprovalMode, NotificationEvent } from './types.js';
+import type { DashboardServer } from './dashboard.js'; // type-only, no circular runtime dep
 
 export interface ApprovalRequest {
   context: Record<string, unknown>;
@@ -18,13 +19,17 @@ export interface ApprovalHandler {
   ): Promise<ApprovalResult>;
 }
 
+export interface ApprovalHandlerOptions {
+  timeoutSeconds: number;
+  webhookUrl?: string;
+  notifier: (event: NotificationEvent) => Promise<void>;
+  webOpen?: boolean;
+  dashboardServer?: DashboardServer;
+}
+
 export function createApprovalHandler(
   mode: ApprovalMode,
-  options: {
-    timeoutSeconds: number;
-    webhookUrl?: string;
-    notifier: (event: NotificationEvent) => Promise<void>;
-  },
+  options: ApprovalHandlerOptions,
 ): ApprovalHandler {
   switch (mode) {
     case 'auto':
@@ -39,6 +44,8 @@ export function createApprovalHandler(
       );
     case 'timeout-auto':
       return new TimeoutAutoApproval(options.timeoutSeconds, options.notifier);
+    case 'web':
+      return new LazyWebApproval(options);
   }
 }
 
@@ -237,5 +244,30 @@ class TimeoutAutoApproval implements ApprovalHandler {
       approved: true,
       reason: `auto-approved after ${this.timeoutSeconds}s timeout`,
     };
+  }
+}
+
+class LazyWebApproval implements ApprovalHandler {
+  private inner: ApprovalHandler | null = null;
+  private options: ApprovalHandlerOptions;
+
+  constructor(options: ApprovalHandlerOptions) {
+    this.options = options;
+  }
+
+  async handle(
+    request: ApprovalRequest,
+    event: NotificationEvent,
+  ): Promise<ApprovalResult> {
+    if (!this.inner) {
+      const { WebApprovalHandler } = await import('./web-approval.js');
+      this.inner = new WebApprovalHandler({
+        timeoutSeconds: this.options.timeoutSeconds,
+        open: this.options.webOpen ?? true,
+        notifier: this.options.notifier,
+        dashboardServer: this.options.dashboardServer,
+      });
+    }
+    return this.inner.handle(request, event);
   }
 }

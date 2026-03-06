@@ -1,15 +1,12 @@
 import { execSync } from 'node:child_process';
-import type { BotProviderConfig, BotConfig } from './types.js';
+import type { BotProviderConfig, BotConfig, BotAgentProvider, OnUsageCallback } from './types.js';
 import { buildSystemPrompt } from './system-prompt.js';
-import { CliAgentProvider } from './cli-provider.js';
+import { defaultRegistry, loadExternalProvider } from './provider-registry.js';
+import type { ProviderRegistry } from './provider-registry.js';
 
-export interface BotAgentProvider {
-  decide(request: {
-    agentId: string;
-    context: Record<string, unknown>;
-    prompt: string;
-  }): Promise<Record<string, unknown>>;
-}
+const WHICH_CMD = process.platform === 'win32' ? 'where' : 'which';
+
+export type { BotAgentProvider };
 
 export function resolveProviderConfig(
   provider: BotConfig['provider'],
@@ -19,26 +16,72 @@ export function resolveProviderConfig(
   return provider;
 }
 
-export function createProvider(config: BotProviderConfig): BotAgentProvider {
-  if (config.name === 'anthropic') return new AnthropicAgentProvider(config);
-  if (config.name === 'claude-cli' || config.name === 'copilot-cli') {
-    return new CliAgentProvider(config.name);
+export async function createProvider(
+  config: BotProviderConfig,
+  registry: ProviderRegistry = defaultRegistry,
+): Promise<BotAgentProvider> {
+  // If config.module is set, load and register it first
+  if (config.module) {
+    if (!registry.has(config.name)) {
+      const { factory, metadata } = await loadExternalProvider(config.module);
+      registry.register(config.name, factory, metadata);
+    }
   }
-  throw new Error(`Unknown provider: ${config.name}`);
+
+  // Check registry (covers built-ins + loaded externals)
+  const entry = registry.resolve(config.name);
+  if (entry) {
+    return entry.factory({
+      model: config.model,
+      maxTokens: config.maxTokens,
+      options: config.options,
+    });
+  }
+
+  // Fallback: try conventional npm package names
+  const candidates = [
+    `flowweaver-provider-${config.name}`,
+    `@synergenius/flowweaver-provider-${config.name}`,
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const { factory, metadata } = await loadExternalProvider(candidate);
+      registry.register(config.name, factory, metadata);
+      return factory({
+        model: config.model,
+        maxTokens: config.maxTokens,
+        options: config.options,
+      });
+    } catch {
+      // Try next candidate
+    }
+  }
+
+  throw new Error(
+    `Unknown provider: ${config.name}\n` +
+    `  Install a provider package: npm install flowweaver-provider-${config.name}\n` +
+    `  Or specify a module path: { "provider": { "name": "${config.name}", "module": "./my-provider.js" } }`,
+  );
 }
 
-export function detectProvider(): BotProviderConfig {
-  if (process.env.ANTHROPIC_API_KEY) return { name: 'anthropic' };
+export function detectProvider(registry: ProviderRegistry = defaultRegistry): BotProviderConfig {
+  // Check registry metadata for env vars and CLI commands
+  for (const { name, metadata } of registry.list()) {
+    if (metadata.requiredEnvVars) {
+      const allPresent = metadata.requiredEnvVars.every((v) => process.env[v]);
+      if (allPresent) return { name };
+    }
+  }
 
-  try {
-    execSync('which claude', { stdio: 'pipe' });
-    return { name: 'claude-cli' };
-  } catch { /* not installed */ }
-
-  try {
-    execSync('which copilot', { stdio: 'pipe' });
-    return { name: 'copilot-cli' };
-  } catch { /* not installed */ }
+  for (const { name, metadata } of registry.list()) {
+    if (metadata.detectCliCommand) {
+      try {
+        execSync(`${WHICH_CMD} ${metadata.detectCliCommand}`, { stdio: 'pipe' });
+        return { name };
+      } catch { /* not installed */ }
+    }
+  }
 
   throw new Error(
     'No AI provider found. Options:\n' +
@@ -51,6 +94,7 @@ export function detectProvider(): BotProviderConfig {
 export class AnthropicAgentProvider implements BotAgentProvider {
   private model: string;
   private maxTokens: number;
+  onUsage?: OnUsageCallback;
 
   constructor(config: BotProviderConfig) {
     this.model = config.model ?? 'claude-sonnet-4-6';
@@ -89,6 +133,15 @@ export class AnthropicAgentProvider implements BotAgentProvider {
       ],
     });
 
+    if (this.onUsage && response.usage) {
+      this.onUsage(request.agentId, response.model ?? this.model, {
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+        cacheCreationInputTokens: response.usage.cache_creation_input_tokens,
+        cacheReadInputTokens: response.usage.cache_read_input_tokens,
+      });
+    }
+
     const text =
       response.content[0].type === 'text' ? response.content[0].text : '';
     return this.parseJson(text);
@@ -121,6 +174,13 @@ export class AnthropicAgentProvider implements BotAgentProvider {
           messages: Array<{ role: string; content: string }>;
         }) => Promise<{
           content: Array<{ type: string; text: string }>;
+          model?: string;
+          usage?: {
+            input_tokens: number;
+            output_tokens: number;
+            cache_creation_input_tokens?: number;
+            cache_read_input_tokens?: number;
+          };
         }>;
       };
     }

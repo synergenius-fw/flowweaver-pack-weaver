@@ -12,10 +12,42 @@ export type {
   WeaverConfig,
   WorkflowResult,
   ProviderName,
+  RunRecord,
+  RunFilter,
+  RetentionPolicy,
+  RunOutcome,
+  TokenUsage,
+  OnUsageCallback,
+  RunCostEntry,
+  RunCostSummary,
+  CostRecord,
+  CostSummary,
+  BotAgentProvider,
+  ProviderMetadata,
+  ProviderFactory,
+  ProviderFactoryConfig,
+  ProviderModule,
+  CronExpression,
+  ParsedCron,
+  CronField,
+  TriggerSource,
+  WatchDaemonOptions,
+  WatchDaemonState,
+  StageCondition,
+  StageStatus,
+  PipelineStage,
+  PipelineConfig,
+  StageResult,
+  PipelineResult,
+  DashboardEventType,
+  DashboardNodeStatus,
+  DashboardEvent,
+  DashboardNodeState,
+  DashboardServerOptions,
 } from './bot/types.js';
 
 // Providers
-export type { BotAgentProvider, BotChannelContext } from './bot/index.js';
+export type { BotChannelContext } from './bot/index.js';
 export {
   AnthropicAgentProvider,
   CliAgentProvider,
@@ -23,6 +55,9 @@ export {
   createProvider,
   detectProvider,
 } from './bot/index.js';
+
+// Provider registry
+export { ProviderRegistry, defaultRegistry, loadExternalProvider, discoverProviders } from './bot/index.js';
 
 // Agent channel & notifications
 export { BotAgentChannel } from './bot/index.js';
@@ -41,3 +76,25 @@ export { buildSystemPrompt } from './bot/index.js';
 
 // Runner
 export { runWorkflow } from './bot/index.js';
+
+// History & Cost
+export { RunStore } from './bot/index.js';
+export { CostTracker, MODEL_PRICING } from './bot/index.js';
+export { CostStore } from './bot/index.js';
+
+// Watch/Cron
+export { parseCron, cronMatches, cronNextMatch } from './bot/index.js';
+export { FileWatcher } from './bot/index.js';
+export { CronScheduler } from './bot/index.js';
+export { WatchDaemon } from './bot/index.js';
+
+// Pipelines
+export { PipelineRunner } from './bot/index.js';
+export type { PipelineRunOptions } from './bot/index.js';
+
+// Dashboard
+export { DashboardServer } from './bot/index.js';
+export { openBrowser } from './bot/index.js';
+
+// Web Approval
+export { WebApprovalHandler } from './bot/index.js';

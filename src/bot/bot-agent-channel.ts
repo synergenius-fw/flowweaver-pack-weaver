@@ -1,6 +1,7 @@
 import type { BotAgentProvider } from './agent-provider.js';
 import type { ApprovalMode, NotificationEvent } from './types.js';
 import { createApprovalHandler } from './approvals.js';
+import type { DashboardServer } from './dashboard.js';
 
 export interface BotChannelContext {
   projectDir: string;
@@ -20,6 +21,8 @@ export class BotAgentChannel {
       approvalMode: ApprovalMode;
       approvalTimeoutSeconds: number;
       approvalWebhookUrl?: string;
+      approvalWebOpen?: boolean;
+      dashboardServer?: DashboardServer;
       notifier: (event: NotificationEvent) => Promise<void>;
       context: BotChannelContext;
     },
@@ -31,6 +34,8 @@ export class BotAgentChannel {
       timeoutSeconds: options.approvalTimeoutSeconds,
       webhookUrl: options.approvalWebhookUrl,
       notifier: options.notifier,
+      webOpen: options.approvalWebOpen,
+      dashboardServer: options.dashboardServer,
     });
   }
 
