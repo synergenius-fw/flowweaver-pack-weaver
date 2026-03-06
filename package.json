@@ -24,8 +24,8 @@
     ]
   },
   "peerDependencies": {
-    "@synergenius/flow-weaver": ">=0.17.13",
-    "@anthropic-ai/sdk": ">=0.30.0"
+    "@anthropic-ai/sdk": ">=0.30.0",
+    "@synergenius/flow-weaver": ">=0.17.13"
   },
   "peerDependenciesMeta": {
     "@anthropic-ai/sdk": {
@@ -45,6 +45,7 @@
     "release": "tsx scripts/release.ts"
   },
   "devDependencies": {
+    "@types/node": "^25.3.5",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   },
