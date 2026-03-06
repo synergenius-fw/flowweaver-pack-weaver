@@ -1,5 +1,6 @@
 import type { BotAgentProvider } from './agent-provider.js';
-import type { NotificationEvent } from './types.js';
+import type { ApprovalMode, NotificationEvent } from './types.js';
+import { createApprovalHandler } from './approvals.js';
 
 export interface BotChannelContext {
   projectDir: string;
@@ -9,25 +10,28 @@ export interface BotChannelContext {
 
 export class BotAgentChannel {
   private provider: BotAgentProvider;
-  private approvalMode: 'auto' | 'timeout-auto';
-  private approvalTimeoutSeconds: number;
+  private approvalHandler: ReturnType<typeof createApprovalHandler>;
   private notifier: (event: NotificationEvent) => Promise<void>;
   private context: BotChannelContext;
 
   constructor(
     provider: BotAgentProvider,
     options: {
-      approvalMode: 'auto' | 'timeout-auto';
+      approvalMode: ApprovalMode;
       approvalTimeoutSeconds: number;
+      approvalWebhookUrl?: string;
       notifier: (event: NotificationEvent) => Promise<void>;
       context: BotChannelContext;
     },
   ) {
     this.provider = provider;
-    this.approvalMode = options.approvalMode;
-    this.approvalTimeoutSeconds = options.approvalTimeoutSeconds;
     this.notifier = options.notifier;
     this.context = options.context;
+    this.approvalHandler = createApprovalHandler(options.approvalMode, {
+      timeoutSeconds: options.approvalTimeoutSeconds,
+      webhookUrl: options.approvalWebhookUrl,
+      notifier: options.notifier,
+    });
   }
 
   async request(agentRequest: {
@@ -53,15 +57,7 @@ export class BotAgentChannel {
       proposal: request.context,
     };
 
-    if (this.approvalMode === 'auto') {
-      await this.notifier(event);
-      return { approved: true, reason: 'auto-approved by Weaver' };
-    }
-
-    // timeout-auto: notify, wait, then auto-approve
-    await this.notifier(event);
-    await new Promise((r) => setTimeout(r, this.approvalTimeoutSeconds * 1000));
-    return { approved: true, reason: `auto-approved after ${this.approvalTimeoutSeconds}s timeout` };
+    return this.approvalHandler.handle(request, event);
   }
 
   // Compat stubs for AgentChannel interface (used by executor, not by nodes)

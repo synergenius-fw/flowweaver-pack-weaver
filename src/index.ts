@@ -6,6 +6,9 @@ export type {
   BotNotifyConfig,
   NotificationEvent,
   NotificationEventType,
+  ExecutionEvent,
+  ExecutionEventType,
+  ApprovalMode,
   WeaverConfig,
   WorkflowResult,
   ProviderName,
@@ -27,7 +30,11 @@ export {
   WebhookNotificationChannel,
   createNotifier,
 } from './bot/index.js';
-export type { NotificationChannel } from './bot/index.js';
+export type { NotificationChannel, NotificationErrorHandler } from './bot/index.js';
+
+// Approvals
+export { createApprovalHandler } from './bot/index.js';
+export type { ApprovalHandler, ApprovalResult } from './bot/index.js';
 
 // System prompt
 export { buildSystemPrompt } from './bot/index.js';

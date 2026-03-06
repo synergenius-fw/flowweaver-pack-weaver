@@ -1,10 +1,13 @@
 {
   "name": "@synergenius/flowweaver-pack-weaver",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Autonomous workflow runner for Flow Weaver. Auto-detect providers, execute workflows, notify results.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "weaver": "./dist/cli.js"
+  },
   "keywords": [
     "flowweaver-marketplace-pack",
     "flow-weaver",
