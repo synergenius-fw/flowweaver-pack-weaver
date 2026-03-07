@@ -2,6 +2,7 @@ import * as path from 'node:path';
 import type { GenesisConfig, GenesisProposal, GenesisContext } from '../bot/types.js';
 import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
 import { getGenesisSystemPrompt, getOperationExamples } from '../bot/genesis-prompt-context.js';
+import { GenesisStore } from '../bot/genesis-store.js';
 
 /**
  * Sends project context and diff information to the AI provider, which
@@ -35,7 +36,22 @@ export async function genesisPropose(
   const diff = JSON.parse(context.diffJson!);
   const targetPath = path.resolve(env.projectDir, config.targetWorkflow);
 
-  const systemPrompt = await getGenesisSystemPrompt(config, !!context.stabilized);
+  // Check if self-evolution is locked due to grace period
+  let selfEvolveLocked = false;
+  let graceRemaining = 0;
+  if (config.selfEvolve) {
+    const store = new GenesisStore(env.projectDir);
+    const token = store.loadEscrowToken();
+    if (token && token.phase === 'migrated' && token.graceRemaining > 0) {
+      selfEvolveLocked = true;
+      graceRemaining = token.graceRemaining;
+    }
+  }
+
+  const systemPrompt = await getGenesisSystemPrompt(config, !!context.stabilized, {
+    selfEvolveLocked,
+    graceRemaining,
+  });
 
   const userPrompt = [
     '## Current Workflow Structure',

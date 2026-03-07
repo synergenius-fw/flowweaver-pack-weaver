@@ -19,6 +19,9 @@ import { genesisApprove } from '../node-types/genesis-approve.js';
 import { genesisCommit } from '../node-types/genesis-commit.js';
 import { genesisUpdateHistory } from '../node-types/genesis-update-history.js';
 import { genesisReport } from '../node-types/genesis-report.js';
+import { genesisEscrowStage } from '../node-types/genesis-escrow-stage.js';
+import { genesisEscrowValidate } from '../node-types/genesis-escrow-validate.js';
+import { genesisEscrowMigrate } from '../node-types/genesis-escrow-migrate.js';
 
 /**
  * Genesis self-evolution cycle. Observes the project state, proposes workflow
@@ -42,12 +45,20 @@ import { genesisReport } from '../node-types/genesis-report.js';
  * @node threshold genesisCheckThreshold    [color: "orange"]  [icon: "tune"]         [position: 2540 200]
  * @node approve   genesisApprove           [color: "orange"]  [icon: "send"]         [position: 2740 200]
  * @node commit    genesisCommit            [color: "green"]   [icon: "save"]         [position: 2940 200]
- * @node history   genesisUpdateHistory     [color: "teal"]    [icon: "history"]      [position: 3140 200]
- * @node report    genesisReport            [color: "green"]   [icon: "description"]  [position: 3340 200]
+ * @node escStage  genesisEscrowStage       [color: "yellow"]  [icon: "archive"]      [position: 3140 400]
+ * @node escVal    genesisEscrowValidate    [color: "yellow"]  [icon: "verified"]     [position: 3340 400]
+ * @node escMig    genesisEscrowMigrate     [color: "yellow"]  [icon: "swap_horiz"]   [position: 3540 400]
+ * @node history   genesisUpdateHistory     [color: "teal"]    [icon: "history"]      [position: 3740 200]
+ * @node report    genesisReport            [color: "green"]   [icon: "description"]  [position: 3940 200]
  *
  * @path Start -> cfg -> detect -> gCfg -> observe -> diffFp -> stabilize -> propose -> validate -> snapshot -> applyRetry -> diffWf -> threshold -> approve -> commit -> history -> report -> Exit
  *
+ * @path commit -> escStage -> escVal -> escMig -> history
+ *
  * @path applyRetry:fail -> report
+ * @path escStage:fail -> report
+ * @path escVal:fail -> report
+ * @path escMig:fail -> report
  *
  * @connect applyRetry.attemptCtx:attempt -> tryApply.ctx
  * @connect tryApply.ctx -> applyRetry.attemptCtx:attempt
@@ -58,7 +69,7 @@ import { genesisReport } from '../node-types/genesis-report.js';
  * @connect report.summary -> Exit.summary
  *
  * @position Start 0 200
- * @position Exit 3540 200
+ * @position Exit 4140 200
  *
  * @param execute [order:-1] - Execute
  * @param projectDir [order:0] [optional] - Project directory
