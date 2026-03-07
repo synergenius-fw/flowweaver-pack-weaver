@@ -1,24 +1,22 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { WeaverEnv, GenesisConfig } from '../bot/types.js';
+import type { WeaverEnv, GenesisConfig, GenesisContext } from '../bot/types.js';
 import { GenesisStore } from '../bot/genesis-store.js';
 
 /**
  * Loads genesis configuration from the project .genesis directory,
  * validates the target workflow exists, and generates a new cycle ID.
+ * Creates the initial GenesisContext that threads through the pipeline.
  *
  * @flowWeaver nodeType
  * @expression
  * @label Genesis Load Config
  * @input env [order:0] - Weaver environment bundle
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output genesisConfigJson [order:1] - Genesis configuration (JSON)
- * @output cycleId [order:2] - New cycle identifier
+ * @output ctx [order:0] - Genesis context (JSON)
+ * @output onFailure [hidden]
  */
 export function genesisLoadConfig(env: WeaverEnv): {
-  env: WeaverEnv;
-  genesisConfigJson: string;
-  cycleId: string;
+  ctx: string;
 } {
   const store = new GenesisStore(env.projectDir);
   const config = store.loadConfig();
@@ -35,9 +33,11 @@ export function genesisLoadConfig(env: WeaverEnv): {
   const cycleId = GenesisStore.newCycleId();
   console.log(`\x1b[36m→ Genesis config loaded, cycle ${cycleId}\x1b[0m`);
 
-  return {
+  const ctx: GenesisContext = {
     env,
     genesisConfigJson: JSON.stringify(config),
     cycleId,
   };
+
+  return { ctx: JSON.stringify(ctx) };
 }

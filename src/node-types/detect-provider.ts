@@ -21,6 +21,7 @@ function whichSafe(cmd: string, cwd: string): string {
  * @input projectDir [order:0] - Project root directory
  * @input config [order:1] - Weaver configuration
  * @output env [order:0] - Weaver environment bundle
+ * @output onFailure [hidden]
  */
 export function weaverDetectProvider(projectDir: string, config: WeaverConfig): {
   env: WeaverEnv;

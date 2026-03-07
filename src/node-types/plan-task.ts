@@ -1,4 +1,4 @@
-import type { WeaverEnv } from '../bot/types.js';
+import type { WeaverContext } from '../bot/types.js';
 import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
 
 /**
@@ -7,37 +7,34 @@ import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
  *
  * @flowWeaver nodeType
  * @label Plan Task
- * @input env [order:0] - Weaver environment bundle
- * @input taskJson [order:1] - Task (JSON)
- * @input contextBundle [order:2] - Knowledge bundle
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output taskJson [order:1] - Task (pass-through)
- * @output planJson [order:2] - Execution plan (JSON)
+ * @input ctx [order:0] - Weaver context (JSON)
+ * @output ctx [order:0] - Weaver context with planJson (JSON)
  * @output onSuccess [order:-2] - On Success
- * @output onFailure [order:-1] - On Failure
+ * @output onFailure [order:-1] [hidden] - On Failure
  */
 export async function weaverPlanTask(
   execute: boolean,
-  env: WeaverEnv,
-  taskJson: string,
-  contextBundle: string,
+  ctx: string,
 ): Promise<{
   onSuccess: boolean; onFailure: boolean;
-  env: WeaverEnv;
-  taskJson: string; planJson: string;
+  ctx: string;
 }> {
+  const context = JSON.parse(ctx) as WeaverContext;
+  const { env } = context;
+
   if (!execute) {
-    return { onSuccess: true, onFailure: false, env, taskJson, planJson: '{"steps":[],"summary":"dry run"}' };
+    context.planJson = '{"steps":[],"summary":"dry run"}';
+    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   }
 
   const { providerInfo: pInfo } = env;
-  const task = JSON.parse(taskJson);
+  const task = JSON.parse(context.taskJson!);
 
   let systemPrompt: string;
   try {
     const mod = await import('../bot/system-prompt.js');
     const basePrompt = await mod.buildSystemPrompt();
-    const botPrompt = mod.buildBotSystemPrompt(contextBundle);
+    const botPrompt = mod.buildBotSystemPrompt(context.contextBundle!);
     systemPrompt = basePrompt + '\n\n' + botPrompt;
   } catch {
     systemPrompt = 'You are Weaver, an AI workflow bot. Return ONLY valid JSON with a plan.';
@@ -62,18 +59,12 @@ export async function weaverPlanTask(
     const plan = parseJsonResponse(text);
     console.log(`\x1b[36m→ Plan: ${(plan as { summary?: string }).summary ?? 'generated'}\x1b[0m`);
 
-    return {
-      onSuccess: true, onFailure: false,
-      env, taskJson,
-      planJson: JSON.stringify(plan),
-    };
+    context.planJson = JSON.stringify(plan);
+    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`\x1b[31m→ Planning failed: ${msg}\x1b[0m`);
-    return {
-      onSuccess: false, onFailure: true,
-      env, taskJson,
-      planJson: JSON.stringify({ steps: [], summary: `Planning failed: ${msg}` }),
-    };
+    context.planJson = JSON.stringify({ steps: [], summary: `Planning failed: ${msg}` });
+    return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
   }
 }

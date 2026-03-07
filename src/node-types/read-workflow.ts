@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { WeaverEnv } from '../bot/types.js';
+import type { WeaverContext } from '../bot/types.js';
 
 /**
  * Reads and analyzes a workflow file. Produces structured description
@@ -10,27 +10,20 @@ import type { WeaverEnv } from '../bot/types.js';
  * @flowWeaver nodeType
  * @expression
  * @label Read Workflow
- * @input env [order:0] - Weaver environment bundle
- * @input taskJson [order:1] - Task (JSON)
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output taskJson [order:1] - Task (pass-through)
- * @output resultJson [order:2] - Workflow description and diagram (JSON)
- * @output filesModified [order:3] - Files modified (empty array, JSON)
+ * @input ctx [order:0] - Weaver context (JSON)
+ * @output ctx [order:0] - Weaver context with resultJson (JSON)
+ * @output onFailure [hidden]
  */
-export function weaverReadWorkflow(
-  env: WeaverEnv,
-  taskJson: string,
-): { env: WeaverEnv; taskJson: string; resultJson: string; filesModified: string } {
-  const task = JSON.parse(taskJson) as { targets?: string[]; instruction?: string };
+export function weaverReadWorkflow(ctx: string): { ctx: string } {
+  const context = JSON.parse(ctx) as WeaverContext;
+  const task = JSON.parse(context.taskJson!) as { targets?: string[]; instruction?: string };
   const targets = task.targets ?? [];
-  const { projectDir } = env;
+  const { projectDir } = context.env;
 
   if (targets.length === 0) {
-    return {
-      env, taskJson,
-      resultJson: JSON.stringify({ success: false, error: 'No target files specified for read' }),
-      filesModified: '[]',
-    };
+    context.resultJson = JSON.stringify({ success: false, error: 'No target files specified for read' });
+    context.filesModified = '[]';
+    return { ctx: JSON.stringify(context) };
   }
 
   const results: Array<{ file: string; source?: string; diagram?: string; description?: string; error?: string }> = [];
@@ -69,9 +62,7 @@ export function weaverReadWorkflow(
     console.log(`\x1b[36m→ Read: ${target}\x1b[0m`);
   }
 
-  return {
-    env, taskJson,
-    resultJson: JSON.stringify({ success: true, results }),
-    filesModified: '[]',
-  };
+  context.resultJson = JSON.stringify({ success: true, results });
+  context.filesModified = '[]';
+  return { ctx: JSON.stringify(context) };
 }

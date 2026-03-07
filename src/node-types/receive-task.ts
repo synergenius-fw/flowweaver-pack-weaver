@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type { WeaverEnv } from '../bot/types.js';
+import type { WeaverEnv, WeaverContext } from '../bot/types.js';
 
 interface QueuedTask {
   id: string;
@@ -16,17 +16,16 @@ interface QueuedTask {
 
 /**
  * Receives a task from CLI args, MCP tool call, or the task queue.
- * Parses the instruction into a structured BotTask.
+ * Parses the instruction into a structured BotTask. Creates the
+ * WeaverContext that threads through the bot pipeline.
  *
  * @flowWeaver nodeType
  * @label Receive Task
  * @input env [order:0] - Weaver environment bundle
  * @input [taskJson] [order:1] - Pre-supplied task (JSON, optional)
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output taskJson [order:1] - Parsed task (JSON)
- * @output hasTask [order:2] - Whether a task was found
+ * @output ctx [order:0] - Weaver context (JSON)
  * @output onSuccess [order:-2] - On Success
- * @output onFailure [order:-1] - On Failure
+ * @output onFailure [order:-1] [hidden] - On Failure
  */
 export async function weaverReceiveTask(
   execute: boolean,
@@ -34,11 +33,12 @@ export async function weaverReceiveTask(
   taskJson?: string,
 ): Promise<{
   onSuccess: boolean; onFailure: boolean;
-  env: WeaverEnv;
-  taskJson: string; hasTask: boolean;
+  ctx: string;
 }> {
+  const context: WeaverContext = { env, taskJson: '{}', hasTask: false };
+
   if (!execute) {
-    return { onSuccess: true, onFailure: false, env, taskJson: '{}', hasTask: false };
+    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   }
 
   // If taskJson is pre-supplied, use it directly
@@ -47,7 +47,9 @@ export async function weaverReceiveTask(
       const parsed = JSON.parse(taskJson);
       if (parsed.instruction) {
         console.log(`\x1b[36m→ Task received: ${parsed.instruction.slice(0, 80)}\x1b[0m`);
-        return { onSuccess: true, onFailure: false, env, taskJson, hasTask: true };
+        context.taskJson = taskJson;
+        context.hasTask = true;
+        return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
       }
     } catch { /* fall through to queue check */ }
   }
@@ -77,12 +79,14 @@ export async function weaverReceiveTask(
             queueId: task.id,
           };
           console.log(`\x1b[36m→ Task from queue [${task.id}]: ${task.instruction.slice(0, 80)}\x1b[0m`);
-          return { onSuccess: true, onFailure: false, env, taskJson: JSON.stringify(botTask), hasTask: true };
+          context.taskJson = JSON.stringify(botTask);
+          context.hasTask = true;
+          return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
         }
       }
     }
   } catch { /* ignore queue errors */ }
 
   console.log('\x1b[33m→ No task found\x1b[0m');
-  return { onSuccess: false, onFailure: true, env, taskJson: '{}', hasTask: false };
+  return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
 }

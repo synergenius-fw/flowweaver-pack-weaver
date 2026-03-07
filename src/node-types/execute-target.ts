@@ -1,4 +1,4 @@
-import type { WeaverEnv, ProviderInfo } from '../bot/types.js';
+import type { WeaverEnv, ProviderInfo, WeaverContext } from '../bot/types.js';
 import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -147,28 +147,25 @@ Return ONLY valid JSON. No markdown, no code fences, no explanation outside the 
  *
  * @flowWeaver nodeType
  * @label Execute Target
- * @input env [order:0] - Weaver environment bundle
- * @input targetPath [order:1] - Absolute path to target workflow
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output targetPath [order:1] - Target path (pass-through)
- * @output resultJson [order:2] - Workflow execution result (JSON)
+ * @input ctx [order:0] - Weaver context (JSON)
+ * @output ctx [order:0] - Weaver context with resultJson (JSON)
  * @output onSuccess [order:-2] - On Success
- * @output onFailure [order:-1] - On Failure
+ * @output onFailure [order:-1] [hidden] - On Failure
  */
 export async function weaverExecuteTarget(
   execute: boolean,
-  env: WeaverEnv,
-  targetPath: string,
+  ctx: string,
 ): Promise<{
   onSuccess: boolean; onFailure: boolean;
-  env: WeaverEnv; targetPath: string; resultJson: string;
+  ctx: string;
 }> {
+  const context = JSON.parse(ctx) as WeaverContext;
+  const { env } = context;
+  const targetPath = context.targetPath!;
+
   if (!execute) {
-    return {
-      onSuccess: true, onFailure: false,
-      env, targetPath,
-      resultJson: JSON.stringify({ success: true, summary: 'Dry run', outcome: 'skipped' }),
-    };
+    context.resultJson = JSON.stringify({ success: true, summary: 'Dry run', outcome: 'skipped' });
+    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   }
 
   const { config, providerInfo: pInfo } = env;
@@ -259,18 +256,12 @@ export async function weaverExecuteTarget(
       executionTime: Number(elapsed),
     };
 
-    return {
-      onSuccess: ok, onFailure: !ok,
-      env, targetPath,
-      resultJson: JSON.stringify(resultObj),
-    };
+    context.resultJson = JSON.stringify(resultObj);
+    return { onSuccess: ok, onFailure: !ok, ctx: JSON.stringify(context) };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.log(`\x1b[33m! Error: ${msg}\x1b[0m`);
-    return {
-      onSuccess: false, onFailure: true,
-      env, targetPath,
-      resultJson: JSON.stringify({ success: false, summary: msg, outcome: 'error' }),
-    };
+    context.resultJson = JSON.stringify({ success: false, summary: msg, outcome: 'error' });
+    return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
   }
 }

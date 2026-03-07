@@ -1,4 +1,4 @@
-import type { WeaverEnv, GenesisProposal } from '../bot/types.js';
+import type { GenesisProposal, GenesisContext } from '../bot/types.js';
 
 /**
  * Handles approval for genesis proposals. Auto-approves when approval
@@ -8,48 +8,38 @@ import type { WeaverEnv, GenesisProposal } from '../bot/types.js';
  *
  * @flowWeaver nodeType
  * @label Genesis Approve
- * @input env [order:0] - Weaver environment bundle
- * @input genesisConfigJson [order:1] - Genesis configuration (JSON)
- * @input proposalJson [order:2] - Genesis proposal (JSON)
- * @input workflowDiffJson [order:3] - Workflow diff (JSON)
- * @input approvalRequired [order:4] - Whether approval is needed
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output genesisConfigJson [order:1] - Genesis configuration (pass-through)
- * @output proposalJson [order:2] - Genesis proposal (pass-through)
- * @output approved [order:3] - Whether the proposal was approved
+ * @input ctx [order:0] - Genesis context (JSON)
+ * @output ctx [order:0] - Genesis context with approved (JSON)
  * @output onSuccess [order:-2] - On Success
- * @output onFailure [order:-1] - On Failure
+ * @output onFailure [order:-1] [hidden] - On Failure
  */
 export async function genesisApprove(
   execute: boolean,
-  env: WeaverEnv,
-  genesisConfigJson: string,
-  proposalJson: string,
-  workflowDiffJson: string,
-  approvalRequired: boolean,
+  ctx: string,
 ): Promise<{
   onSuccess: boolean; onFailure: boolean;
-  env: WeaverEnv;
-  genesisConfigJson: string;
-  proposalJson: string;
-  approved: boolean;
+  ctx: string;
 }> {
+  const context = JSON.parse(ctx) as GenesisContext;
+
   if (!execute) {
-    return { onSuccess: true, onFailure: false, env, genesisConfigJson, proposalJson, approved: true };
+    context.approved = true;
+    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   }
 
   // Auto-approve when approval is not required
-  if (!approvalRequired) {
+  if (!context.approvalRequired) {
     console.log('\x1b[32m→ Auto-approved (below threshold)\x1b[0m');
-    return { onSuccess: true, onFailure: false, env, genesisConfigJson, proposalJson, approved: true };
+    context.approved = true;
+    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   }
 
-  const { config } = env;
+  const { config } = context.env;
   const approvalMode = typeof config.approval === 'string' ? config.approval : config.approval?.mode ?? 'prompt';
 
   // Display proposal summary
-  const proposal = JSON.parse(proposalJson) as GenesisProposal;
-  const diffData = JSON.parse(workflowDiffJson) as { diff: string };
+  const proposal = JSON.parse(context.proposalJson!) as GenesisProposal;
+  const diffData = JSON.parse(context.workflowDiffJson!) as { diff: string };
 
   console.log('\n\x1b[1m┌─ Genesis Proposal ─────────────────────┐\x1b[0m');
   console.log(`\x1b[1m│\x1b[0m Impact: ${proposal.impactLevel}`);
@@ -67,10 +57,12 @@ export async function genesisApprove(
   // Auto mode approves automatically
   if (approvalMode === 'auto') {
     console.log('\x1b[32m→ Auto-approved (approval mode: auto)\x1b[0m');
-    return { onSuccess: true, onFailure: false, env, genesisConfigJson, proposalJson, approved: true };
+    context.approved = true;
+    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   }
 
   // Non-auto modes reject in non-interactive context
   console.log('\x1b[33m→ Rejected (approval required, non-auto mode)\x1b[0m');
-  return { onSuccess: true, onFailure: false, env, genesisConfigJson, proposalJson, approved: false };
+  context.approved = false;
+  return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
 }

@@ -1,4 +1,4 @@
-import type { WeaverEnv, GenesisConfig, GenesisProposal } from '../bot/types.js';
+import type { GenesisConfig, GenesisProposal, GenesisContext } from '../bot/types.js';
 import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
 
 /**
@@ -7,42 +7,32 @@ import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
  *
  * @flowWeaver nodeType
  * @label Genesis Propose
- * @input env [order:0] - Weaver environment bundle
- * @input genesisConfigJson [order:1] - Genesis configuration (JSON)
- * @input fingerprintJson [order:2] - Current fingerprint (JSON)
- * @input diffJson [order:3] - Diff summary (JSON)
- * @input stabilized [order:4] - Whether stabilize mode is active
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output genesisConfigJson [order:1] - Genesis configuration (pass-through)
- * @output proposalJson [order:2] - Genesis proposal (JSON)
- * @output stabilized [order:3] - Whether stabilize mode is active (pass-through)
+ * @input ctx [order:0] - Genesis context (JSON)
+ * @output ctx [order:0] - Genesis context with proposalJson (JSON)
  * @output onSuccess [order:-2] - On Success
- * @output onFailure [order:-1] - On Failure
+ * @output onFailure [order:-1] [hidden] - On Failure
  */
 export async function genesisPropose(
   execute: boolean,
-  env: WeaverEnv,
-  genesisConfigJson: string,
-  fingerprintJson: string,
-  diffJson: string,
-  stabilized: boolean,
+  ctx: string,
 ): Promise<{
   onSuccess: boolean; onFailure: boolean;
-  env: WeaverEnv;
-  genesisConfigJson: string;
-  proposalJson: string;
-  stabilized: boolean;
+  ctx: string;
 }> {
+  const context = JSON.parse(ctx) as GenesisContext;
+  const { env } = context;
+
   if (!execute) {
     const empty: GenesisProposal = { operations: [], totalCost: 0, impactLevel: 'COSMETIC', summary: 'dry run', rationale: '' };
-    return { onSuccess: true, onFailure: false, env, genesisConfigJson, proposalJson: JSON.stringify(empty), stabilized };
+    context.proposalJson = JSON.stringify(empty);
+    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   }
 
   const { providerInfo: pInfo } = env;
-  const config = JSON.parse(genesisConfigJson) as GenesisConfig;
-  const diff = JSON.parse(diffJson);
+  const config = JSON.parse(context.genesisConfigJson) as GenesisConfig;
+  const diff = JSON.parse(context.diffJson!);
 
-  const stabilizeClause = stabilized
+  const stabilizeClause = context.stabilized
     ? '\n\nSTABILIZE MODE: Only removeNode, removeConnection, and implementNode operations are allowed. Do NOT propose addNode or addConnection.'
     : '';
 
@@ -63,7 +53,7 @@ export async function genesisPropose(
     JSON.stringify(diff, null, 2),
     '',
     'Current fingerprint:',
-    fingerprintJson,
+    context.fingerprintJson!,
     '',
     'Propose workflow evolution operations within the budget.',
   ].join('\n');
@@ -85,20 +75,12 @@ export async function genesisPropose(
     const proposal = parseJsonResponse(text) as unknown as GenesisProposal;
     console.log(`\x1b[36m→ Proposal: ${proposal.summary} (${proposal.operations.length} ops, impact=${proposal.impactLevel})\x1b[0m`);
 
-    return {
-      onSuccess: true, onFailure: false,
-      env, genesisConfigJson,
-      proposalJson: JSON.stringify(proposal),
-      stabilized,
-    };
+    context.proposalJson = JSON.stringify(proposal);
+    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`\x1b[31m→ Proposal failed: ${msg}\x1b[0m`);
-    return {
-      onSuccess: false, onFailure: true,
-      env, genesisConfigJson,
-      proposalJson: JSON.stringify({ operations: [], totalCost: 0, impactLevel: 'COSMETIC', summary: `Failed: ${msg}`, rationale: '' }),
-      stabilized,
-    };
+    context.proposalJson = JSON.stringify({ operations: [], totalCost: 0, impactLevel: 'COSMETIC', summary: `Failed: ${msg}`, rationale: '' });
+    return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
   }
 }

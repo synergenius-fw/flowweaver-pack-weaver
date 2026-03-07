@@ -26,6 +26,8 @@ export { genesisValidateProposal } from './genesis-validate-proposal.js';
 export { genesisSnapshot } from './genesis-snapshot.js';
 export { genesisApply } from './genesis-apply.js';
 export { genesisCompileValidate } from './genesis-compile-validate.js';
+export { genesisApplyRetry } from './genesis-apply-retry.js';
+export { genesisTryApply } from './genesis-try-apply.js';
 export { genesisDiffWorkflow } from './genesis-diff-workflow.js';
 export { genesisCheckThreshold } from './genesis-check-threshold.js';
 export { genesisApprove } from './genesis-approve.js';

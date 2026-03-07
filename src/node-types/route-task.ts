@@ -1,4 +1,4 @@
-import type { WeaverEnv } from '../bot/types.js';
+import type { WeaverContext } from '../bot/types.js';
 
 /**
  * Routes based on task mode. onSuccess fires for actionable tasks
@@ -7,16 +7,12 @@ import type { WeaverEnv } from '../bot/types.js';
  * @flowWeaver nodeType
  * @expression
  * @label Route Task
- * @input env [order:0] - Weaver environment bundle
- * @input taskJson [order:1] - Task (JSON)
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output taskJson [order:1] - Task (pass-through)
+ * @input ctx [order:0] - Weaver context (JSON)
+ * @output ctx [order:0] - Weaver context (pass-through, JSON)
  */
-export function weaverRouteTask(
-  env: WeaverEnv,
-  taskJson: string,
-): { env: WeaverEnv; taskJson: string } {
-  const task = JSON.parse(taskJson) as { mode?: string };
+export function weaverRouteTask(ctx: string): { ctx: string } {
+  const context = JSON.parse(ctx) as WeaverContext;
+  const task = JSON.parse(context.taskJson!) as { mode?: string };
   const mode = task.mode ?? 'create';
 
   if (mode === 'read') {
@@ -25,5 +21,5 @@ export function weaverRouteTask(
   }
 
   console.log(`\x1b[36m→ Routing to ${mode} path\x1b[0m`);
-  return { env, taskJson };
+  return { ctx };
 }

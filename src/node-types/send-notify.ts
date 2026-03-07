@@ -1,4 +1,4 @@
-import type { WeaverEnv } from '../bot/types.js';
+import type { WeaverContext } from '../bot/types.js';
 
 function sendWebhook(
   config: { channel: string; url: string; headers?: Record<string, string> },
@@ -48,16 +48,15 @@ function sendWebhook(
  * @flowWeaver nodeType
  * @expression
  * @label Notify Result
- * @input env [order:0] - Weaver environment bundle
- * @input resultJson [order:1] - Result (JSON)
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output resultJson [order:1] - Result (pass-through)
+ * @input ctx [order:0] - Weaver context (JSON)
+ * @output ctx [order:0] - Weaver context (pass-through, JSON)
+ * @output onFailure [hidden]
  */
-export function weaverSendNotify(
-  env: WeaverEnv, resultJson: string,
-): { env: WeaverEnv; resultJson: string } {
+export function weaverSendNotify(ctx: string): { ctx: string } {
+  const context = JSON.parse(ctx) as WeaverContext;
+  const { env } = context;
   const { config, projectDir } = env;
-  const result = JSON.parse(resultJson);
+  const result = context.resultJson ? JSON.parse(context.resultJson) : {};
   const channels = (Array.isArray(config.notify) ? config.notify : config.notify ? [config.notify] : []);
 
   for (const ch of channels) {
@@ -68,5 +67,5 @@ export function weaverSendNotify(
   }
 
   if (channels.length > 0) console.log(`\x1b[36m→ Sent ${channels.length} notification(s)\x1b[0m`);
-  return { env, resultJson };
+  return { ctx };
 }

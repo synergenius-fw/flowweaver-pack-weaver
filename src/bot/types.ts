@@ -478,3 +478,36 @@ export interface GenesisHistory {
   configHash: string;
   cycles: GenesisCycleRecord[];
 }
+
+export interface WeaverContext {
+  env: WeaverEnv;
+  targetPath?: string;
+  taskJson?: string;
+  hasTask?: boolean;
+  contextBundle?: string;
+  planJson?: string;
+  rejectionReason?: string;
+  resultJson?: string;
+  validationResultJson?: string;
+  filesModified?: string;
+  allValid?: boolean;
+  gitResultJson?: string;
+}
+
+export interface GenesisContext {
+  env: WeaverEnv;
+  genesisConfigJson: string;
+  cycleId: string;
+  fingerprintJson?: string;
+  diffJson?: string;
+  stabilized?: boolean;
+  proposalJson?: string;
+  snapshotPath?: string;
+  applyResultJson?: string;
+  workflowDiffJson?: string;
+  approvalRequired?: boolean;
+  approved?: boolean;
+  commitResultJson?: string;
+  cycleRecordJson?: string;
+  error?: string;
+}

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import type { WeaverEnv } from '../bot/types.js';
+import type { WeaverContext } from '../bot/types.js';
 
 /**
  * Git operations on created/modified files: stage, commit, branch.
@@ -8,28 +8,27 @@ import type { WeaverEnv } from '../bot/types.js';
  * @flowWeaver nodeType
  * @expression
  * @label Git Operations
- * @input env [order:0] - Weaver environment bundle
- * @input filesModified [order:1] - Files modified (JSON array)
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output gitResultJson [order:1] - Git operation result (JSON)
+ * @input ctx [order:0] - Weaver context (JSON)
+ * @output ctx [order:0] - Weaver context with gitResultJson (JSON)
+ * @output onFailure [hidden]
  */
-export function weaverGitOps(
-  env: WeaverEnv,
-  filesModified: string,
-): { env: WeaverEnv; gitResultJson: string } {
-  const { projectDir, config } = env;
-  const files: string[] = JSON.parse(filesModified);
+export function weaverGitOps(ctx: string): { ctx: string } {
+  const context = JSON.parse(ctx) as WeaverContext;
+  const { projectDir, config } = context.env;
+  const files: string[] = context.filesModified ? JSON.parse(context.filesModified) : [];
   const gitConfig = (config as unknown as { git?: { enabled?: boolean; branch?: string; commitPrefix?: string } }).git ?? {};
 
   if (gitConfig.enabled === false || files.length === 0) {
-    return { env, gitResultJson: JSON.stringify({ skipped: true, reason: files.length === 0 ? 'no files' : 'git disabled' }) };
+    context.gitResultJson = JSON.stringify({ skipped: true, reason: files.length === 0 ? 'no files' : 'git disabled' });
+    return { ctx: JSON.stringify(context) };
   }
 
   // Check if we're in a git repo
   try {
     execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
   } catch {
-    return { env, gitResultJson: JSON.stringify({ skipped: true, reason: 'not a git repo' }) };
+    context.gitResultJson = JSON.stringify({ skipped: true, reason: 'not a git repo' });
+    return { ctx: JSON.stringify(context) };
   }
 
   const results: string[] = [];
@@ -66,5 +65,6 @@ export function weaverGitOps(
     results.push('Nothing to commit');
   }
 
-  return { env, gitResultJson: JSON.stringify({ skipped: false, results }) };
+  context.gitResultJson = JSON.stringify({ skipped: false, results });
+  return { ctx: JSON.stringify(context) };
 }

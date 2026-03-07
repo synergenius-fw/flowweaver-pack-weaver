@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type { WeaverEnv } from '../bot/types.js';
+import type { WeaverContext } from '../bot/types.js';
 import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
 import { executeStep } from '../bot/step-executor.js';
 import { validateFiles } from '../bot/file-validator.js';
@@ -12,40 +12,32 @@ import { validateFiles } from '../bot/file-validator.js';
  *
  * @flowWeaver nodeType
  * @label Execute & Validate
- * @input env [order:0] - Weaver environment bundle
- * @input planJson [order:1] - Execution plan (JSON)
- * @input taskJson [order:2] - Task (JSON)
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output resultJson [order:1] - Final execution result (JSON)
- * @output validationResultJson [order:2] - Final validation result (JSON)
- * @output filesModified [order:3] - All modified files (JSON array)
- * @output taskJson [order:4] - Task (pass-through)
- * @output allValid [order:5] - Whether all files are valid
+ * @input ctx [order:0] - Weaver context (JSON)
+ * @output ctx [order:0] - Weaver context with results (JSON)
  * @output onSuccess [order:-2] - On Success
- * @output onFailure [order:-1] - On Failure
+ * @output onFailure [order:-1] [hidden] - On Failure
  */
 export async function weaverExecValidateRetry(
   execute: boolean,
-  env: WeaverEnv,
-  planJson: string,
-  taskJson: string,
+  ctx: string,
 ): Promise<{
   onSuccess: boolean; onFailure: boolean;
-  env: WeaverEnv;
-  resultJson: string; validationResultJson: string;
-  filesModified: string; taskJson: string; allValid: boolean;
+  ctx: string;
 }> {
+  const context = JSON.parse(ctx) as WeaverContext;
+  const { env } = context;
+
   if (!execute) {
-    return {
-      onSuccess: true, onFailure: false, env, taskJson,
-      resultJson: JSON.stringify({ success: true, stepsCompleted: 0, stepsTotal: 0 }),
-      validationResultJson: '[]', filesModified: '[]', allValid: true,
-    };
+    context.resultJson = JSON.stringify({ success: true, stepsCompleted: 0, stepsTotal: 0 });
+    context.validationResultJson = '[]';
+    context.filesModified = '[]';
+    context.allValid = true;
+    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   }
 
   const { providerInfo: pInfo, projectDir } = env;
   const maxAttempts = 3;
-  let currentPlan = JSON.parse(planJson);
+  let currentPlan = JSON.parse(context.planJson!);
   let allFilesModified: string[] = [];
   let lastExecResult: Record<string, unknown> = {};
   let lastValidation: Array<{ file: string; valid: boolean; errors: string[] }> = [];
@@ -99,13 +91,12 @@ export async function weaverExecValidateRetry(
     }
   }
 
-  return {
-    onSuccess: allValid, onFailure: !allValid, env, taskJson,
-    resultJson: JSON.stringify(lastExecResult),
-    validationResultJson: JSON.stringify(lastValidation),
-    filesModified: JSON.stringify(allFilesModified),
-    allValid,
-  };
+  context.resultJson = JSON.stringify(lastExecResult);
+  context.validationResultJson = JSON.stringify(lastValidation);
+  context.filesModified = JSON.stringify(allFilesModified);
+  context.allValid = allValid;
+
+  return { onSuccess: allValid, onFailure: !allValid, ctx: JSON.stringify(context) };
 }
 
 function executePlanSteps(

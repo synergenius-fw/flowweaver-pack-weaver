@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { WeaverEnv } from '../bot/types.js';
+import type { WeaverContext } from '../bot/types.js';
 
 /**
  * Builds the knowledge bundle the AI needs for planning. Calls
@@ -11,31 +11,24 @@ import type { WeaverEnv } from '../bot/types.js';
  * @flowWeaver nodeType
  * @expression
  * @label Build Context
- * @input env [order:0] - Weaver environment bundle
- * @input taskJson [order:1] - Task (JSON)
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output taskJson [order:1] - Task (pass-through)
- * @output contextBundle [order:2] - Knowledge bundle (markdown string)
+ * @input ctx [order:0] - Weaver context (JSON)
+ * @output ctx [order:0] - Weaver context with contextBundle (JSON)
+ * @output onFailure [hidden]
  */
-export function weaverBuildContext(
-  env: WeaverEnv,
-  taskJson: string,
-): {
-  env: WeaverEnv;
-  taskJson: string; contextBundle: string;
-} {
-  const { projectDir } = env;
-  const task = JSON.parse(taskJson) as { mode?: string; targets?: string[] };
+export function weaverBuildContext(ctx: string): { ctx: string } {
+  const context = JSON.parse(ctx) as WeaverContext;
+  const { projectDir } = context.env;
+  const task = JSON.parse(context.taskJson!) as { mode?: string; targets?: string[] };
   const sections: string[] = [];
 
   try {
-    const context = execFileSync('flow-weaver', ['context', 'authoring', '--profile', 'assistant'], {
+    const ctxOutput = execFileSync('flow-weaver', ['context', 'authoring', '--profile', 'assistant'], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 30_000,
       cwd: projectDir,
     }).trim();
-    if (context) sections.push(context);
+    if (ctxOutput) sections.push(ctxOutput);
   } catch {
     sections.push('(flow-weaver context not available)');
   }
@@ -67,5 +60,6 @@ export function weaverBuildContext(
   const bundle = sections.join('\n\n---\n\n');
   console.log(`\x1b[36m→ Context bundle: ${bundle.length} chars\x1b[0m`);
 
-  return { env, taskJson, contextBundle: bundle };
+  context.contextBundle = bundle;
+  return { ctx: JSON.stringify(context) };
 }

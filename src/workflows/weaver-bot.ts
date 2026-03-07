@@ -22,25 +22,25 @@ import { weaverBotReport } from '../node-types/bot-report.js';
  *
  * @flowWeaver workflow
  *
- * @node cfg      weaverLoadConfig       [color: "teal"]     [icon: "settings"]       [position: 80 200]
- * @node detect   weaverDetectProvider   [color: "cyan"]     [icon: "search"]         [position: 230 200]
- * @node receive  weaverReceiveTask      [color: "blue"]     [icon: "send"]           [position: 400 200]
- * @node route    weaverRouteTask        [color: "purple"]   [icon: "flow"]           [position: 570 200]
+ * @node cfg      weaverLoadConfig       [color: "teal"]     [icon: "settings"]       [position: 200 200]
+ * @node detect   weaverDetectProvider   [color: "cyan"]     [icon: "search"]         [position: 400 200]
+ * @node receive  weaverReceiveTask      [color: "blue"]     [icon: "send"]           [position: 600 200]
+ * @node route    weaverRouteTask        [color: "purple"]   [icon: "flow"]           [position: 800 200]
  *
- * @node readWf   weaverReadWorkflow     [color: "cyan"]     [icon: "description"]    [position: 740 450]
+ * @node readWf   weaverReadWorkflow     [color: "cyan"]     [icon: "description"]    [position: 1000 450]
  *
- * @node context  weaverBuildContext     [color: "teal"]     [icon: "code"]           [position: 740 200]
- * @node plan     weaverPlanTask         [color: "blue"]     [icon: "psychology"]     [position: 910 200]
- * @node approve  weaverApprovalGate     [color: "orange"]   [icon: "send"]           [position: 1080 200]
+ * @node context  weaverBuildContext     [color: "teal"]     [icon: "code"]           [position: 1000 200]
+ * @node plan     weaverPlanTask         [color: "blue"]     [icon: "psychology"]     [position: 1200 200]
+ * @node approve  weaverApprovalGate     [color: "orange"]   [icon: "send"]           [position: 1400 200]
  *
- * @node abort    weaverAbortTask        [color: "red"]      [icon: "code"]          [position: 1250 450]
+ * @node abort    weaverAbortTask        [color: "red"]      [icon: "code"]           [position: 1600 450]
  *
- * @node execRetry weaverExecValidateRetry [color: "purple"] [icon: "code"]           [position: 1250 200]
+ * @node execRetry weaverExecValidateRetry [color: "purple"] [icon: "code"]           [position: 1600 200]
  *
- * @node gitOps   weaverGitOps           [color: "green"]    [icon: "code"]           [position: 1420 100]
- * @node notify   weaverSendNotify       [color: "yellow"]   [icon: "send"]           [position: 1420 300]
+ * @node gitOps   weaverGitOps           [color: "green"]    [icon: "code"]           [position: 1800 100]
+ * @node notify   weaverSendNotify       [color: "yellow"]   [icon: "send"]           [position: 1800 300]
  *
- * @node report   weaverBotReport        [color: "green"]    [icon: "description"]    [position: 1600 200]
+ * @node report   weaverBotReport        [color: "green"]    [icon: "description"]    [position: 2000 200]
  *
  * @path Start -> cfg -> detect -> receive -> route -> context -> plan -> approve -> execRetry -> gitOps -> report -> Exit
  * @path execRetry -> notify
@@ -51,31 +51,20 @@ import { weaverBotReport } from '../node-types/bot-report.js';
  * @connect abort.onSuccess -> report.execute
  * @connect notify.onSuccess -> report.execute
  *
- * @connect route.taskJson -> readWf.taskJson
- * @connect readWf.resultJson -> report.readResult
- *
- * @connect context.contextBundle -> plan.contextBundle
- *
- * @connect approve.rejectionReason -> abort.rejectionReason
- * @connect approve.taskJson -> abort.taskJson
- * @connect abort.resultJson -> report.abortResult
- *
- * @connect execRetry.resultJson -> notify.resultJson
- *
- * @connect execRetry.resultJson -> report.mainResult
- * @connect execRetry.filesModified -> report.filesModified
- * @connect gitOps.gitResultJson -> report.gitResultJson
+ * @connect gitOps.ctx -> report.mainCtx
+ * @connect readWf.ctx -> report.readCtx
+ * @connect abort.ctx -> report.abortCtx
  *
  * @connect report.summary -> Exit.summary
  *
  * @position Start 0 200
- * @position Exit 1750 200
+ * @position Exit 2200 200
  *
  * @param execute [order:-1] - Execute
  * @param taskJson [order:0] [optional] - Task instruction (JSON)
  * @param projectDir [order:1] [optional] - Project directory
  * @returns onSuccess [order:-2] - On Success
- * @returns onFailure [order:-1] - On Failure
+ * @returns onFailure [order:-1] [hidden] - On Failure
  * @returns summary [order:0] - Summary text
  */
 export async function weaverBot(

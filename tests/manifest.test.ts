@@ -17,7 +17,7 @@ describe('flowweaver.manifest.json', () => {
 
   it('declares all node types', () => {
     const nodeTypes = manifest.nodeTypes as Array<Record<string, unknown>>;
-    expect(nodeTypes).toHaveLength(34);
+    expect(nodeTypes).toHaveLength(36);
 
     const names = nodeTypes.map((n) => n.name);
     // Original 6
@@ -41,7 +41,7 @@ describe('flowweaver.manifest.json', () => {
     expect(names).toContain('weaverFixErrors');
     expect(names).toContain('weaverGitOps');
     expect(names).toContain('weaverBotReport');
-    // Genesis node types (15)
+    // Genesis node types (17)
     expect(names).toContain('genesisLoadConfig');
     expect(names).toContain('genesisObserve');
     expect(names).toContain('genesisDiffFingerprint');
@@ -51,6 +51,8 @@ describe('flowweaver.manifest.json', () => {
     expect(names).toContain('genesisSnapshot');
     expect(names).toContain('genesisApply');
     expect(names).toContain('genesisCompileValidate');
+    expect(names).toContain('genesisTryApply');
+    expect(names).toContain('genesisApplyRetry');
     expect(names).toContain('genesisDiffWorkflow');
     expect(names).toContain('genesisCheckThreshold');
     expect(names).toContain('genesisApprove');
@@ -86,6 +88,8 @@ describe('flowweaver.manifest.json', () => {
       'genesisPropose',
       'genesisApply',
       'genesisCompileValidate',
+      'genesisTryApply',
+      'genesisApplyRetry',
       'genesisApprove',
       'genesisCommit',
     ];
