@@ -37,6 +37,7 @@ export function genesisLoadConfig(env: WeaverEnv): {
     env,
     genesisConfigJson: JSON.stringify(config),
     cycleId,
+    startTimeMs: Date.now(),
   };
 
   return { ctx: JSON.stringify(ctx) };

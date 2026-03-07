@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
-import type { GenesisConfig, GenesisHistory, GenesisCycleRecord, GenesisFingerprint } from './types.js';
+import type { GenesisConfig, GenesisHistory, GenesisCycleRecord, GenesisFingerprint, EscrowToken, GenesisSelfMigrationRecord } from './types.js';
 
 const DEFAULT_CONFIG: GenesisConfig = {
   intent: 'Improve workflow reliability and efficiency',
@@ -97,5 +97,84 @@ export class GenesisStore {
 
   static hashConfig(config: GenesisConfig): string {
     return crypto.createHash('sha256').update(JSON.stringify(config)).digest('hex').slice(0, 12);
+  }
+
+  // --- Escrow ---
+
+  ensureEscrowDirs(): void {
+    fs.mkdirSync(path.join(this.genesisDir, 'escrow', 'staged'), { recursive: true });
+    fs.mkdirSync(path.join(this.genesisDir, 'escrow', 'backup'), { recursive: true });
+  }
+
+  loadEscrowToken(): EscrowToken | null {
+    const tokenPath = path.join(this.genesisDir, 'escrow', 'token.json');
+    if (!fs.existsSync(tokenPath)) return null;
+    try {
+      return JSON.parse(fs.readFileSync(tokenPath, 'utf-8'));
+    } catch {
+      return null;
+    }
+  }
+
+  saveEscrowToken(token: EscrowToken): void {
+    this.ensureEscrowDirs();
+    fs.writeFileSync(
+      path.join(this.genesisDir, 'escrow', 'token.json'),
+      JSON.stringify(token, null, 2),
+      'utf-8',
+    );
+  }
+
+  clearEscrow(): void {
+    const escrowDir = path.join(this.genesisDir, 'escrow');
+    if (fs.existsSync(escrowDir)) {
+      fs.rmSync(escrowDir, { recursive: true, force: true });
+    }
+  }
+
+  getEscrowStagedPath(relativePath: string): string {
+    return path.join(this.genesisDir, 'escrow', 'staged', relativePath);
+  }
+
+  getEscrowBackupPath(relativePath: string): string {
+    return path.join(this.genesisDir, 'escrow', 'backup', relativePath);
+  }
+
+  // --- Self-evolution history ---
+
+  loadSelfHistory(): GenesisSelfMigrationRecord[] {
+    const histPath = path.join(this.genesisDir, 'self-history.json');
+    if (!fs.existsSync(histPath)) return [];
+    try {
+      return JSON.parse(fs.readFileSync(histPath, 'utf-8'));
+    } catch {
+      return [];
+    }
+  }
+
+  appendSelfMigration(record: GenesisSelfMigrationRecord): void {
+    const records = this.loadSelfHistory();
+    records.push(record);
+    this.ensureDirs();
+    fs.writeFileSync(
+      path.join(this.genesisDir, 'self-history.json'),
+      JSON.stringify(records, null, 2),
+      'utf-8',
+    );
+  }
+
+  getSelfFailureCount(): number {
+    const records = this.loadSelfHistory();
+    let count = 0;
+    for (let i = records.length - 1; i >= 0; i--) {
+      if (records[i]!.outcome === 'rolled-back') count++;
+      else break;
+    }
+    return count;
+  }
+
+  static hashFile(filePath: string): string {
+    const content = fs.readFileSync(filePath);
+    return crypto.createHash('sha256').update(content).digest('hex');
   }
 }

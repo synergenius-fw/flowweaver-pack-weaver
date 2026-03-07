@@ -6,7 +6,12 @@ const COST_MAP: Record<string, number> = {
   addConnection: 1,
   removeConnection: 1,
   implementNode: 2,
+  selfModifyWorkflow: 3,
+  selfModifyNodeType: 2,
+  selfModifyModule: 2,
 };
+
+const SELF_MODIFY_TYPES = new Set(['selfModifyWorkflow', 'selfModifyNodeType', 'selfModifyModule']);
 
 /**
  * Validates and trims a genesis proposal to fit within the budget.
@@ -36,17 +41,52 @@ export function genesisValidateProposal(ctx: string): { ctx: string } {
     }
   }
 
+  // Filter self-modify ops if selfEvolve is disabled
+  if (!config.selfEvolve) {
+    const before = ops.length;
+    ops = ops.filter(op => !SELF_MODIFY_TYPES.has(op.type));
+    if (ops.length < before) {
+      console.log(`\x1b[33m→ Self-evolve disabled: filtered ${before - ops.length} self-modify operations\x1b[0m`);
+    }
+  }
+
+  // Validate self-modify ops have required args
+  ops = ops.filter(op => {
+    if (SELF_MODIFY_TYPES.has(op.type)) {
+      if (!op.args.file || !op.args.content) {
+        console.log(`\x1b[33m→ Filtered ${op.type}: missing file or content\x1b[0m`);
+        return false;
+      }
+    }
+    return true;
+  });
+
   // Recalculate costs (never trust the AI values)
   for (const op of ops) {
     op.costUnits = COST_MAP[op.type] ?? 1;
   }
 
-  // Trim from end if over budget
-  let totalCost = ops.reduce((sum, op) => sum + op.costUnits, 0);
-  while (totalCost > config.budgetPerCycle && ops.length > 0) {
-    ops.pop();
-    totalCost = ops.reduce((sum, op) => sum + op.costUnits, 0);
+  // Split into regular and self-modify ops for separate budget enforcement
+  const regularOps = ops.filter(op => !SELF_MODIFY_TYPES.has(op.type));
+  let selfOps = ops.filter(op => SELF_MODIFY_TYPES.has(op.type));
+
+  // Trim regular ops to regular budget
+  let regularCost = regularOps.reduce((sum, op) => sum + op.costUnits, 0);
+  while (regularCost > config.budgetPerCycle && regularOps.length > 0) {
+    regularOps.pop();
+    regularCost = regularOps.reduce((sum, op) => sum + op.costUnits, 0);
   }
+
+  // Trim self-modify ops to self-evolve budget
+  const selfBudget = config.selfEvolveBudget ?? 2;
+  let selfCost = selfOps.reduce((sum, op) => sum + op.costUnits, 0);
+  while (selfCost > selfBudget && selfOps.length > 0) {
+    selfOps.pop();
+    selfCost = selfOps.reduce((sum, op) => sum + op.costUnits, 0);
+  }
+
+  ops = [...regularOps, ...selfOps];
+  let totalCost = regularCost + selfCost;
 
   const validated: GenesisProposal = {
     ...proposal,

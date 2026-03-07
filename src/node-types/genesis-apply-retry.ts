@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import type { GenesisConfig, GenesisContext } from '../bot/types.js';
 import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
 import { GenesisStore } from '../bot/genesis-store.js';
+import { getGenesisSystemPrompt, getOperationExamples } from '../bot/genesis-prompt-context.js';
 
 /**
  * Scoped retry loop for apply + compile. Delegates the actual work to
@@ -12,8 +13,11 @@ import { GenesisStore } from '../bot/genesis-store.js';
  * @flowWeaver nodeType
  * @label Genesis Apply Retry
  * @input ctx [order:0] - Genesis context (JSON)
+ * @output start scope:attempt [order:10] [hidden] - Trigger scope execution (boolean)
  * @output attemptCtx scope:attempt [order:11] - Context for child (JSON)
- * @input attemptCtx scope:attempt [order:12] - Result context from child (JSON)
+ * @input success scope:attempt [order:12] [hidden] - Success signal from child (boolean)
+ * @input failure scope:attempt [order:13] [hidden] - Failure signal from child (boolean)
+ * @input attemptCtx scope:attempt [order:14] - Result context from child (JSON)
  * @output ctx [order:0] - Genesis context with applyResultJson (JSON)
  * @output onSuccess [order:-2] - On Success
  * @output onFailure [order:-1] - On Failure
@@ -24,7 +28,7 @@ export async function genesisApplyRetry(
   attempt: (
     start: boolean,
     attemptCtx: string,
-  ) => { success: boolean; failure: boolean; attemptCtx: string },
+  ) => Promise<{ success: boolean; failure: boolean; attemptCtx: string }>,
 ): Promise<{
   onSuccess: boolean; onFailure: boolean;
   ctx: string;
@@ -46,13 +50,12 @@ export async function genesisApplyRetry(
   for (let i = 1; i <= maxAttempts; i++) {
     console.log(`\x1b[36m→ Apply attempt ${i}/${maxAttempts}\x1b[0m`);
 
-    const outcome = attempt(true, JSON.stringify(context));
+    const outcome = await attempt(true, JSON.stringify(context));
     const childCtx = JSON.parse(outcome.attemptCtx) as GenesisContext;
     lastResult = childCtx.applyResultJson ?? '';
     lastErrors = childCtx.error ?? '';
 
     if (outcome.success) {
-      // Merge child results back
       context.applyResultJson = childCtx.applyResultJson;
       context.error = '';
       return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
@@ -70,7 +73,10 @@ export async function genesisApplyRetry(
       }
 
       try {
-        const revisedProposal = await reviseProposal(env, context.proposalJson!, lastErrors);
+        const revisedProposal = await reviseProposal(
+          env, config, context.proposalJson!, lastErrors,
+          targetPath, context.workflowDescription, !!context.stabilized,
+        );
         context.proposalJson = revisedProposal;
         console.log('\x1b[36m→ Revised proposal received\x1b[0m');
       } catch (err: unknown) {
@@ -92,23 +98,32 @@ export async function genesisApplyRetry(
 
 async function reviseProposal(
   env: GenesisContext['env'],
+  config: GenesisConfig,
   currentProposal: string,
   compileErrors: string,
+  targetPath: string,
+  workflowDescription?: string,
+  stabilized?: boolean,
 ): Promise<string> {
   const { providerInfo: pInfo } = env;
 
-  const systemPrompt = 'You are a workflow evolution engine. Return ONLY valid JSON matching the GenesisProposal schema (operations array with type, args, costUnits, rationale; totalCost; impactLevel; summary).';
+  const systemPrompt = await getGenesisSystemPrompt(config, !!stabilized);
 
   const userPrompt = [
-    'The following proposal caused compile/validate errors when applied:',
+    'The following proposal caused errors when applied. Revise it to fix these errors.',
     '',
-    '## Current Proposal',
+    '## Current Workflow Structure',
+    workflowDescription || '(no description available)',
+    '',
+    '## Failed Proposal',
     currentProposal,
     '',
-    '## Compile Errors',
+    '## Errors',
     compileErrors,
     '',
-    'Revise the proposal to fix these errors. Return the full revised proposal as JSON.',
+    getOperationExamples(targetPath),
+    '',
+    'Return the full revised proposal as JSON. Use node IDs and port names that exist in the workflow structure above.',
   ].join('\n');
 
   let text: string;

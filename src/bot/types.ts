@@ -422,7 +422,9 @@ export interface BotExecutionResult {
 // --- Genesis Self-Evolution ---
 
 export type GenesisImpactLevel = 'COSMETIC' | 'MINOR' | 'BREAKING' | 'CRITICAL';
-export type GenesisOperationType = 'addNode' | 'removeNode' | 'addConnection' | 'removeConnection' | 'implementNode';
+export type GenesisOperationType =
+  | 'addNode' | 'removeNode' | 'addConnection' | 'removeConnection' | 'implementNode'
+  | 'selfModifyWorkflow' | 'selfModifyNodeType' | 'selfModifyModule';
 
 export interface GenesisConfig {
   intent: string;
@@ -433,6 +435,10 @@ export interface GenesisConfig {
   stabilize: boolean;
   targetWorkflow: string;
   maxCyclesPerRun: number;
+  selfEvolve?: boolean;
+  selfEvolveGracePeriod?: number;
+  selfEvolveMaxFailures?: number;
+  selfEvolveBudget?: number;
 }
 
 export interface GenesisOperation {
@@ -509,5 +515,42 @@ export interface GenesisContext {
   approved?: boolean;
   commitResultJson?: string;
   cycleRecordJson?: string;
+  workflowDescription?: string;
+  startTimeMs?: number;
   error?: string;
+  hasSelfModifyOps?: boolean;
+  selfModifyOpsJson?: string;
+  escrowResultJson?: string;
+  escrowGraceLocked?: boolean;
+  escrowGraceRemaining?: number;
+}
+
+// --- Escrow (Self-Modify) ---
+
+export type EscrowPhase = 'staged' | 'validated' | 'migrating' | 'migrated' | 'rolled-back';
+
+export interface EscrowToken {
+  migrationId: string;
+  cycleId: string;
+  stagedAt: string;
+  phase: EscrowPhase;
+  affectedFiles: string[];
+  stagedFileHashes: Record<string, string>;
+  backupFileHashes: Record<string, string>;
+  validationResult?: { compiled: boolean; validated: boolean; error?: string };
+  migratedAt?: string;
+  rollbackReason?: string;
+  ownerPid: number;
+  graceRemaining: number;
+  graceCycleIds: string[];
+}
+
+export interface GenesisSelfMigrationRecord {
+  migrationId: string;
+  cycleId: string;
+  timestamp: string;
+  affectedFiles: string[];
+  outcome: 'migrated' | 'rolled-back' | 'grace-cleared';
+  graceCompleted: boolean;
+  rollbackReason?: string;
 }
