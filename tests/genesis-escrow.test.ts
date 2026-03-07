@@ -244,17 +244,15 @@ describe('genesisEscrowValidate', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('fails when no staged token exists', () => {
+  it('passes through when no staged token exists', () => {
     const config = makeConfig();
     const context = makeContext(tmpDir, config);
     const result = genesisEscrowValidate(JSON.stringify(context));
-    expect(result.onSuccess).toBe(false);
-    expect(result.onFailure).toBe(true);
-    const ctx = JSON.parse(result.ctx) as GenesisContext;
-    expect(ctx.error).toContain('No staged escrow token');
+    expect(result.onSuccess).toBe(true);
+    expect(result.onFailure).toBe(false);
   });
 
-  it('fails when token is not in staged phase', () => {
+  it('passes through when token is not in staged phase', () => {
     const config = makeConfig();
     const store = new GenesisStore(tmpDir);
     store.saveEscrowToken({
@@ -271,7 +269,7 @@ describe('genesisEscrowValidate', () => {
     });
     const context = makeContext(tmpDir, config);
     const result = genesisEscrowValidate(JSON.stringify(context));
-    expect(result.onSuccess).toBe(false);
+    expect(result.onSuccess).toBe(true);
   });
 });
 
@@ -290,13 +288,12 @@ describe('genesisEscrowMigrate', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('fails when no validated token exists', async () => {
+  it('passes through when no validated token exists', async () => {
     const config = makeConfig();
     const context = makeContext(tmpDir, config);
     const result = await genesisEscrowMigrate(true, JSON.stringify(context));
-    expect(result.onSuccess).toBe(false);
-    const ctx = JSON.parse(result.ctx) as GenesisContext;
-    expect(ctx.error).toContain('No validated escrow token');
+    expect(result.onSuccess).toBe(true);
+    expect(result.onFailure).toBe(false);
   });
 
   it('returns success on dry run without migrating', async () => {
