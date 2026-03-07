@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type {
   ApprovalMode,
+  AuditEventCallback,
   BotConfig,
   BotNotifyConfig,
   ExecutionEvent,
@@ -9,6 +10,7 @@ import type {
   WeaverConfig,
   WorkflowResult,
 } from './types.js';
+import { initAuditLogger, auditEmit, teardownAuditLogger } from './audit-logger.js';
 import {
   createProvider,
   resolveProviderConfig,
@@ -92,6 +94,7 @@ export async function runWorkflow(
     dryRun?: boolean;
     config?: WeaverConfig;
     onEvent?: (event: ExecutionEvent) => void;
+    onAuditEvent?: AuditEventCallback;
     onNotificationError?: NotificationErrorHandler;
     dashboardServer?: import('./dashboard.js').DashboardServer;
   },
@@ -103,6 +106,7 @@ export async function runWorkflow(
   try { store = new RunStore(); } catch { /* non-fatal */ }
   const runId = RunStore.newId();
   const startedAt = new Date().toISOString();
+  initAuditLogger(runId, options?.onAuditEvent);
 
   // Mark run as in-progress so abrupt kills leave a trace
   try { store?.markRunning(runId, absPath); } catch { /* non-fatal */ }
@@ -136,6 +140,8 @@ export async function runWorkflow(
     console.log(`[weaver] Approval: ${approvalConfig.mode}`);
     console.log(`[weaver] Notifications: ${channels.length} channel(s)`);
   }
+
+  auditEmit('run-start', { workflowFile: absPath, provider: providerConfig.name, projectDir });
 
   await notifier({
     type: 'workflow-start',
@@ -222,6 +228,8 @@ export async function runWorkflow(
       dryRun: false, provider: providerConfig.name, params: options?.params,
     }, verbose);
 
+    auditEmit('run-complete', { success, outcome, summary });
+
     return {
       success,
       summary,
@@ -247,7 +255,11 @@ export async function runWorkflow(
       dryRun: options?.dryRun ?? false, provider: providerConfig.name, params: options?.params,
     }, verbose);
 
+    auditEmit('run-complete', { success: false, error: msg });
+
     return { success: false, summary: msg, outcome: 'error', cost: costSummary };
+  } finally {
+    teardownAuditLogger();
   }
 }
 

@@ -1,5 +1,6 @@
 import type { WeaverContext } from '../bot/types.js';
 import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
+import { auditEmit } from '../bot/audit-logger.js';
 
 /**
  * Sends task + context to the AI provider and gets back a structured
@@ -58,6 +59,7 @@ export async function weaverPlanTask(
 
     const plan = parseJsonResponse(text);
     console.log(`\x1b[36m→ Plan: ${(plan as { summary?: string }).summary ?? 'generated'}\x1b[0m`);
+    auditEmit('plan-created', { summary: (plan as { summary?: string }).summary, stepCount: (plan as { steps?: unknown[] }).steps?.length ?? 0 });
 
     context.planJson = JSON.stringify(plan);
     return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };

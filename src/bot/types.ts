@@ -554,3 +554,20 @@ export interface GenesisSelfMigrationRecord {
   graceCompleted: boolean;
   rollbackReason?: string;
 }
+
+// --- Audit Events ---
+
+export type AuditEventType =
+  | 'run-start' | 'plan-created' | 'approval-decision'
+  | 'step-start' | 'step-complete' | 'validation-run'
+  | 'fix-attempt' | 'git-operation' | 'notification-sent'
+  | 'run-complete';
+
+export interface AuditEvent {
+  type: AuditEventType;
+  timestamp: string;
+  runId: string;
+  data?: Record<string, unknown>;
+}
+
+export type AuditEventCallback = (event: AuditEvent) => void;

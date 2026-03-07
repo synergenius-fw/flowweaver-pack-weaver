@@ -5,6 +5,7 @@ import type { WeaverContext } from '../bot/types.js';
 import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
 import { executeStep } from '../bot/step-executor.js';
 import { validateFiles } from '../bot/file-validator.js';
+import { auditEmit } from '../bot/audit-logger.js';
 
 /**
  * Execute-validate-fix retry loop. Runs the plan, validates results,
@@ -45,14 +46,18 @@ export async function weaverExecValidateRetry(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     console.log(`\x1b[36m→ Attempt ${attempt}/${maxAttempts}\x1b[0m`);
+    auditEmit('step-start', { attempt, stepCount: currentPlan.steps?.length });
 
     const execResult = executePlanSteps(currentPlan, projectDir);
     lastExecResult = execResult;
     allFilesModified = [...new Set([...allFilesModified, ...execResult.filesModified])];
+    auditEmit('step-complete', { attempt, filesModified: execResult.filesModified, errors: execResult.errors });
 
     const validation = validateFiles(execResult.filesModified, projectDir);
     lastValidation = validation;
     allValid = validation.every(v => v.valid);
+    const errorCount = validation.filter(v => !v.valid).length;
+    auditEmit('validation-run', { attempt, allValid, errorCount });
 
     // Collect design warnings from valid files
     const designWarnings = validation
@@ -86,6 +91,8 @@ export async function weaverExecValidateRetry(
       const errors = [validationErrors, designWarnings].filter(Boolean).join('\n\nDesign issues:\n');
 
       try {
+        auditEmit('fix-attempt', { attempt });
+
         let systemPrompt: string;
         try {
           const mod = await import('../bot/system-prompt.js');

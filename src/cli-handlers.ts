@@ -9,10 +9,11 @@ import { WatchDaemon } from './bot/watch-daemon.js';
 import { PipelineRunner } from './bot/pipeline-runner.js';
 import { DashboardServer } from './bot/dashboard.js';
 import { openBrowser } from './bot/utils.js';
-import type { ExecutionEvent, WeaverConfig, RunRecord, RunOutcome, RunCostSummary, CostSummary, StageStatus, WorkflowResult } from './bot/types.js';
+import type { ExecutionEvent, WeaverConfig, RunRecord, RunOutcome, RunCostSummary, CostSummary, StageStatus, WorkflowResult, AuditEvent } from './bot/types.js';
+import { AuditStore } from './bot/audit-store.js';
 
 export interface ParsedArgs {
-  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'genesis';
+  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'genesis' | 'audit';
   file?: string;
   verbose: boolean;
   dryRun: boolean;
@@ -226,6 +227,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.botBatch = parseInt(args[i]!, 10) || undefined;
     } else if (arg === '--auto-approve') {
       result.autoApprove = true;
+    } else if (arg === 'audit') {
+      result.command = 'audit';
+      // Next non-flag arg is the runId
+      if (i + 1 < args.length && !args[i + 1]!.startsWith('-')) {
+        i++;
+        result.historyId = args[i];
+      }
     } else if (arg === 'genesis') {
       result.command = 'genesis';
     } else if (arg === '--init') {
@@ -1192,4 +1200,72 @@ export async function handleGenesis(opts: ParsedArgs): Promise<void> {
   }
 
   process.exit(result.success ? 0 : 1);
+}
+
+export async function handleAudit(opts: ParsedArgs): Promise<void> {
+  const store = new AuditStore();
+
+  if (opts.historyClear) {
+    const deleted = store.clear();
+    console.log(deleted ? 'Audit log cleared.' : 'No audit log to clear.');
+    return;
+  }
+
+  if (opts.historyId) {
+    const events = store.queryByRun(opts.historyId);
+    if (events.length === 0) {
+      // Try prefix match
+      const recent = store.queryRecent(1000);
+      const matched = recent.filter((e) => e.runId.startsWith(opts.historyId!));
+      if (matched.length === 0) {
+        console.error(`[weaver] No audit events found for "${opts.historyId}"`);
+        process.exit(1);
+      }
+      printAuditEvents(matched, opts.historyJson);
+      return;
+    }
+    printAuditEvents(events, opts.historyJson);
+    return;
+  }
+
+  const events = store.queryRecent(opts.historyLimit);
+  if (events.length === 0) {
+    console.log('No audit events recorded yet.');
+    return;
+  }
+
+  if (opts.historyJson) {
+    console.log(JSON.stringify(events, null, 2));
+    return;
+  }
+
+  // Group by runId
+  const byRun = new Map<string, AuditEvent[]>();
+  for (const e of events) {
+    if (!byRun.has(e.runId)) byRun.set(e.runId, []);
+    byRun.get(e.runId)!.push(e);
+  }
+
+  for (const [runId, runEvents] of byRun) {
+    console.log(`\n\x1b[1mRun ${runId.slice(0, 8)}\x1b[0m`);
+    for (const e of runEvents) {
+      const time = e.timestamp.replace('T', ' ').slice(11, 19);
+      const dataStr = e.data ? ' ' + JSON.stringify(e.data) : '';
+      console.log(`  ${time} ${e.type}${dataStr}`);
+    }
+  }
+  console.log('');
+}
+
+function printAuditEvents(events: AuditEvent[], json: boolean): void {
+  if (json) {
+    console.log(JSON.stringify(events, null, 2));
+    return;
+  }
+
+  for (const e of events) {
+    const time = e.timestamp.replace('T', ' ').slice(0, 19);
+    const dataStr = e.data ? ' ' + JSON.stringify(e.data) : '';
+    console.log(`${time} [${e.type}]${dataStr}`);
+  }
 }

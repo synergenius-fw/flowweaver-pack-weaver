@@ -1,4 +1,6 @@
-import { execSync } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
+import { parseStreamLine, extractTextFromChunks } from './cli-stream-parser.js';
+import type { StreamChunk } from './types.js';
 
 // Strip CLAUDECODE from child env so nested claude CLI invocations work.
 const childEnv = { ...process.env };
@@ -17,6 +19,61 @@ export function callCli(provider: string, prompt: string, model?: string): strin
     }).trim();
   }
   throw new Error(`Unknown CLI provider: ${provider}`);
+}
+
+export async function callCliAsync(provider: string, prompt: string, model?: string): Promise<string> {
+  if (provider === 'copilot-cli') {
+    return callCli(provider, prompt, model);
+  }
+  if (provider !== 'claude-cli') {
+    throw new Error(`Unknown CLI provider: ${provider}`);
+  }
+
+  const args = ['-p', '--output-format', 'stream-json'];
+  if (model) args.push('--model', model);
+
+  const child = spawn('claude', args, {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: childEnv,
+  });
+
+  child.stdin.write(prompt);
+  child.stdin.end();
+
+  const timeout = setTimeout(() => child.kill('SIGTERM'), 300_000);
+
+  const chunks: StreamChunk[] = [];
+  let buffer = '';
+
+  try {
+    for await (const data of child.stdout) {
+      buffer += data.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop()!;
+
+      for (const line of lines) {
+        const chunk = parseStreamLine(line);
+        if (chunk) chunks.push(chunk);
+      }
+    }
+
+    if (buffer.trim()) {
+      const chunk = parseStreamLine(buffer);
+      if (chunk) chunks.push(chunk);
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    child.on('close', (code) => {
+      if (code && code !== 0) reject(new Error(`claude CLI exited with code ${code}`));
+      else resolve();
+    });
+    child.on('error', reject);
+  });
+
+  return extractTextFromChunks(chunks);
 }
 
 export async function callApi(
