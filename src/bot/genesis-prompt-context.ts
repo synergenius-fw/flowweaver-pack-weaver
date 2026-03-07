@@ -114,7 +114,7 @@ export async function getOpsContext(): Promise<string> {
     cachedOpsContext = '(ops context unavailable)';
   }
 
-  return cachedOpsContext;
+  return cachedOpsContext!;
 }
 
 /**
