@@ -43,6 +43,14 @@ export async function genesisTryApply(
   const errors: string[] = [];
 
   for (const op of proposal.operations) {
+    const validationError = validateOperationArgs(op);
+    if (validationError) {
+      failed++;
+      errors.push(validationError);
+      console.error(`\x1b[31m  x ${op.type} (pre-validation): ${validationError}\x1b[0m`);
+      continue;
+    }
+
     try {
       const cliArgs = buildModifyArgs(op, targetPath);
       execFileSync('flow-weaver', cliArgs, {
@@ -107,6 +115,36 @@ export async function genesisTryApply(
     context.error = msg;
     return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
   }
+}
+
+function validateOperationArgs(op: GenesisOperation): string | null {
+  const { type, args } = op;
+
+  if (type === 'addConnection' || type === 'removeConnection') {
+    const from = args.from as string | undefined;
+    const to = args.to as string | undefined;
+    if (!from || !to) return `${type}: missing 'from' or 'to' arg`;
+    if (!from.includes('.') || from.includes(':'))
+      return `${type}: 'from' must be "node.port" format (dot separator), got "${from}"`;
+    if (!to.includes('.') || to.includes(':'))
+      return `${type}: 'to' must be "node.port" format (dot separator), got "${to}"`;
+  }
+
+  if (type === 'addNode') {
+    if (!args.nodeId || !args.nodeType)
+      return `addNode: missing 'nodeId' or 'nodeType'`;
+  }
+
+  if (type === 'removeNode') {
+    if (!args.nodeId) return `removeNode: missing 'nodeId'`;
+  }
+
+  if (type === 'implementNode') {
+    if (!args.nodeId || args.nodeId === 'undefined')
+      return `implementNode: missing or invalid 'nodeId'`;
+  }
+
+  return null;
 }
 
 function buildModifyArgs(op: GenesisOperation, targetPath: string): string[] {

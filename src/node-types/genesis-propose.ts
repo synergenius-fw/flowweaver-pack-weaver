@@ -1,5 +1,7 @@
+import * as path from 'node:path';
 import type { GenesisConfig, GenesisProposal, GenesisContext } from '../bot/types.js';
 import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
+import { getGenesisSystemPrompt, getOperationExamples } from '../bot/genesis-prompt-context.js';
 
 /**
  * Sends project context and diff information to the AI provider, which
@@ -31,56 +33,62 @@ export async function genesisPropose(
   const { providerInfo: pInfo } = env;
   const config = JSON.parse(context.genesisConfigJson) as GenesisConfig;
   const diff = JSON.parse(context.diffJson!);
+  const targetPath = path.resolve(env.projectDir, config.targetWorkflow);
 
-  const stabilizeClause = context.stabilized
-    ? '\n\nSTABILIZE MODE: Only removeNode, removeConnection, and implementNode operations are allowed. Do NOT propose addNode or addConnection.'
-    : '';
-
-  const systemPrompt = [
-    'You are Genesis, a workflow self-evolution engine.',
-    `Intent: ${config.intent}`,
-    config.focus.length > 0 ? `Focus areas: ${config.focus.join(', ')}` : '',
-    config.constraints.length > 0 ? `Constraints: ${config.constraints.join(', ')}` : '',
-    `Budget: ${config.budgetPerCycle} cost units per cycle.`,
-    'Cost map: addNode=1, removeNode=1, addConnection=1, removeConnection=1, implementNode=2.',
-    stabilizeClause,
-    '',
-    'Return a JSON object with: operations (array of {type, args, costUnits, rationale}), totalCost (number), impactLevel ("COSMETIC"|"MINOR"|"BREAKING"|"CRITICAL"), summary (string), rationale (string).',
-  ].filter(Boolean).join('\n');
+  const systemPrompt = await getGenesisSystemPrompt(config, !!context.stabilized);
 
   const userPrompt = [
-    'Project diff since last cycle:',
+    '## Current Workflow Structure',
+    context.workflowDescription || '(no description available)',
+    '',
+    '## Project Diff Since Last Cycle',
     JSON.stringify(diff, null, 2),
     '',
-    'Current fingerprint:',
+    '## Current Fingerprint',
     context.fingerprintJson!,
     '',
-    'Propose workflow evolution operations within the budget.',
+    getOperationExamples(targetPath),
+    '',
+    'Propose workflow evolution operations within the budget. Use node IDs and port names that exist in the workflow structure above.',
   ].join('\n');
 
-  try {
-    let text: string;
-    if (pInfo.type === 'anthropic') {
-      text = await callApi(
-        pInfo.apiKey!,
-        pInfo.model ?? 'claude-sonnet-4-6',
-        pInfo.maxTokens ?? 8192,
-        systemPrompt,
-        userPrompt,
-      );
-    } else {
-      text = callCli(pInfo.type, systemPrompt + '\n\n' + userPrompt, pInfo.model);
+  const maxAttempts = 2;
+  let lastError = '';
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      let text: string;
+      if (pInfo.type === 'anthropic') {
+        text = await callApi(
+          pInfo.apiKey!,
+          pInfo.model ?? 'claude-sonnet-4-6',
+          pInfo.maxTokens ?? 8192,
+          systemPrompt,
+          userPrompt,
+        );
+      } else {
+        text = callCli(pInfo.type, systemPrompt + '\n\n' + userPrompt, pInfo.model);
+      }
+
+      const proposal = parseJsonResponse(text) as unknown as GenesisProposal;
+      console.log(`\x1b[36m→ Proposal: ${proposal.summary} (${proposal.operations.length} ops, impact=${proposal.impactLevel})\x1b[0m`);
+
+      context.proposalJson = JSON.stringify(proposal);
+      return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : String(err);
+      const isTransient = /ETIMEDOUT|ECONNRESET|ECONNREFUSED|EPIPE|socket hang up/i.test(lastError);
+
+      if (isTransient && attempt < maxAttempts) {
+        console.log(`\x1b[33m→ Proposal attempt ${attempt} failed (transient): ${lastError.slice(0, 100)}. Retrying...\x1b[0m`);
+        continue;
+      }
+
+      console.error(`\x1b[31m→ Proposal failed: ${lastError}\x1b[0m`);
     }
-
-    const proposal = parseJsonResponse(text) as unknown as GenesisProposal;
-    console.log(`\x1b[36m→ Proposal: ${proposal.summary} (${proposal.operations.length} ops, impact=${proposal.impactLevel})\x1b[0m`);
-
-    context.proposalJson = JSON.stringify(proposal);
-    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`\x1b[31m→ Proposal failed: ${msg}\x1b[0m`);
-    context.proposalJson = JSON.stringify({ operations: [], totalCost: 0, impactLevel: 'COSMETIC', summary: `Failed: ${msg}`, rationale: '' });
-    return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
   }
+
+  context.error = `Proposal failed: ${lastError}`;
+  context.proposalJson = JSON.stringify({ operations: [], totalCost: 0, impactLevel: 'COSMETIC', summary: `Failed: ${lastError}`, rationale: '' });
+  return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
 }

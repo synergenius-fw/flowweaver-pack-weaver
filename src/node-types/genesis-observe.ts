@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import type { GenesisFingerprint, GenesisContext } from '../bot/types.js';
+import { getWorkflowDescription } from '../bot/genesis-prompt-context.js';
 
 /**
  * Fingerprints the project state: hashes .ts files, reads package.json,
@@ -106,6 +107,8 @@ export async function genesisObserve(
     console.log(`\x1b[36m→ Fingerprint: ${Object.keys(files).length} files, ${existingWorkflows.length} workflows\x1b[0m`);
 
     context.fingerprintJson = JSON.stringify(fingerprint);
+    context.workflowDescription = await getWorkflowDescription(targetPath);
+
     return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

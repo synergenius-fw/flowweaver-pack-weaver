@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import type { GenesisConfig, GenesisContext } from '../bot/types.js';
@@ -19,6 +20,8 @@ export function genesisDiffWorkflow(ctx: string): { ctx: string } {
   const targetPath = path.resolve(context.env.projectDir, config.targetWorkflow);
 
   let diffOutput = '';
+
+  // Try semantic diff via flow-weaver first
   try {
     diffOutput = execFileSync('flow-weaver', ['diff', context.snapshotPath!, targetPath], {
       cwd: context.env.projectDir,
@@ -30,9 +33,35 @@ export function genesisDiffWorkflow(ctx: string): { ctx: string } {
     if (err && typeof err === 'object' && 'stdout' in err) {
       diffOutput = String((err as { stdout: string }).stdout).trim();
     }
-    if (!diffOutput) {
-      diffOutput = 'Unable to produce diff';
+  }
+
+  // Fallback to basic text diff if semantic diff failed
+  if (!diffOutput && context.snapshotPath) {
+    try {
+      const snapshotContent = fs.readFileSync(context.snapshotPath, 'utf-8');
+      const currentContent = fs.readFileSync(targetPath, 'utf-8');
+
+      if (snapshotContent === currentContent) {
+        diffOutput = '(no changes)';
+      } else {
+        diffOutput = execFileSync('git', ['diff', '--no-index', '--no-color', context.snapshotPath, targetPath], {
+          cwd: context.env.projectDir,
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+          timeout: 10_000,
+        }).trim();
+      }
+    } catch (err: unknown) {
+      // git diff exits 1 when files differ (that's normal)
+      if (err && typeof err === 'object' && 'stdout' in err) {
+        const stdout = String((err as { stdout: string }).stdout).trim();
+        if (stdout) diffOutput = stdout;
+      }
     }
+  }
+
+  if (!diffOutput) {
+    diffOutput = '(diff unavailable)';
   }
 
   console.log(`\x1b[36m→ Workflow diff: ${diffOutput.split('\n').length} lines\x1b[0m`);

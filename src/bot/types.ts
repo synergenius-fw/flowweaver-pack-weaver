@@ -509,5 +509,7 @@ export interface GenesisContext {
   approved?: boolean;
   commitResultJson?: string;
   cycleRecordJson?: string;
+  workflowDescription?: string;
+  startTimeMs?: number;
   error?: string;
 }

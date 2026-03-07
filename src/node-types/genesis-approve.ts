@@ -35,7 +35,12 @@ export async function genesisApprove(
   }
 
   const { config } = context.env;
-  const approvalMode = typeof config.approval === 'string' ? config.approval : config.approval?.mode ?? 'prompt';
+  // Match the same default as runner.ts resolveApproval: no approval field = 'auto'
+  const approvalMode = !config.approval || config.approval === 'auto'
+    ? 'auto'
+    : typeof config.approval === 'string'
+      ? config.approval
+      : config.approval.mode;
 
   // Display proposal summary
   const proposal = JSON.parse(context.proposalJson!) as GenesisProposal;
