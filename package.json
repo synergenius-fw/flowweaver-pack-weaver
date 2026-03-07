@@ -1,7 +1,7 @@
 {
   "name": "@synergenius/flowweaver-pack-weaver",
   "version": "0.6.0",
-  "description": "Autonomous workflow runner for Flow Weaver. Auto-detect providers, execute workflows, notify results.",
+  "description": "AI bot for Flow Weaver. Execute tasks, run workflows, evolve autonomously.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

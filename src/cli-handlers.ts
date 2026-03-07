@@ -54,6 +54,8 @@ export interface ParsedArgs {
   // genesis
   genesisInit: boolean;
   genesisWatch: boolean;
+  // eject
+  ejectWorkflow?: string;
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -115,7 +117,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.historyOutcome = args[i];
     } else if (arg === '--workflow' && i + 1 < args.length) {
       i++;
-      result.historyWorkflow = args[i];
+      if (result.command === 'eject') {
+        result.ejectWorkflow = args[i];
+      } else {
+        result.historyWorkflow = args[i];
+      }
     } else if (arg === '--since' && i + 1 < args.length) {
       i++;
       if (result.command === 'costs') {
@@ -686,41 +692,21 @@ export async function handleProviders(): Promise<void> {
   }
 }
 
-export async function handleEject(): Promise<void> {
-  // Resolve the pack's own workflows/weaver.ts relative to this file
-  const packRoot = new URL('..', import.meta.url);
-  const srcPath = new URL('src/workflows/weaver.ts', packRoot);
+// --- Workflow map for eject and resolution ---
 
-  let source: string;
-  try {
-    source = fs.readFileSync(srcPath, 'utf-8');
-  } catch {
-    // Fallback: try dist location (when running from compiled output)
-    const distPath = new URL('dist/workflows/weaver.ts', packRoot);
-    try {
-      source = fs.readFileSync(distPath, 'utf-8');
-    } catch {
-      // Last resort: read the .js and note it
-      const jsPath = new URL('dist/workflows/weaver.js', packRoot);
-      try {
-        source = fs.readFileSync(jsPath, 'utf-8');
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[weaver] Could not find managed workflow source: ${msg}`);
-        process.exit(1);
-        return;
-      }
-    }
-  }
+const MANAGED_WORKFLOWS: Record<string, string> = {
+  bot: 'weaver-bot',
+  batch: 'weaver-bot-batch',
+  genesis: 'genesis-task',
+};
 
-  // Replace pack-relative imports with package imports
+/** Rewrite pack-relative imports to package imports and deduplicate. */
+function rewritePackImports(source: string): string {
+  // Rewrite ../node-types/*.js → package/node-types
+  // Rewrite ../bot/*.js → package/bot
   const rewritten = source
-    .replace(/from\s+['"]\.\.\/node-types\/load-config\.js['"]/g, "from '@synergenius/flowweaver-pack-weaver/node-types'")
-    .replace(/from\s+['"]\.\.\/node-types\/detect-provider\.js['"]/g, "from '@synergenius/flowweaver-pack-weaver/node-types'")
-    .replace(/from\s+['"]\.\.\/node-types\/resolve-target\.js['"]/g, "from '@synergenius/flowweaver-pack-weaver/node-types'")
-    .replace(/from\s+['"]\.\.\/node-types\/execute-target\.js['"]/g, "from '@synergenius/flowweaver-pack-weaver/node-types'")
-    .replace(/from\s+['"]\.\.\/node-types\/send-notify\.js['"]/g, "from '@synergenius/flowweaver-pack-weaver/node-types'")
-    .replace(/from\s+['"]\.\.\/node-types\/report\.js['"]/g, "from '@synergenius/flowweaver-pack-weaver/node-types'");
+    .replace(/from\s+['"]\.\.\/node-types\/[^'"]+['"]/g, "from '@synergenius/flowweaver-pack-weaver/node-types'")
+    .replace(/from\s+['"]\.\.\/bot\/[^'"]+['"]/g, "from '@synergenius/flowweaver-pack-weaver/bot'");
 
   // Deduplicate import lines: collapse multiple imports from the same module
   const lines = rewritten.split('\n');
@@ -729,12 +715,14 @@ export async function handleEject(): Promise<void> {
   let pastImports = false;
 
   for (const line of lines) {
-    const importMatch = line.match(/^import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"]\s*;?\s*$/);
+    const importMatch = line.match(/^import\s+(?:type\s+)?\{([^}]+)\}\s+from\s+['"]([^'"]+)['"]\s*;?\s*$/);
     if (importMatch && !pastImports) {
+      const isType = line.trimStart().startsWith('import type');
       const names = importMatch[1]!.split(',').map((s) => s.trim()).filter(Boolean);
       const mod = importMatch[2]!;
-      if (!importMap.has(mod)) importMap.set(mod, new Set());
-      for (const n of names) importMap.get(mod)!.add(n);
+      const key = isType ? `type:${mod}` : mod;
+      if (!importMap.has(key)) importMap.set(key, new Set());
+      for (const n of names) importMap.get(key)!.add(n);
     } else {
       if (line.trim() !== '' && !line.match(/^import\s/)) pastImports = true;
       nonImportLines.push(line);
@@ -742,14 +730,101 @@ export async function handleEject(): Promise<void> {
   }
 
   const dedupedImports: string[] = [];
-  for (const [mod, names] of importMap) {
-    dedupedImports.push(`import { ${[...names].join(', ')} } from '${mod}';`);
+  for (const [key, names] of importMap) {
+    const isType = key.startsWith('type:');
+    const mod = isType ? key.slice(5) : key;
+    const keyword = isType ? 'import type' : 'import';
+    dedupedImports.push(`${keyword} { ${[...names].join(', ')} } from '${mod}';`);
   }
 
-  const finalSource = [...dedupedImports, ...nonImportLines].join('\n');
+  return [...dedupedImports, ...nonImportLines].join('\n');
+}
 
-  const destPath = path.resolve(process.cwd(), 'weaver.ts');
-  fs.writeFileSync(destPath, finalSource, 'utf-8');
+/** Read a managed workflow source from the pack. */
+function readPackWorkflowSource(packRoot: URL, workflowBaseName: string): string {
+  const candidates = [
+    new URL(`src/workflows/${workflowBaseName}.ts`, packRoot),
+    new URL(`dist/workflows/${workflowBaseName}.ts`, packRoot),
+    new URL(`dist/workflows/${workflowBaseName}.js`, packRoot),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      return fs.readFileSync(candidate, 'utf-8');
+    } catch { /* try next */ }
+  }
+
+  throw new Error(`Could not find managed workflow: ${workflowBaseName}`);
+}
+
+/**
+ * Resolve a managed workflow path. Checks for a local ejected override first,
+ * then falls back to the pack's own source or dist.
+ */
+function resolveWorkflowPath(workflowKey: string, cwd: string): string {
+  const baseName = MANAGED_WORKFLOWS[workflowKey];
+  if (!baseName) throw new Error(`Unknown workflow: ${workflowKey}`);
+
+  // Check for ejected override
+  const metaPath = path.join(cwd, '.weaver-meta.json');
+  if (fs.existsSync(metaPath)) {
+    try {
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+      if (meta.ejected && meta.workflowFiles?.[workflowKey]) {
+        const localPath = path.resolve(cwd, meta.workflowFiles[workflowKey]);
+        if (fs.existsSync(localPath)) {
+          return localPath;
+        }
+      }
+    } catch { /* fall through to pack */ }
+  }
+
+  // Fall back to pack's managed workflow
+  const packRoot = new URL('..', import.meta.url);
+  try {
+    const srcPath = fileURLToPath(new URL(`src/workflows/${baseName}.ts`, packRoot));
+    if (fs.existsSync(srcPath)) return srcPath;
+  } catch { /* ignore */ }
+
+  return fileURLToPath(new URL(`dist/workflows/${baseName}.js`, packRoot));
+}
+
+export async function handleEject(opts: ParsedArgs): Promise<void> {
+  const packRoot = new URL('..', import.meta.url);
+
+  // Determine which workflows to eject
+  const workflowKeys = opts.ejectWorkflow
+    ? [opts.ejectWorkflow]
+    : Object.keys(MANAGED_WORKFLOWS);
+
+  if (opts.ejectWorkflow && !MANAGED_WORKFLOWS[opts.ejectWorkflow]) {
+    console.error(`[weaver] Unknown workflow: ${opts.ejectWorkflow}`);
+    console.error(`[weaver] Available: ${Object.keys(MANAGED_WORKFLOWS).join(', ')}`);
+    process.exit(1);
+    return;
+  }
+
+  const ejectedFiles: Record<string, string> = {};
+
+  for (const key of workflowKeys) {
+    const baseName = MANAGED_WORKFLOWS[key]!;
+    let source: string;
+    try {
+      source = readPackWorkflowSource(packRoot, baseName);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[weaver] ${msg}`);
+      process.exit(1);
+      return;
+    }
+
+    const finalSource = rewritePackImports(source);
+    const fileName = `${baseName}.ts`;
+    const destPath = path.resolve(process.cwd(), fileName);
+    fs.writeFileSync(destPath, finalSource, 'utf-8');
+    ejectedFiles[key] = fileName;
+    console.log(`[weaver] Ejected ${key} → ${destPath}`);
+  }
 
   // Read pack version
   let packVersion = 'unknown';
@@ -759,18 +834,24 @@ export async function handleEject(): Promise<void> {
     packVersion = pkg.version;
   } catch { /* ignore */ }
 
-  // Write/update .weaver-meta.json
+  // Write/update .weaver-meta.json (merge with existing if present)
   const metaPath = path.resolve(process.cwd(), '.weaver-meta.json');
+  let existingMeta: Record<string, unknown> = {};
+  try {
+    existingMeta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+  } catch { /* start fresh */ }
+
+  const existingWorkflows = (existingMeta.workflowFiles as Record<string, string>) ?? {};
   const meta = {
     ejected: true,
     packVersion,
-    workflowFile: 'weaver.ts',
+    workflowFiles: { ...existingWorkflows, ...ejectedFiles },
   };
   fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n', 'utf-8');
 
-  console.log(`[weaver] Ejected managed workflow to ${destPath}`);
   console.log(`[weaver] Metadata written to ${metaPath}`);
-  console.log('[weaver] You can now customize weaver.ts freely.');
+  console.log('[weaver] You can now customize the ejected workflow(s) freely.');
+  console.log('[weaver] The bot will use local files when available.');
 }
 
 export async function handleRun(opts: ParsedArgs): Promise<void> {
@@ -831,9 +912,9 @@ export async function handleRun(opts: ParsedArgs): Promise<void> {
     if (!opts.quiet) {
       console.log('');
       if (result.success) {
-        console.log(`\x1b[32mWeaver: ${result.outcome}\x1b[0m (${elapsed})`);
+        console.log(`\x1b[32mBot: ${result.outcome}\x1b[0m (${elapsed})`);
       } else {
-        console.log(`\x1b[31mWeaver: ${result.outcome}\x1b[0m (${elapsed})`);
+        console.log(`\x1b[31mBot: ${result.outcome}\x1b[0m (${elapsed})`);
       }
       console.log(`  ${result.summary}`);
 
@@ -870,20 +951,8 @@ export async function handleBot(opts: ParsedArgs): Promise<void> {
   };
 
   // Use the batch workflow if --batch specified
-  const workflowName = opts.botBatch ? 'weaver-bot-batch' : 'weaver-bot';
-
-  // Find the workflow file in the pack
-  const packRoot = new URL('..', import.meta.url);
-  let workflowPath: string;
-  try {
-    workflowPath = fileURLToPath(new URL(`src/workflows/${workflowName}.ts`, packRoot));
-    const { existsSync } = await import('node:fs');
-    if (!existsSync(workflowPath)) {
-      workflowPath = fileURLToPath(new URL(`dist/workflows/${workflowName}.js`, packRoot));
-    }
-  } catch {
-    workflowPath = fileURLToPath(new URL(`dist/workflows/${workflowName}.js`, packRoot));
-  }
+  const workflowKey = opts.botBatch ? 'batch' : 'bot';
+  const workflowPath = resolveWorkflowPath(workflowKey, opts.file ?? process.cwd());
 
   const config = await loadConfig(opts.configPath);
   const nodeTimings = new Map<string, number>();
@@ -960,17 +1029,7 @@ export async function handleBot(opts: ParsedArgs): Promise<void> {
 }
 
 export async function handleSession(opts: ParsedArgs): Promise<void> {
-  const packRoot = new URL('..', import.meta.url);
-  let workflowPath: string;
-  try {
-    workflowPath = fileURLToPath(new URL('src/workflows/weaver-bot.ts', packRoot));
-    const { existsSync } = await import('node:fs');
-    if (!existsSync(workflowPath)) {
-      workflowPath = fileURLToPath(new URL('dist/workflows/weaver-bot.js', packRoot));
-    }
-  } catch {
-    workflowPath = fileURLToPath(new URL('dist/workflows/weaver-bot.js', packRoot));
-  }
+  const workflowPath = resolveWorkflowPath('bot', opts.file ?? process.cwd());
 
   const config = await loadConfig(opts.configPath);
 
@@ -1085,16 +1144,7 @@ export async function handleGenesis(opts: ParsedArgs): Promise<void> {
     return;
   }
 
-  const packRoot = new URL('..', import.meta.url);
-  let workflowPath: string;
-  try {
-    workflowPath = fileURLToPath(new URL('src/workflows/genesis-task.ts', packRoot));
-    if (!fs.existsSync(workflowPath)) {
-      workflowPath = fileURLToPath(new URL('dist/workflows/genesis-task.js', packRoot));
-    }
-  } catch {
-    workflowPath = fileURLToPath(new URL('dist/workflows/genesis-task.js', packRoot));
-  }
+  const workflowPath = resolveWorkflowPath('genesis', projectDir);
 
   const config = await loadConfig(opts.configPath);
 
@@ -1104,10 +1154,10 @@ export async function handleGenesis(opts: ParsedArgs): Promise<void> {
     const gConfig = store.loadConfig();
     const maxCycles = gConfig.maxCyclesPerRun;
 
-    if (!opts.quiet) console.log(`[weaver] Genesis watch: up to ${maxCycles} cycles`);
+    if (!opts.quiet) console.log(`[weaver] Bot genesis watch: up to ${maxCycles} cycles`);
 
     for (let i = 0; i < maxCycles; i++) {
-      if (!opts.quiet) console.log(`\n[weaver] Genesis cycle ${i + 1}/${maxCycles}`);
+      if (!opts.quiet) console.log(`\n[weaver] Bot genesis cycle ${i + 1}/${maxCycles}`);
       const result = await runWorkflow(workflowPath, {
         params: { projectDir },
         verbose: opts.verbose,
@@ -1127,7 +1177,7 @@ export async function handleGenesis(opts: ParsedArgs): Promise<void> {
   }
 
   // Single cycle
-  if (!opts.quiet) console.log('[weaver] Running genesis cycle');
+  if (!opts.quiet) console.log('[weaver] Bot genesis: running cycle');
 
   const result = await runWorkflow(workflowPath, {
     params: { projectDir },
@@ -1138,7 +1188,7 @@ export async function handleGenesis(opts: ParsedArgs): Promise<void> {
 
   if (!opts.quiet) {
     const color = result.success ? '\x1b[32m' : '\x1b[33m';
-    console.log(`${color}Genesis: ${result.summary}\x1b[0m`);
+    console.log(`${color}Bot genesis: ${result.summary}\x1b[0m`);
   }
 
   process.exit(result.success ? 0 : 1);

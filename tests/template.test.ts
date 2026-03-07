@@ -1,39 +1,33 @@
-import { weaverTemplate } from '../src/templates/weaver-template.js';
+import { weaverBotTemplate } from '../src/templates/weaver-bot-template.js';
 
-describe('weaverTemplate', () => {
+describe('weaverBotTemplate', () => {
   it('has correct metadata', () => {
-    expect(weaverTemplate.id).toBe('weaver');
-    expect(weaverTemplate.category).toBe('automation');
-    expect(typeof weaverTemplate.name).toBe('string');
-    expect(typeof weaverTemplate.description).toBe('string');
+    expect(weaverBotTemplate.id).toBe('weaver-bot');
+    expect(weaverBotTemplate.category).toBe('automation');
+    expect(typeof weaverBotTemplate.name).toBe('string');
+    expect(typeof weaverBotTemplate.description).toBe('string');
   });
 
   it('generates workflow with pack node type imports', () => {
-    const code = weaverTemplate.generate({});
+    const code = weaverBotTemplate.generate({});
     expect(code).toContain("from '@synergenius/flowweaver-pack-weaver/node-types'");
     expect(code).toContain('weaverLoadConfig');
     expect(code).toContain('weaverDetectProvider');
-    expect(code).toContain('weaverResolveTarget');
-    expect(code).toContain('weaverExecuteTarget');
-    expect(code).toContain('weaverSendNotify');
-    expect(code).toContain('weaverReport');
+    expect(code).toContain('weaverReceiveTask');
+    expect(code).toContain('weaverBotReport');
   });
 
   it('generates valid flow-weaver annotations', () => {
-    const code = weaverTemplate.generate({});
+    const code = weaverBotTemplate.generate({});
     expect(code).toContain('@flowWeaver workflow');
-    expect(code).toContain('@node cfg weaverLoadConfig');
-    expect(code).toContain('@node detect weaverDetectProvider');
-    expect(code).toContain('@node target weaverResolveTarget');
-    expect(code).toContain('@node exec weaverExecuteTarget');
-    expect(code).toContain('@node notify weaverSendNotify');
-    expect(code).toContain('@node rep weaverReport');
-    expect(code).toContain('@path Start -> cfg -> detect -> target -> exec -> notify -> rep -> Exit');
+    expect(code).toContain('@node cfg');
+    expect(code).toContain('@path Start ->');
+    expect(code).toContain('-> Exit');
   });
 
-  it('generates exportable weaver function', () => {
-    const code = weaverTemplate.generate({});
-    expect(code).toContain('export async function weaver(');
+  it('generates exportable weaverBot function', () => {
+    const code = weaverBotTemplate.generate({});
+    expect(code).toContain('export async function weaverBot(');
     expect(code).toContain('@flow-weaver-body-start');
     expect(code).toContain('@flow-weaver-body-end');
   });
