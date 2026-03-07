@@ -28,7 +28,7 @@
   ],
   "flowWeaver": {
     "type": "marketplace-pack",
-    "engineVersion": ">=0.19.4",
+    "engineVersion": ">=0.17.0",
     "categories": [
       "automation",
       "ai"
@@ -36,7 +36,7 @@
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.30.0",
-    "@synergenius/flow-weaver": ">=0.19.4",
+    "@synergenius/flow-weaver": ">=0.17.0",
     "zod": ">=3.22.0"
   },
   "peerDependenciesMeta": {
