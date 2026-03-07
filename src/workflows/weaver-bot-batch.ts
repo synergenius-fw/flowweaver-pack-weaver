@@ -55,8 +55,7 @@ import { weaverBotReport } from '../node-types/bot-report.js';
  */
 export async function weaverBotBatch(
   execute: boolean,
-  taskJson?: string,
-  projectDir?: string,
+  params: { taskJson?: string; projectDir?: string },
   __abortSignal__?: AbortSignal,
 ): Promise<{ onSuccess: boolean; onFailure: boolean; summary: string | null }> {
   // @flow-weaver-body-start
