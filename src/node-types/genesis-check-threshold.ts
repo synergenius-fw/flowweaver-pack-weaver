@@ -1,4 +1,4 @@
-import type { WeaverEnv, GenesisConfig, GenesisProposal, GenesisImpactLevel } from '../bot/types.js';
+import type { GenesisConfig, GenesisProposal, GenesisImpactLevel, GenesisContext } from '../bot/types.js';
 
 const IMPACT_ORDER: Record<GenesisImpactLevel, number> = {
   COSMETIC: 0,
@@ -14,26 +14,14 @@ const IMPACT_ORDER: Record<GenesisImpactLevel, number> = {
  * @flowWeaver nodeType
  * @expression
  * @label Genesis Check Threshold
- * @input env [order:0] - Weaver environment bundle
- * @input genesisConfigJson [order:1] - Genesis configuration (JSON)
- * @input proposalJson [order:2] - Genesis proposal (JSON)
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output genesisConfigJson [order:1] - Genesis configuration (pass-through)
- * @output proposalJson [order:2] - Genesis proposal (pass-through)
- * @output approvalRequired [order:3] - Whether human approval is needed
+ * @input ctx [order:0] - Genesis context (JSON)
+ * @output ctx [order:0] - Genesis context with approvalRequired (JSON)
+ * @output onFailure [hidden]
  */
-export function genesisCheckThreshold(
-  env: WeaverEnv,
-  genesisConfigJson: string,
-  proposalJson: string,
-): {
-  env: WeaverEnv;
-  genesisConfigJson: string;
-  proposalJson: string;
-  approvalRequired: boolean;
-} {
-  const config = JSON.parse(genesisConfigJson) as GenesisConfig;
-  const proposal = JSON.parse(proposalJson) as GenesisProposal;
+export function genesisCheckThreshold(ctx: string): { ctx: string } {
+  const context = JSON.parse(ctx) as GenesisContext;
+  const config = JSON.parse(context.genesisConfigJson) as GenesisConfig;
+  const proposal = JSON.parse(context.proposalJson!) as GenesisProposal;
 
   const proposalLevel = IMPACT_ORDER[proposal.impactLevel] ?? 0;
   const thresholdLevel = IMPACT_ORDER[config.approvalThreshold] ?? 0;
@@ -41,5 +29,6 @@ export function genesisCheckThreshold(
 
   console.log(`\x1b[36m→ Impact ${proposal.impactLevel} vs threshold ${config.approvalThreshold}: approval ${approvalRequired ? 'required' : 'not required'}\x1b[0m`);
 
-  return { env, genesisConfigJson, proposalJson, approvalRequired };
+  context.approvalRequired = approvalRequired;
+  return { ctx: JSON.stringify(context) };
 }

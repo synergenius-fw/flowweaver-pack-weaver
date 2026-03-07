@@ -69,13 +69,9 @@
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "targetPath": {
+        "ctx": {
           "dataType": "string",
-          "description": "Absolute path to target workflow"
+          "description": "Weaver context (JSON)"
         }
       }
     },
@@ -86,27 +82,15 @@
       "functionName": "weaverExecuteTarget",
       "isAsync": true,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "targetPath": {
+        "ctx": {
           "dataType": "string",
-          "description": "Absolute path to target workflow"
+          "description": "Weaver context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "targetPath": {
+        "ctx": {
           "dataType": "string",
-          "description": "Target path (pass-through)"
-        },
-        "resultJson": {
-          "dataType": "string",
-          "description": "Workflow execution result (JSON)"
+          "description": "Weaver context with resultJson (JSON)"
         }
       }
     },
@@ -117,23 +101,15 @@
       "functionName": "weaverSendNotify",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "resultJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Result (JSON)"
+          "description": "Weaver context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "resultJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Result (pass-through)"
+          "description": "Weaver context (pass-through, JSON)"
         }
       }
     },
@@ -144,17 +120,9 @@
       "functionName": "weaverReport",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "targetPath": {
+        "ctx": {
           "dataType": "string",
-          "description": "Target workflow path"
-        },
-        "resultJson": {
-          "dataType": "string",
-          "description": "Result (JSON)"
+          "description": "Weaver context (JSON)"
         }
       },
       "outputs": {
@@ -182,17 +150,9 @@
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "taskJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Parsed task (JSON)"
-        },
-        "hasTask": {
-          "dataType": "boolean",
-          "description": "Whether a task was found"
+          "description": "Weaver context (JSON)"
         }
       }
     },
@@ -203,23 +163,15 @@
       "functionName": "weaverRouteTask",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "taskJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Task (JSON)"
+          "description": "Weaver context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "taskJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Task (pass-through)"
+          "description": "Weaver context (pass-through, JSON)"
         }
       }
     },
@@ -230,31 +182,15 @@
       "functionName": "weaverReadWorkflow",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "taskJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Task (JSON)"
+          "description": "Weaver context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "taskJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Task (pass-through)"
-        },
-        "resultJson": {
-          "dataType": "string",
-          "description": "Workflow description and diagram (JSON)"
-        },
-        "filesModified": {
-          "dataType": "string",
-          "description": "Files modified (empty, JSON)"
+          "description": "Weaver context with resultJson (JSON)"
         }
       }
     },
@@ -265,27 +201,15 @@
       "functionName": "weaverBuildContext",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "taskJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Task (JSON)"
+          "description": "Weaver context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "taskJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Task (pass-through)"
-        },
-        "contextBundle": {
-          "dataType": "string",
-          "description": "Knowledge bundle (markdown)"
+          "description": "Weaver context with contextBundle (JSON)"
         }
       }
     },
@@ -296,31 +220,15 @@
       "functionName": "weaverPlanTask",
       "isAsync": true,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "taskJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Task (JSON)"
-        },
-        "contextBundle": {
-          "dataType": "string",
-          "description": "Knowledge bundle"
+          "description": "Weaver context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "taskJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Task (pass-through)"
-        },
-        "planJson": {
-          "dataType": "string",
-          "description": "Execution plan (JSON)"
+          "description": "Weaver context with planJson (JSON)"
         }
       }
     },
@@ -331,35 +239,15 @@
       "functionName": "weaverApprovalGate",
       "isAsync": true,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "planJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Plan (JSON)"
-        },
-        "taskJson": {
-          "dataType": "string",
-          "description": "Task (JSON)"
+          "description": "Weaver context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "planJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Plan (pass-through)"
-        },
-        "taskJson": {
-          "dataType": "string",
-          "description": "Task (pass-through)"
-        },
-        "rejectionReason": {
-          "dataType": "string",
-          "description": "Rejection reason (on failure)"
+          "description": "Weaver context with rejectionReason (JSON)"
         }
       }
     },
@@ -370,35 +258,15 @@
       "functionName": "weaverAbortTask",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "taskJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Task (JSON)"
-        },
-        "rejectionReason": {
-          "dataType": "string",
-          "description": "Rejection reason"
+          "description": "Weaver context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "taskJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Task (pass-through)"
-        },
-        "resultJson": {
-          "dataType": "string",
-          "description": "Abort result (JSON)"
-        },
-        "filesModified": {
-          "dataType": "string",
-          "description": "Files modified (empty, JSON)"
+          "description": "Weaver context with abort resultJson (JSON)"
         }
       }
     },
@@ -409,43 +277,15 @@
       "functionName": "weaverExecValidateRetry",
       "isAsync": true,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "planJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Execution plan (JSON)"
-        },
-        "taskJson": {
-          "dataType": "string",
-          "description": "Task (JSON)"
+          "description": "Weaver context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "resultJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Final execution result (JSON)"
-        },
-        "validationResultJson": {
-          "dataType": "string",
-          "description": "Final validation result (JSON)"
-        },
-        "filesModified": {
-          "dataType": "string",
-          "description": "All modified files (JSON array)"
-        },
-        "taskJson": {
-          "dataType": "string",
-          "description": "Task (pass-through)"
-        },
-        "allValid": {
-          "dataType": "boolean",
-          "description": "Whether all files are valid"
+          "description": "Weaver context with results (JSON)"
         }
       }
     },
@@ -573,23 +413,15 @@
       "functionName": "weaverGitOps",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "filesModified": {
+        "ctx": {
           "dataType": "string",
-          "description": "Files modified (JSON array)"
+          "description": "Weaver context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "gitResultJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Git operation result (JSON)"
+          "description": "Weaver context with gitResultJson (JSON)"
         }
       }
     },
@@ -600,33 +432,19 @@
       "functionName": "weaverBotReport",
       "isAsync": false,
       "inputs": {
-        "readResult": {
+        "mainCtx": {
           "dataType": "string",
-          "description": "From read-only path (JSON)",
+          "description": "Context from main path (JSON)",
           "optional": true
         },
-        "mainResult": {
+        "readCtx": {
           "dataType": "string",
-          "description": "From main execution path (JSON)",
+          "description": "Context from read-only path (JSON)",
           "optional": true
         },
-        "abortResult": {
+        "abortCtx": {
           "dataType": "string",
-          "description": "From abort path (JSON)",
-          "optional": true
-        },
-        "taskJson": {
-          "dataType": "string",
-          "description": "Task (JSON)"
-        },
-        "filesModified": {
-          "dataType": "string",
-          "description": "Files modified (JSON array)",
-          "optional": true
-        },
-        "gitResultJson": {
-          "dataType": "string",
-          "description": "Git result (JSON)",
+          "description": "Context from abort path (JSON)",
           "optional": true
         }
       },
@@ -654,17 +472,9 @@
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (JSON)"
-        },
-        "cycleId": {
-          "dataType": "string",
-          "description": "New cycle identifier"
+          "description": "Genesis context (JSON)"
         }
       }
     },
@@ -675,27 +485,15 @@
       "functionName": "genesisObserve",
       "isAsync": true,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (JSON)"
+          "description": "Genesis context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (pass-through)"
-        },
-        "fingerprintJson": {
-          "dataType": "string",
-          "description": "Project fingerprint (JSON)"
+          "description": "Genesis context with fingerprintJson (JSON)"
         }
       }
     },
@@ -706,39 +504,15 @@
       "functionName": "genesisDiffFingerprint",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (JSON)"
-        },
-        "fingerprintJson": {
-          "dataType": "string",
-          "description": "Current fingerprint (JSON)"
+          "description": "Genesis context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (pass-through)"
-        },
-        "fingerprintJson": {
-          "dataType": "string",
-          "description": "Current fingerprint (pass-through)"
-        },
-        "diffJson": {
-          "dataType": "string",
-          "description": "Diff summary (JSON)"
-        },
-        "hasChanges": {
-          "dataType": "boolean",
-          "description": "Whether any changes were detected"
+          "description": "Genesis context with diffJson (JSON)"
         }
       }
     },
@@ -749,27 +523,15 @@
       "functionName": "genesisCheckStabilize",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (JSON)"
+          "description": "Genesis context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (pass-through)"
-        },
-        "stabilized": {
-          "dataType": "boolean",
-          "description": "Whether stabilize mode is active"
+          "description": "Genesis context with stabilized (JSON)"
         }
       }
     },
@@ -780,43 +542,15 @@
       "functionName": "genesisPropose",
       "isAsync": true,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (JSON)"
-        },
-        "fingerprintJson": {
-          "dataType": "string",
-          "description": "Current fingerprint (JSON)"
-        },
-        "diffJson": {
-          "dataType": "string",
-          "description": "Diff summary (JSON)"
-        },
-        "stabilized": {
-          "dataType": "boolean",
-          "description": "Whether stabilize mode is active"
+          "description": "Genesis context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (pass-through)"
-        },
-        "proposalJson": {
-          "dataType": "string",
-          "description": "Genesis proposal (JSON)"
-        },
-        "stabilized": {
-          "dataType": "boolean",
-          "description": "Stabilize mode (pass-through)"
+          "description": "Genesis context with proposalJson (JSON)"
         }
       }
     },
@@ -827,39 +561,15 @@
       "functionName": "genesisValidateProposal",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (JSON)"
-        },
-        "proposalJson": {
-          "dataType": "string",
-          "description": "Genesis proposal (JSON)"
-        },
-        "stabilized": {
-          "dataType": "boolean",
-          "description": "Whether stabilize mode is active"
+          "description": "Genesis context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (pass-through)"
-        },
-        "proposalJson": {
-          "dataType": "string",
-          "description": "Validated/trimmed proposal (JSON)"
-        },
-        "stabilized": {
-          "dataType": "boolean",
-          "description": "Stabilize mode (pass-through)"
+          "description": "Genesis context with validated proposalJson (JSON)"
         }
       }
     },
@@ -870,35 +580,15 @@
       "functionName": "genesisSnapshot",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (JSON)"
-        },
-        "cycleId": {
-          "dataType": "string",
-          "description": "Cycle identifier"
+          "description": "Genesis context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (pass-through)"
-        },
-        "cycleId": {
-          "dataType": "string",
-          "description": "Cycle identifier (pass-through)"
-        },
-        "snapshotPath": {
-          "dataType": "string",
-          "description": "Path to the saved snapshot file"
+          "description": "Genesis context with snapshotPath (JSON)"
         }
       }
     },
@@ -989,37 +679,59 @@
       }
     },
     {
+      "name": "genesisTryApply",
+      "description": "Apply proposal operations then validate + compile. Restore snapshot on failure.",
+      "file": "dist/node-types/genesis-try-apply.js",
+      "functionName": "genesisTryApply",
+      "isAsync": true,
+      "inputs": {
+        "ctx": {
+          "dataType": "string",
+          "description": "Genesis context (JSON)"
+        }
+      },
+      "outputs": {
+        "ctx": {
+          "dataType": "string",
+          "description": "Genesis context with apply results (JSON)"
+        }
+      }
+    },
+    {
+      "name": "genesisApplyRetry",
+      "description": "Scoped retry loop for apply + compile. Up to 3 attempts with AI-revised proposals.",
+      "file": "dist/node-types/genesis-apply-retry.js",
+      "functionName": "genesisApplyRetry",
+      "isAsync": true,
+      "inputs": {
+        "ctx": {
+          "dataType": "string",
+          "description": "Genesis context (JSON)"
+        }
+      },
+      "outputs": {
+        "ctx": {
+          "dataType": "string",
+          "description": "Genesis context with applyResultJson (JSON)"
+        }
+      }
+    },
+    {
       "name": "genesisDiffWorkflow",
       "description": "Run flow-weaver diff between snapshot and current target workflow.",
       "file": "dist/node-types/genesis-diff-workflow.js",
       "functionName": "genesisDiffWorkflow",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (JSON)"
-        },
-        "snapshotPath": {
-          "dataType": "string",
-          "description": "Path to the pre-apply snapshot"
+          "description": "Genesis context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (pass-through)"
-        },
-        "workflowDiffJson": {
-          "dataType": "string",
-          "description": "Workflow diff output (JSON)"
+          "description": "Genesis context with workflowDiffJson (JSON)"
         }
       }
     },
@@ -1030,35 +742,15 @@
       "functionName": "genesisCheckThreshold",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (JSON)"
-        },
-        "proposalJson": {
-          "dataType": "string",
-          "description": "Genesis proposal (JSON)"
+          "description": "Genesis context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (pass-through)"
-        },
-        "proposalJson": {
-          "dataType": "string",
-          "description": "Genesis proposal (pass-through)"
-        },
-        "approvalRequired": {
-          "dataType": "boolean",
-          "description": "Whether human approval is needed"
+          "description": "Genesis context with approvalRequired (JSON)"
         }
       }
     },
@@ -1069,43 +761,15 @@
       "functionName": "genesisApprove",
       "isAsync": true,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (JSON)"
-        },
-        "proposalJson": {
-          "dataType": "string",
-          "description": "Genesis proposal (JSON)"
-        },
-        "workflowDiffJson": {
-          "dataType": "string",
-          "description": "Workflow diff (JSON)"
-        },
-        "approvalRequired": {
-          "dataType": "boolean",
-          "description": "Whether approval is needed"
+          "description": "Genesis context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (pass-through)"
-        },
-        "proposalJson": {
-          "dataType": "string",
-          "description": "Genesis proposal (pass-through)"
-        },
-        "approved": {
-          "dataType": "boolean",
-          "description": "Whether the proposal was approved"
+          "description": "Genesis context with approved (JSON)"
         }
       }
     },
@@ -1116,35 +780,15 @@
       "functionName": "genesisCommit",
       "isAsync": true,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (JSON)"
-        },
-        "snapshotPath": {
-          "dataType": "string",
-          "description": "Path to the pre-apply snapshot"
-        },
-        "approved": {
-          "dataType": "boolean",
-          "description": "Whether the proposal was approved"
+          "description": "Genesis context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (pass-through)"
-        },
-        "commitResultJson": {
-          "dataType": "string",
-          "description": "Commit result (JSON)"
+          "description": "Genesis context with commitResultJson (JSON)"
         }
       }
     },
@@ -1155,56 +799,15 @@
       "functionName": "genesisUpdateHistory",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "genesisConfigJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Genesis configuration (JSON)"
-        },
-        "cycleId": {
-          "dataType": "string",
-          "description": "Cycle identifier"
-        },
-        "fingerprintJson": {
-          "dataType": "string",
-          "description": "Current fingerprint (JSON)"
-        },
-        "proposalJson": {
-          "dataType": "string",
-          "description": "Genesis proposal (JSON)",
-          "optional": true
-        },
-        "snapshotPath": {
-          "dataType": "string",
-          "description": "Path to the snapshot",
-          "optional": true
-        },
-        "approved": {
-          "dataType": "boolean",
-          "description": "Whether approved",
-          "optional": true
-        },
-        "applyResultJson": {
-          "dataType": "string",
-          "description": "Apply result (JSON)",
-          "optional": true
-        },
-        "startTimeMs": {
-          "dataType": "number",
-          "description": "Cycle start time in milliseconds",
-          "optional": true
+          "description": "Genesis context (JSON)"
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
-        "cycleRecordJson": {
+        "ctx": {
           "dataType": "string",
-          "description": "Cycle record (JSON)"
+          "description": "Genesis context with cycleRecordJson (JSON)"
         }
       }
     },
@@ -1215,26 +818,18 @@
       "functionName": "genesisReport",
       "isAsync": false,
       "inputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle"
-        },
-        "cycleRecordJson": {
+        "successCtx": {
           "dataType": "string",
-          "description": "Cycle record (JSON)",
+          "description": "Genesis context from success path (JSON)",
           "optional": true
         },
-        "error": {
+        "failCtx": {
           "dataType": "string",
-          "description": "Error message",
+          "description": "Genesis context from fail path (JSON)",
           "optional": true
         }
       },
       "outputs": {
-        "env": {
-          "dataType": "object",
-          "description": "Weaver environment bundle (pass-through)"
-        },
         "summary": {
           "dataType": "string",
           "description": "Formatted summary text"

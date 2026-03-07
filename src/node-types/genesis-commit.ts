@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import type { WeaverEnv, GenesisConfig } from '../bot/types.js';
+import type { GenesisConfig, GenesisContext } from '../bot/types.js';
 import { GenesisStore } from '../bot/genesis-store.js';
 
 /**
@@ -10,48 +10,39 @@ import { GenesisStore } from '../bot/genesis-store.js';
  *
  * @flowWeaver nodeType
  * @label Genesis Commit
- * @input env [order:0] - Weaver environment bundle
- * @input genesisConfigJson [order:1] - Genesis configuration (JSON)
- * @input snapshotPath [order:2] - Path to the pre-apply snapshot
- * @input approved [order:3] - Whether the proposal was approved
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output genesisConfigJson [order:1] - Genesis configuration (pass-through)
- * @output commitResultJson [order:2] - Commit result (JSON)
+ * @input ctx [order:0] - Genesis context (JSON)
+ * @output ctx [order:0] - Genesis context with commitResultJson (JSON)
  * @output onSuccess [order:-2] - On Success
- * @output onFailure [order:-1] - On Failure
+ * @output onFailure [order:-1] [hidden] - On Failure
  */
 export async function genesisCommit(
   execute: boolean,
-  env: WeaverEnv,
-  genesisConfigJson: string,
-  snapshotPath: string,
-  approved: boolean,
+  ctx: string,
 ): Promise<{
   onSuccess: boolean; onFailure: boolean;
-  env: WeaverEnv;
-  genesisConfigJson: string;
-  commitResultJson: string;
+  ctx: string;
 }> {
+  const context = JSON.parse(ctx) as GenesisContext;
+
   if (!execute) {
-    return { onSuccess: true, onFailure: false, env, genesisConfigJson, commitResultJson: JSON.stringify({ committed: false, reason: 'dry run' }) };
+    context.commitResultJson = JSON.stringify({ committed: false, reason: 'dry run' });
+    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   }
 
-  const config = JSON.parse(genesisConfigJson) as GenesisConfig;
+  const { env } = context;
+  const config = JSON.parse(context.genesisConfigJson) as GenesisConfig;
   const targetPath = path.resolve(env.projectDir, config.targetWorkflow);
 
-  if (!approved) {
+  if (!context.approved) {
     // Restore from snapshot
     const store = new GenesisStore(env.projectDir);
-    const snapshot = store.loadSnapshot(snapshotPath);
+    const snapshot = store.loadSnapshot(context.snapshotPath!);
     if (snapshot) {
       fs.writeFileSync(targetPath, snapshot, 'utf-8');
       console.log('\x1b[33m→ Restored from snapshot (not approved)\x1b[0m');
     }
-    return {
-      onSuccess: false, onFailure: true,
-      env, genesisConfigJson,
-      commitResultJson: JSON.stringify({ committed: false, reason: 'not approved' }),
-    };
+    context.commitResultJson = JSON.stringify({ committed: false, reason: 'not approved' });
+    return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
   }
 
   try {
@@ -69,18 +60,12 @@ export async function genesisCommit(
     });
 
     console.log(`\x1b[32m→ Committed: ${message}\x1b[0m`);
-    return {
-      onSuccess: true, onFailure: false,
-      env, genesisConfigJson,
-      commitResultJson: JSON.stringify({ committed: true, message }),
-    };
+    context.commitResultJson = JSON.stringify({ committed: true, message });
+    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`\x1b[31m→ Commit failed: ${msg}\x1b[0m`);
-    return {
-      onSuccess: false, onFailure: true,
-      env, genesisConfigJson,
-      commitResultJson: JSON.stringify({ committed: false, reason: msg }),
-    };
+    context.commitResultJson = JSON.stringify({ committed: false, reason: msg });
+    return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
   }
 }

@@ -11,21 +11,20 @@ import { weaverReport } from '../node-types/report.js';
 
 /**
  * @flowWeaver workflow
- * @node cfg weaverLoadConfig [color: "teal"] [icon: "settings"] [position: 100 0]
- * @node detect weaverDetectProvider [color: "cyan"] [icon: "search"] [position: 250 0]
- * @node target weaverResolveTarget [color: "blue"] [icon: "code"] [position: 400 0]
- * @node exec weaverExecuteTarget [color: "purple"] [icon: "psychology"] [position: 550 0]
- * @node notify weaverSendNotify [color: "yellow"] [icon: "notifications"] [position: 700 0]
- * @node rep weaverReport [color: "green"] [icon: "description"] [position: 850 0]
+ * @node cfg weaverLoadConfig [color: "teal"] [icon: "settings"] [position: 200 0]
+ * @node detect weaverDetectProvider [color: "cyan"] [icon: "search"] [position: 400 0]
+ * @node target weaverResolveTarget [color: "blue"] [icon: "code"] [position: 600 0]
+ * @node exec weaverExecuteTarget [color: "purple"] [icon: "psychology"] [position: 800 0]
+ * @node notify weaverSendNotify [color: "yellow"] [icon: "notifications"] [position: 1000 0]
+ * @node rep weaverReport [color: "green"] [icon: "description"] [position: 1200 0]
  * @path Start -> cfg -> detect -> target -> exec -> notify -> rep -> Exit
  * @position Start 0 0
- * @position Exit 1000 0
- * @connect exec.targetPath -> rep.targetPath
+ * @position Exit 1400 0
  * @connect rep.summary -> Exit.summary
  * @param execute [order:-1] - Execute
- * @param params [order:0] - Params
+ * @param params [order:0] [hidden] - Params
  * @returns onSuccess [order:-2] - On Success
- * @returns onFailure [order:-1] - On Failure
+ * @returns onFailure [order:-1] [hidden] - On Failure
  * @returns summary [order:0] - Summary text
  */
 export async function weaver(

@@ -1,4 +1,4 @@
-import type { WeaverEnv, GenesisConfig, GenesisProposal, GenesisOperation } from '../bot/types.js';
+import type { GenesisConfig, GenesisProposal, GenesisOperation, GenesisContext } from '../bot/types.js';
 
 const COST_MAP: Record<string, number> = {
   addNode: 1,
@@ -16,33 +16,19 @@ const COST_MAP: Record<string, number> = {
  * @flowWeaver nodeType
  * @expression
  * @label Genesis Validate Proposal
- * @input env [order:0] - Weaver environment bundle
- * @input genesisConfigJson [order:1] - Genesis configuration (JSON)
- * @input proposalJson [order:2] - Genesis proposal (JSON)
- * @input stabilized [order:3] - Whether stabilize mode is active
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output genesisConfigJson [order:1] - Genesis configuration (pass-through)
- * @output proposalJson [order:2] - Validated/trimmed proposal (JSON)
- * @output stabilized [order:3] - Whether stabilize mode is active (pass-through)
+ * @input ctx [order:0] - Genesis context (JSON)
+ * @output ctx [order:0] - Genesis context with validated proposalJson (JSON)
+ * @output onFailure [hidden]
  */
-export function genesisValidateProposal(
-  env: WeaverEnv,
-  genesisConfigJson: string,
-  proposalJson: string,
-  stabilized: boolean,
-): {
-  env: WeaverEnv;
-  genesisConfigJson: string;
-  proposalJson: string;
-  stabilized: boolean;
-} {
-  const config = JSON.parse(genesisConfigJson) as GenesisConfig;
-  const proposal = JSON.parse(proposalJson) as GenesisProposal;
+export function genesisValidateProposal(ctx: string): { ctx: string } {
+  const context = JSON.parse(ctx) as GenesisContext;
+  const config = JSON.parse(context.genesisConfigJson) as GenesisConfig;
+  const proposal = JSON.parse(context.proposalJson!) as GenesisProposal;
 
   let ops = proposal.operations;
 
   // In stabilize mode, hard-reject addNode and addConnection
-  if (stabilized) {
+  if (context.stabilized) {
     const before = ops.length;
     ops = ops.filter(op => op.type !== 'addNode' && op.type !== 'addConnection');
     if (ops.length < before) {
@@ -70,9 +56,6 @@ export function genesisValidateProposal(
 
   console.log(`\x1b[36m→ Validated proposal: ${ops.length} ops, cost=${totalCost}/${config.budgetPerCycle}\x1b[0m`);
 
-  return {
-    env, genesisConfigJson,
-    proposalJson: JSON.stringify(validated),
-    stabilized,
-  };
+  context.proposalJson = JSON.stringify(validated);
+  return { ctx: JSON.stringify(context) };
 }

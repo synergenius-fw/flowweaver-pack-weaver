@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { WeaverEnv, GenesisConfig } from '../bot/types.js';
+import type { GenesisConfig, GenesisContext } from '../bot/types.js';
 import { GenesisStore } from '../bot/genesis-store.js';
 
 /**
@@ -10,32 +10,21 @@ import { GenesisStore } from '../bot/genesis-store.js';
  * @flowWeaver nodeType
  * @expression
  * @label Genesis Snapshot
- * @input env [order:0] - Weaver environment bundle
- * @input genesisConfigJson [order:1] - Genesis configuration (JSON)
- * @input cycleId [order:2] - Cycle identifier
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output genesisConfigJson [order:1] - Genesis configuration (pass-through)
- * @output cycleId [order:2] - Cycle identifier (pass-through)
- * @output snapshotPath [order:3] - Path to the saved snapshot file
+ * @input ctx [order:0] - Genesis context (JSON)
+ * @output ctx [order:0] - Genesis context with snapshotPath (JSON)
+ * @output onFailure [hidden]
  */
-export function genesisSnapshot(
-  env: WeaverEnv,
-  genesisConfigJson: string,
-  cycleId: string,
-): {
-  env: WeaverEnv;
-  genesisConfigJson: string;
-  cycleId: string;
-  snapshotPath: string;
-} {
-  const config = JSON.parse(genesisConfigJson) as GenesisConfig;
-  const targetPath = path.resolve(env.projectDir, config.targetWorkflow);
+export function genesisSnapshot(ctx: string): { ctx: string } {
+  const context = JSON.parse(ctx) as GenesisContext;
+  const config = JSON.parse(context.genesisConfigJson) as GenesisConfig;
+  const targetPath = path.resolve(context.env.projectDir, config.targetWorkflow);
   const content = fs.readFileSync(targetPath, 'utf-8');
 
-  const store = new GenesisStore(env.projectDir);
-  const snapshotPath = store.saveSnapshot(cycleId, content);
+  const store = new GenesisStore(context.env.projectDir);
+  const snapshotPath = store.saveSnapshot(context.cycleId, content);
 
   console.log(`\x1b[36m→ Snapshot saved: ${snapshotPath}\x1b[0m`);
 
-  return { env, genesisConfigJson, cycleId, snapshotPath };
+  context.snapshotPath = snapshotPath;
+  return { ctx: JSON.stringify(context) };
 }

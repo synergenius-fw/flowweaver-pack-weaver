@@ -1,4 +1,4 @@
-import type { WeaverEnv } from '../bot/types.js';
+import type { WeaverContext } from '../bot/types.js';
 
 /**
  * Handles the rejection path from the approval gate.
@@ -7,34 +7,25 @@ import type { WeaverEnv } from '../bot/types.js';
  * @flowWeaver nodeType
  * @expression
  * @label Abort Task
- * @input env [order:0] - Weaver environment bundle
- * @input taskJson [order:1] - Task (JSON)
- * @input rejectionReason [order:2] - Rejection reason
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output taskJson [order:1] - Task (pass-through)
- * @output resultJson [order:2] - Abort result (JSON)
- * @output filesModified [order:3] - Files modified (empty, JSON)
+ * @input ctx [order:0] - Weaver context (JSON)
+ * @output ctx [order:0] - Weaver context with abort resultJson (JSON)
+ * @output onFailure [hidden]
  */
-export function weaverAbortTask(
-  env: WeaverEnv,
-  taskJson: string,
-  rejectionReason: string,
-): { env: WeaverEnv; taskJson: string; resultJson: string; filesModified: string } {
-  const task = JSON.parse(taskJson) as { instruction?: string };
+export function weaverAbortTask(ctx: string): { ctx: string } {
+  const context = JSON.parse(ctx) as WeaverContext;
+  const task = JSON.parse(context.taskJson!) as { instruction?: string };
   const result = {
     success: false,
     outcome: 'aborted',
-    summary: `Task aborted: ${rejectionReason}`,
+    summary: `Task aborted: ${context.rejectionReason}`,
     instruction: task.instruction,
     filesModified: [],
     filesCreated: [],
   };
 
-  console.log(`\x1b[33m→ Task aborted: ${rejectionReason}\x1b[0m`);
+  console.log(`\x1b[33m→ Task aborted: ${context.rejectionReason}\x1b[0m`);
 
-  return {
-    env, taskJson,
-    resultJson: JSON.stringify(result),
-    filesModified: '[]',
-  };
+  context.resultJson = JSON.stringify(result);
+  context.filesModified = '[]';
+  return { ctx: JSON.stringify(context) };
 }

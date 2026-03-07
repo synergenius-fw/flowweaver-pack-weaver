@@ -6,7 +6,7 @@ import { weaverDetectProvider } from '../src/node-types/detect-provider.js';
 import { weaverResolveTarget } from '../src/node-types/resolve-target.js';
 import { weaverSendNotify } from '../src/node-types/send-notify.js';
 import { weaverReport } from '../src/node-types/report.js';
-import type { WeaverEnv } from '../src/bot/types.js';
+import type { WeaverEnv, WeaverContext } from '../src/bot/types.js';
 
 describe('weaverLoadConfig', () => {
   let tmpDir: string;
@@ -145,7 +145,8 @@ describe('weaverResolveTarget', () => {
     const wfPath = path.join(tmpDir, 'my-workflow.ts');
     fs.writeFileSync(wfPath, '// workflow');
     const result = weaverResolveTarget(makeEnv({ target: 'my-workflow.ts' }));
-    expect(result.targetPath).toBe(wfPath);
+    const ctx = JSON.parse(result.ctx) as WeaverContext;
+    expect(ctx.targetPath).toBe(wfPath);
   });
 
   it('throws when explicit target not found', () => {
@@ -158,7 +159,8 @@ describe('weaverResolveTarget', () => {
     const wfPath = path.join(tmpDir, 'test.ts');
     fs.writeFileSync(wfPath, '/** @flowWeaver workflow */\nexport function test() {}');
     const result = weaverResolveTarget(makeEnv());
-    expect(result.targetPath).toBe(wfPath);
+    const ctx = JSON.parse(result.ctx) as WeaverContext;
+    expect(ctx.targetPath).toBe(wfPath);
   });
 
   it('throws when no workflows found', () => {
@@ -175,51 +177,62 @@ describe('weaverResolveTarget', () => {
     );
   });
 
-  it('passes through env', () => {
+  it('includes env in context', () => {
     const wfPath = path.join(tmpDir, 'w.ts');
     fs.writeFileSync(wfPath, '// file');
     const env = makeEnv({ target: 'w.ts' });
     const result = weaverResolveTarget(env);
-    expect(result.env).toBe(env);
+    const ctx = JSON.parse(result.ctx) as WeaverContext;
+    expect(ctx.env).toEqual(env);
   });
 });
 
 describe('weaverSendNotify', () => {
-  function makeEnv(config = {}): WeaverEnv {
-    return {
-      projectDir: '/proj',
-      config: { provider: 'auto', ...config },
-      providerType: 'anthropic',
-      providerInfo: { type: 'anthropic' },
+  function makeCtx(config = {}, extra = {}): string {
+    const ctx: WeaverContext = {
+      env: {
+        projectDir: '/proj',
+        config: { provider: 'auto', ...config },
+        providerType: 'anthropic',
+        providerInfo: { type: 'anthropic' },
+      },
+      targetPath: '/proj/wf.ts',
+      resultJson: JSON.stringify({ success: true, outcome: 'completed' }),
+      ...extra,
     };
+    return JSON.stringify(ctx);
   }
 
   it('returns pass-through values when no notify config', () => {
-    const resultJson = JSON.stringify({ success: true, outcome: 'completed' });
-    const result = weaverSendNotify(makeEnv(), resultJson);
-    expect(result.env.projectDir).toBe('/proj');
-    expect(result.resultJson).toBe(resultJson);
+    const result = weaverSendNotify(makeCtx());
+    const ctx = JSON.parse(result.ctx) as WeaverContext;
+    expect(ctx.env.projectDir).toBe('/proj');
+    expect(ctx.resultJson).toBe(JSON.stringify({ success: true, outcome: 'completed' }));
   });
 
   it('handles notify as array', () => {
-    const env = makeEnv({
+    const ctx = makeCtx({
       notify: [{ channel: 'webhook', url: 'http://localhost:9999/hook', events: ['error'] }],
     });
-    const resultJson = JSON.stringify({ success: true, outcome: 'completed' });
-    // Should not send (event is workflow-complete, not error)
-    const result = weaverSendNotify(env, resultJson);
-    expect(result.env.projectDir).toBe('/proj');
+    const result = weaverSendNotify(ctx);
+    const parsed = JSON.parse(result.ctx) as WeaverContext;
+    expect(parsed.env.projectDir).toBe('/proj');
   });
 });
 
 describe('weaverReport', () => {
-  function makeEnv(): WeaverEnv {
-    return {
-      projectDir: '/project',
-      config: { provider: 'auto' },
-      providerType: 'anthropic',
-      providerInfo: { type: 'anthropic' },
+  function makeCtx(targetPath: string, resultJson: string): string {
+    const ctx: WeaverContext = {
+      env: {
+        projectDir: '/project',
+        config: { provider: 'auto' },
+        providerType: 'anthropic',
+        providerInfo: { type: 'anthropic' },
+      },
+      targetPath,
+      resultJson,
     };
+    return JSON.stringify(ctx);
   }
 
   it('formats summary with relative path', () => {
@@ -228,7 +241,7 @@ describe('weaverReport', () => {
       summary: 'All good',
       executionTime: 2.5,
     });
-    const result = weaverReport(makeEnv(), '/project/src/workflow.ts', resultJson);
+    const result = weaverReport(makeCtx('/project/src/workflow.ts', resultJson));
     expect(result.summary).toContain('src/workflow.ts');
     expect(result.summary).toContain('completed');
     expect(result.summary).toContain('All good');
@@ -240,7 +253,7 @@ describe('weaverReport', () => {
       outcome: 'failed',
       summary: 'Something broke',
     });
-    const result = weaverReport(makeEnv(), '/project/wf.ts', resultJson);
+    const result = weaverReport(makeCtx('/project/wf.ts', resultJson));
     expect(result.summary).toContain('failed');
     expect(result.summary).not.toContain('Time:');
   });

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type { WeaverEnv } from '../src/bot/types.js';
+import type { WeaverEnv, WeaverContext } from '../src/bot/types.js';
 import { weaverRouteTask } from '../src/node-types/route-task.js';
 import { weaverAbortTask } from '../src/node-types/abort-task.js';
 import { weaverBotReport } from '../src/node-types/bot-report.js';
@@ -18,108 +18,128 @@ function makeEnv(overrides?: Partial<WeaverEnv>): WeaverEnv {
   };
 }
 
+function makeWeaverCtx(overrides: Partial<WeaverContext> = {}): string {
+  return JSON.stringify({
+    env: makeEnv(),
+    taskJson: '{}',
+    ...overrides,
+  });
+}
+
 // --- Tier 1: Pure functions (no mocking) ---
 
 describe('weaverRouteTask', () => {
-  const env = makeEnv();
-
   it('routes create mode through success path', () => {
     const task = { instruction: 'build something', mode: 'create' };
-    const result = weaverRouteTask(env, JSON.stringify(task));
-    expect(result.env).toBe(env);
-    expect(result.taskJson).toBe(JSON.stringify(task));
+    const ctx = makeWeaverCtx({ taskJson: JSON.stringify(task) });
+    const result = weaverRouteTask(ctx);
+    const parsed = JSON.parse(result.ctx) as WeaverContext;
+    expect(parsed.taskJson).toBe(JSON.stringify(task));
   });
 
   it('routes modify mode through success path', () => {
     const task = { instruction: 'fix something', mode: 'modify' };
-    const result = weaverRouteTask(env, JSON.stringify(task));
-    expect(result.taskJson).toBe(JSON.stringify(task));
+    const ctx = makeWeaverCtx({ taskJson: JSON.stringify(task) });
+    const result = weaverRouteTask(ctx);
+    const parsed = JSON.parse(result.ctx) as WeaverContext;
+    expect(parsed.taskJson).toBe(JSON.stringify(task));
   });
 
   it('routes batch mode through success path', () => {
     const task = { instruction: 'batch ops', mode: 'batch' };
-    const result = weaverRouteTask(env, JSON.stringify(task));
-    expect(result.taskJson).toBe(JSON.stringify(task));
+    const ctx = makeWeaverCtx({ taskJson: JSON.stringify(task) });
+    const result = weaverRouteTask(ctx);
+    const parsed = JSON.parse(result.ctx) as WeaverContext;
+    expect(parsed.taskJson).toBe(JSON.stringify(task));
   });
 
   it('throws for read mode (fail path)', () => {
     const task = { instruction: 'describe workflow', mode: 'read' };
-    expect(() => weaverRouteTask(env, JSON.stringify(task))).toThrow('read-only-route');
+    const ctx = makeWeaverCtx({ taskJson: JSON.stringify(task) });
+    expect(() => weaverRouteTask(ctx)).toThrow('read-only-route');
   });
 
   it('defaults to create mode when mode is not specified', () => {
     const task = { instruction: 'no mode set' };
-    const result = weaverRouteTask(env, JSON.stringify(task));
-    expect(result.taskJson).toBe(JSON.stringify(task));
+    const ctx = makeWeaverCtx({ taskJson: JSON.stringify(task) });
+    const result = weaverRouteTask(ctx);
+    const parsed = JSON.parse(result.ctx) as WeaverContext;
+    expect(parsed.taskJson).toBe(JSON.stringify(task));
   });
 });
 
 describe('weaverAbortTask', () => {
-  const env = makeEnv();
-
   it('returns result with success=false and outcome=aborted', () => {
     const task = { instruction: 'do something' };
-    const result = weaverAbortTask(env, JSON.stringify(task), 'user rejected');
-    const parsed = JSON.parse(result.resultJson);
+    const ctx = makeWeaverCtx({ taskJson: JSON.stringify(task), rejectionReason: 'user rejected' });
+    const result = weaverAbortTask(ctx);
+    const parsed = JSON.parse(result.ctx) as WeaverContext;
+    const resultObj = JSON.parse(parsed.resultJson!);
 
-    expect(parsed.success).toBe(false);
-    expect(parsed.outcome).toBe('aborted');
-    expect(parsed.summary).toContain('user rejected');
-    expect(parsed.instruction).toBe('do something');
-    expect(parsed.filesModified).toEqual([]);
-    expect(parsed.filesCreated).toEqual([]);
+    expect(resultObj.success).toBe(false);
+    expect(resultObj.outcome).toBe('aborted');
+    expect(resultObj.summary).toContain('user rejected');
+    expect(resultObj.instruction).toBe('do something');
+    expect(resultObj.filesModified).toEqual([]);
+    expect(resultObj.filesCreated).toEqual([]);
   });
 
-  it('passes env through', () => {
-    const result = weaverAbortTask(env, '{}', 'reason');
-    expect(result.env).toBe(env);
+  it('preserves env through', () => {
+    const ctx = makeWeaverCtx({ taskJson: '{}', rejectionReason: 'reason' });
+    const result = weaverAbortTask(ctx);
+    const parsed = JSON.parse(result.ctx) as WeaverContext;
+    expect(parsed.env.projectDir).toBe('/tmp/test');
   });
 
   it('returns empty filesModified array', () => {
-    const result = weaverAbortTask(env, '{}', 'reason');
-    expect(result.filesModified).toBe('[]');
+    const ctx = makeWeaverCtx({ taskJson: '{}', rejectionReason: 'reason' });
+    const result = weaverAbortTask(ctx);
+    const parsed = JSON.parse(result.ctx) as WeaverContext;
+    expect(parsed.filesModified).toBe('[]');
   });
 });
 
 describe('weaverBotReport', () => {
   it('reports from read path', () => {
-    const readResult = JSON.stringify({ success: true, outcome: 'read', summary: 'Workflow has 5 nodes' });
-    const result = weaverBotReport(readResult);
+    const readCtx = makeWeaverCtx({ resultJson: JSON.stringify({ success: true, outcome: 'read', summary: 'Workflow has 5 nodes' }) });
+    const result = weaverBotReport(undefined, readCtx);
     const report = JSON.parse(result.reportJson);
     expect(report.path).toBe('read');
     expect(result.summary).toContain('read');
   });
 
   it('reports from main path', () => {
-    const mainResult = JSON.stringify({ success: true, outcome: 'completed', summary: 'Created workflow' });
-    const result = weaverBotReport(undefined, mainResult);
+    const mainCtx = makeWeaverCtx({ resultJson: JSON.stringify({ success: true, outcome: 'completed', summary: 'Created workflow' }) });
+    const result = weaverBotReport(mainCtx);
     const report = JSON.parse(result.reportJson);
     expect(report.path).toBe('main');
     expect(result.summary).toContain('completed');
   });
 
   it('reports from abort path', () => {
-    const abortResult = JSON.stringify({ success: false, outcome: 'aborted', summary: 'Task aborted' });
-    const result = weaverBotReport(undefined, undefined, abortResult);
+    const abortCtx = makeWeaverCtx({ resultJson: JSON.stringify({ success: false, outcome: 'aborted', summary: 'Task aborted' }) });
+    const result = weaverBotReport(undefined, undefined, abortCtx);
     const report = JSON.parse(result.reportJson);
     expect(report.path).toBe('abort');
     expect(result.summary).toContain('aborted');
   });
 
   it('read path takes priority over main and abort', () => {
-    const readResult = JSON.stringify({ success: true, outcome: 'read' });
-    const mainResult = JSON.stringify({ success: true, outcome: 'completed' });
-    const abortResult = JSON.stringify({ success: false, outcome: 'aborted' });
-    const result = weaverBotReport(readResult, mainResult, abortResult);
+    const readCtx = makeWeaverCtx({ resultJson: JSON.stringify({ success: true, outcome: 'read' }) });
+    const mainCtx = makeWeaverCtx({ resultJson: JSON.stringify({ success: true, outcome: 'completed' }) });
+    const abortCtx = makeWeaverCtx({ resultJson: JSON.stringify({ success: false, outcome: 'aborted' }) });
+    const result = weaverBotReport(mainCtx, readCtx, abortCtx);
     const report = JSON.parse(result.reportJson);
     expect(report.path).toBe('read');
   });
 
   it('includes file count and git info in summary', () => {
-    const mainResult = JSON.stringify({ success: true, outcome: 'completed' });
-    const files = JSON.stringify(['a.ts', 'b.ts']);
-    const git = JSON.stringify({ skipped: false, results: ['Committed'] });
-    const result = weaverBotReport(undefined, mainResult, undefined, '{}', files, git);
+    const mainCtx = makeWeaverCtx({
+      resultJson: JSON.stringify({ success: true, outcome: 'completed' }),
+      filesModified: JSON.stringify(['a.ts', 'b.ts']),
+      gitResultJson: JSON.stringify({ skipped: false, results: ['Committed'] }),
+    });
+    const result = weaverBotReport(mainCtx);
     expect(result.summary).toContain('2 modified');
     expect(result.summary).toContain('Git: committed');
   });
@@ -155,28 +175,38 @@ describe('weaverGitOps', () => {
     execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'pipe' });
   }
 
+  function makeGitCtx(envOverrides: Partial<WeaverEnv> = {}, ctxOverrides: Partial<WeaverContext> = {}): string {
+    return JSON.stringify({
+      env: makeEnv({ projectDir: tmpDir, ...envOverrides }),
+      ...ctxOverrides,
+    });
+  }
+
   it('skips when git disabled', () => {
-    const env = makeEnv({ projectDir: tmpDir, config: { provider: 'auto', git: { enabled: false } } as any });
-    const result = weaverGitOps(env, JSON.stringify(['some-file.ts']));
-    const parsed = JSON.parse(result.gitResultJson);
-    expect(parsed.skipped).toBe(true);
-    expect(parsed.reason).toBe('git disabled');
+    const ctx = makeGitCtx({ config: { provider: 'auto', git: { enabled: false } } as any }, { filesModified: JSON.stringify(['some-file.ts']) });
+    const result = weaverGitOps(ctx);
+    const parsed = JSON.parse(result.ctx) as WeaverContext;
+    const gitResult = JSON.parse(parsed.gitResultJson!);
+    expect(gitResult.skipped).toBe(true);
+    expect(gitResult.reason).toBe('git disabled');
   });
 
   it('skips when no files', () => {
-    const env = makeEnv({ projectDir: tmpDir });
-    const result = weaverGitOps(env, '[]');
-    const parsed = JSON.parse(result.gitResultJson);
-    expect(parsed.skipped).toBe(true);
-    expect(parsed.reason).toBe('no files');
+    const ctx = makeGitCtx({}, { filesModified: '[]' });
+    const result = weaverGitOps(ctx);
+    const parsed = JSON.parse(result.ctx) as WeaverContext;
+    const gitResult = JSON.parse(parsed.gitResultJson!);
+    expect(gitResult.skipped).toBe(true);
+    expect(gitResult.reason).toBe('no files');
   });
 
   it('skips when not a git repo', () => {
-    const env = makeEnv({ projectDir: tmpDir });
-    const result = weaverGitOps(env, JSON.stringify(['file.ts']));
-    const parsed = JSON.parse(result.gitResultJson);
-    expect(parsed.skipped).toBe(true);
-    expect(parsed.reason).toBe('not a git repo');
+    const ctx = makeGitCtx({}, { filesModified: JSON.stringify(['file.ts']) });
+    const result = weaverGitOps(ctx);
+    const parsed = JSON.parse(result.ctx) as WeaverContext;
+    const gitResult = JSON.parse(parsed.gitResultJson!);
+    expect(gitResult.skipped).toBe(true);
+    expect(gitResult.reason).toBe('not a git repo');
   });
 
   it('stages and commits files with default prefix', () => {
@@ -184,11 +214,12 @@ describe('weaverGitOps', () => {
     const testFile = path.join(tmpDir, 'workflow.ts');
     fs.writeFileSync(testFile, 'export default {};');
 
-    const env = makeEnv({ projectDir: tmpDir });
-    const result = weaverGitOps(env, JSON.stringify([testFile]));
-    const parsed = JSON.parse(result.gitResultJson);
-    expect(parsed.skipped).toBe(false);
-    expect(parsed.results.some((r: string) => r.includes('weaver:'))).toBe(true);
+    const ctx = makeGitCtx({}, { filesModified: JSON.stringify([testFile]) });
+    const result = weaverGitOps(ctx);
+    const parsed = JSON.parse(result.ctx) as WeaverContext;
+    const gitResult = JSON.parse(parsed.gitResultJson!);
+    expect(gitResult.skipped).toBe(false);
+    expect(gitResult.results.some((r: string) => r.includes('weaver:'))).toBe(true);
   });
 
   it('uses custom commit prefix', () => {
@@ -196,13 +227,14 @@ describe('weaverGitOps', () => {
     const testFile = path.join(tmpDir, 'workflow.ts');
     fs.writeFileSync(testFile, 'export default {};');
 
-    const env = makeEnv({
-      projectDir: tmpDir,
-      config: { provider: 'auto', git: { commitPrefix: 'custom:' } } as any,
-    });
-    const result = weaverGitOps(env, JSON.stringify([testFile]));
-    const parsed = JSON.parse(result.gitResultJson);
-    expect(parsed.results.some((r: string) => r.includes('custom:'))).toBe(true);
+    const ctx = makeGitCtx(
+      { config: { provider: 'auto', git: { commitPrefix: 'custom:' } } as any },
+      { filesModified: JSON.stringify([testFile]) },
+    );
+    const result = weaverGitOps(ctx);
+    const parsed = JSON.parse(result.ctx) as WeaverContext;
+    const gitResult = JSON.parse(parsed.gitResultJson!);
+    expect(gitResult.results.some((r: string) => r.includes('custom:'))).toBe(true);
   });
 
   it('creates branch when specified', () => {
@@ -211,13 +243,14 @@ describe('weaverGitOps', () => {
     fs.writeFileSync(testFile, 'export default {};');
 
     const branchName = `test-branch-${Date.now()}`;
-    const env = makeEnv({
-      projectDir: tmpDir,
-      config: { provider: 'auto', git: { branch: branchName } } as any,
-    });
-    const result = weaverGitOps(env, JSON.stringify([testFile]));
-    const parsed = JSON.parse(result.gitResultJson);
-    expect(parsed.results.some((r: string) => r.includes(branchName))).toBe(true);
+    const ctx = makeGitCtx(
+      { config: { provider: 'auto', git: { branch: branchName } } as any },
+      { filesModified: JSON.stringify([testFile]) },
+    );
+    const result = weaverGitOps(ctx);
+    const parsed = JSON.parse(result.ctx) as WeaverContext;
+    const gitResult = JSON.parse(parsed.gitResultJson!);
+    expect(gitResult.results.some((r: string) => r.includes(branchName))).toBe(true);
   });
 });
 
@@ -276,22 +309,29 @@ describe('genesisCheckStabilize', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  function makeCtx(overrides: Record<string, unknown> = {}) {
+    return JSON.stringify({
+      env: makeEnv({ projectDir: tmpDir }),
+      genesisConfigJson: JSON.stringify({ stabilize: false, intent: '', focus: [], constraints: [], approvalThreshold: 'MINOR', budgetPerCycle: 3, targetWorkflow: '', maxCyclesPerRun: 10 }),
+      cycleId: 'test-cycle',
+      ...overrides,
+    });
+  }
+
   it('returns stabilized=true when config flag is set', () => {
-    const env = makeEnv({ projectDir: tmpDir });
-    const config = { stabilize: true, intent: '', focus: [], constraints: [], approvalThreshold: 'MINOR', budgetPerCycle: 3, targetWorkflow: '', maxCyclesPerRun: 10 };
-    const result = genesisCheckStabilize(env, JSON.stringify(config));
-    expect(result.stabilized).toBe(true);
+    const ctx = makeCtx({ genesisConfigJson: JSON.stringify({ stabilize: true, intent: '', focus: [], constraints: [], approvalThreshold: 'MINOR', budgetPerCycle: 3, targetWorkflow: '', maxCyclesPerRun: 10 }) });
+    const result = genesisCheckStabilize(ctx);
+    const parsed = JSON.parse(result.ctx);
+    expect(parsed.stabilized).toBe(true);
   });
 
   it('returns stabilized=false when config flag is off and no history', () => {
-    const env = makeEnv({ projectDir: tmpDir });
-    const config = { stabilize: false, intent: '', focus: [], constraints: [], approvalThreshold: 'MINOR', budgetPerCycle: 3, targetWorkflow: '', maxCyclesPerRun: 10 };
-    const result = genesisCheckStabilize(env, JSON.stringify(config));
-    expect(result.stabilized).toBe(false);
+    const result = genesisCheckStabilize(makeCtx());
+    const parsed = JSON.parse(result.ctx);
+    expect(parsed.stabilized).toBe(false);
   });
 
   it('returns stabilized=true after 3 consecutive rollbacks', () => {
-    const env = makeEnv({ projectDir: tmpDir });
     const store = new GenesisStore(tmpDir);
 
     for (let i = 0; i < 3; i++) {
@@ -303,17 +343,16 @@ describe('genesisCheckStabilize', () => {
       });
     }
 
-    const config = { stabilize: false, intent: '', focus: [], constraints: [], approvalThreshold: 'MINOR', budgetPerCycle: 3, targetWorkflow: '', maxCyclesPerRun: 10 };
-    const result = genesisCheckStabilize(env, JSON.stringify(config));
-    expect(result.stabilized).toBe(true);
+    const result = genesisCheckStabilize(makeCtx());
+    const parsed = JSON.parse(result.ctx);
+    expect(parsed.stabilized).toBe(true);
   });
 
-  it('passes env and config through', () => {
-    const env = makeEnv({ projectDir: tmpDir });
-    const configStr = JSON.stringify({ stabilize: false, intent: '', focus: [], constraints: [], approvalThreshold: 'MINOR', budgetPerCycle: 3, targetWorkflow: '', maxCyclesPerRun: 10 });
-    const result = genesisCheckStabilize(env, configStr);
-    expect(result.env).toBe(env);
-    expect(result.genesisConfigJson).toBe(configStr);
+  it('preserves context fields through', () => {
+    const result = genesisCheckStabilize(makeCtx());
+    const parsed = JSON.parse(result.ctx);
+    expect(parsed.env.projectDir).toBe(tmpDir);
+    expect(parsed.genesisConfigJson).toBeTruthy();
   });
 });
 
@@ -328,6 +367,16 @@ describe('genesisValidateProposal', () => {
   const env = makeEnv();
   const baseConfig = { stabilize: false, intent: '', focus: [], constraints: [], approvalThreshold: 'MINOR', budgetPerCycle: 3, targetWorkflow: 'test.ts', maxCyclesPerRun: 10 };
 
+  function makeCtx(proposal: Record<string, unknown>, stabilized = false) {
+    return JSON.stringify({
+      env,
+      genesisConfigJson: JSON.stringify(baseConfig),
+      cycleId: 'test',
+      proposalJson: JSON.stringify(proposal),
+      stabilized,
+    });
+  }
+
   it('recalculates cost units from the cost map', () => {
     const proposal = {
       operations: [
@@ -336,8 +385,8 @@ describe('genesisValidateProposal', () => {
       ],
       totalCost: 999, impactLevel: 'MINOR', summary: 'test', rationale: '',
     };
-    const result = genesisValidateProposal(env, JSON.stringify(baseConfig), JSON.stringify(proposal), false);
-    const parsed = JSON.parse(result.proposalJson);
+    const result = genesisValidateProposal(makeCtx(proposal));
+    const parsed = JSON.parse(JSON.parse(result.ctx).proposalJson);
     expect(parsed.operations[0].costUnits).toBe(1); // addNode = 1
     expect(parsed.operations[1].costUnits).toBe(2); // implementNode = 2
     expect(parsed.totalCost).toBe(3);
@@ -353,9 +402,8 @@ describe('genesisValidateProposal', () => {
       ],
       totalCost: 5, impactLevel: 'MINOR', summary: 'test', rationale: '',
     };
-    // Budget is 3. addNode(1) + addNode(1) + implementNode(2) = 4 > 3
-    const result = genesisValidateProposal(env, JSON.stringify(baseConfig), JSON.stringify(proposal), false);
-    const parsed = JSON.parse(result.proposalJson);
+    const result = genesisValidateProposal(makeCtx(proposal));
+    const parsed = JSON.parse(JSON.parse(result.ctx).proposalJson);
     expect(parsed.totalCost).toBeLessThanOrEqual(3);
   });
 
@@ -369,8 +417,8 @@ describe('genesisValidateProposal', () => {
       ],
       totalCost: 5, impactLevel: 'MINOR', summary: 'test', rationale: '',
     };
-    const result = genesisValidateProposal(env, JSON.stringify(baseConfig), JSON.stringify(proposal), true);
-    const parsed = JSON.parse(result.proposalJson);
+    const result = genesisValidateProposal(makeCtx(proposal, true));
+    const parsed = JSON.parse(JSON.parse(result.ctx).proposalJson);
     const types = parsed.operations.map((op: { type: string }) => op.type);
     expect(types).not.toContain('addNode');
     expect(types).not.toContain('addConnection');
@@ -389,32 +437,33 @@ describe('genesisCheckThreshold', () => {
 
   const env = makeEnv();
 
+  function makeCtx(config: Record<string, unknown>, proposal: Record<string, unknown>) {
+    return JSON.stringify({
+      env,
+      genesisConfigJson: JSON.stringify(config),
+      cycleId: 'test',
+      proposalJson: JSON.stringify(proposal),
+    });
+  }
+
   it('requires approval when impact >= threshold', () => {
-    const config = { approvalThreshold: 'MINOR' };
-    const proposal = { impactLevel: 'BREAKING', operations: [], totalCost: 0, summary: '', rationale: '' };
-    const result = genesisCheckThreshold(env, JSON.stringify(config), JSON.stringify(proposal));
-    expect(result.approvalRequired).toBe(true);
+    const result = genesisCheckThreshold(makeCtx({ approvalThreshold: 'MINOR' }, { impactLevel: 'BREAKING', operations: [], totalCost: 0, summary: '', rationale: '' }));
+    expect(JSON.parse(result.ctx).approvalRequired).toBe(true);
   });
 
   it('requires approval when impact equals threshold', () => {
-    const config = { approvalThreshold: 'MINOR' };
-    const proposal = { impactLevel: 'MINOR', operations: [], totalCost: 0, summary: '', rationale: '' };
-    const result = genesisCheckThreshold(env, JSON.stringify(config), JSON.stringify(proposal));
-    expect(result.approvalRequired).toBe(true);
+    const result = genesisCheckThreshold(makeCtx({ approvalThreshold: 'MINOR' }, { impactLevel: 'MINOR', operations: [], totalCost: 0, summary: '', rationale: '' }));
+    expect(JSON.parse(result.ctx).approvalRequired).toBe(true);
   });
 
   it('does not require approval when impact < threshold', () => {
-    const config = { approvalThreshold: 'BREAKING' };
-    const proposal = { impactLevel: 'MINOR', operations: [], totalCost: 0, summary: '', rationale: '' };
-    const result = genesisCheckThreshold(env, JSON.stringify(config), JSON.stringify(proposal));
-    expect(result.approvalRequired).toBe(false);
+    const result = genesisCheckThreshold(makeCtx({ approvalThreshold: 'BREAKING' }, { impactLevel: 'MINOR', operations: [], totalCost: 0, summary: '', rationale: '' }));
+    expect(JSON.parse(result.ctx).approvalRequired).toBe(false);
   });
 
   it('COSMETIC impact below any threshold except COSMETIC', () => {
-    const config = { approvalThreshold: 'MINOR' };
-    const proposal = { impactLevel: 'COSMETIC', operations: [], totalCost: 0, summary: '', rationale: '' };
-    const result = genesisCheckThreshold(env, JSON.stringify(config), JSON.stringify(proposal));
-    expect(result.approvalRequired).toBe(false);
+    const result = genesisCheckThreshold(makeCtx({ approvalThreshold: 'MINOR' }, { impactLevel: 'COSMETIC', operations: [], totalCost: 0, summary: '', rationale: '' }));
+    expect(JSON.parse(result.ctx).approvalRequired).toBe(false);
   });
 });
 
@@ -428,30 +477,79 @@ describe('genesisReport', () => {
 
   const env = makeEnv();
 
-  it('reports from error path', () => {
-    const result = genesisReport(env, undefined, 'something broke');
+  function makeCtx(overrides: Record<string, unknown> = {}) {
+    return JSON.stringify({
+      env,
+      genesisConfigJson: '{}',
+      cycleId: 'test',
+      ...overrides,
+    });
+  }
+
+  it('reports from error path (failCtx)', () => {
+    const result = genesisReport(undefined, makeCtx({ error: 'something broke' }));
     expect(result.summary).toContain('something broke');
   });
 
-  it('reports from success path with cycle record', () => {
+  it('reports from error path with apply result', () => {
+    const applyResult = JSON.stringify({ applied: 2, failed: 1, errors: ['addNode: fail'] });
+    const result = genesisReport(undefined, makeCtx({ error: 'compile failed', applyResultJson: applyResult }));
+    expect(result.summary).toContain('compile failed');
+    expect(result.summary).toContain('applied: 2');
+    expect(result.summary).toContain('failed: 1');
+  });
+
+  it('reports from success path (successCtx) with cycle record', () => {
     const record = {
       id: 'cycle-1', timestamp: new Date().toISOString(), durationMs: 500,
       fingerprint: { timestamp: '', files: {}, packageJson: null, gitBranch: null, gitCommit: null, workflowHash: '', existingWorkflows: [] },
       proposal: { operations: [{ type: 'addNode' }], totalCost: 1, impactLevel: 'MINOR', summary: 'test', rationale: '' },
       outcome: 'applied', diffSummary: 'test', approvalRequired: true, approved: true, error: null, snapshotFile: null,
     };
-    const result = genesisReport(env, JSON.stringify(record));
+    const result = genesisReport(makeCtx({ cycleRecordJson: JSON.stringify(record) }));
     expect(result.summary).toContain('cycle-1');
     expect(result.summary).toContain('applied');
   });
 
   it('handles no inputs', () => {
-    const result = genesisReport(env);
+    const result = genesisReport();
     expect(result.summary).toContain('no record');
   });
+});
 
-  it('passes env through', () => {
-    const result = genesisReport(env);
-    expect(result.env).toBe(env);
+describe('genesisTryApply', () => {
+  let genesisTryApply: typeof import('../src/node-types/genesis-try-apply.js').genesisTryApply;
+
+  beforeAll(async () => {
+    const mod = await import('../src/node-types/genesis-try-apply.js');
+    genesisTryApply = mod.genesisTryApply;
+  });
+
+  it('returns success on dry run (execute=false)', async () => {
+    const ctx = JSON.stringify({ env: makeEnv(), genesisConfigJson: '{}', cycleId: 'test', proposalJson: '{}', snapshotPath: '/tmp/snap' });
+    const result = await genesisTryApply(false, ctx);
+    expect(result.onSuccess).toBe(true);
+    expect(result.onFailure).toBe(false);
+    const parsed = JSON.parse(result.ctx);
+    expect(parsed.error).toBe('');
+  });
+});
+
+describe('genesisApplyRetry', () => {
+  let genesisApplyRetry: typeof import('../src/node-types/genesis-apply-retry.js').genesisApplyRetry;
+
+  beforeAll(async () => {
+    const mod = await import('../src/node-types/genesis-apply-retry.js');
+    genesisApplyRetry = mod.genesisApplyRetry;
+  });
+
+  it('returns success on dry run (execute=false)', async () => {
+    const ctx = JSON.stringify({ env: makeEnv(), genesisConfigJson: '{}', cycleId: 'test', proposalJson: '{}', snapshotPath: '/tmp/snap' });
+    const noop = () => ({ success: true, failure: false, attemptCtx: ctx });
+    const result = await genesisApplyRetry(false, ctx, noop);
+    expect(result.onSuccess).toBe(true);
+    expect(result.onFailure).toBe(false);
+    const parsed = JSON.parse(result.ctx);
+    expect(parsed.error).toBe('');
   });
 });

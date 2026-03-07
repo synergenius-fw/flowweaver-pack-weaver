@@ -1,5 +1,6 @@
 // Genesis self-evolution workflow. Observes the project, proposes changes
-// to a target workflow, validates + compiles, and commits or rolls back.
+// to a target workflow, validates + compiles with retry, and commits or
+// rolls back.
 
 import { weaverLoadConfig } from '../node-types/load-config.js';
 import { weaverDetectProvider } from '../node-types/detect-provider.js';
@@ -10,8 +11,8 @@ import { genesisCheckStabilize } from '../node-types/genesis-check-stabilize.js'
 import { genesisPropose } from '../node-types/genesis-propose.js';
 import { genesisValidateProposal } from '../node-types/genesis-validate-proposal.js';
 import { genesisSnapshot } from '../node-types/genesis-snapshot.js';
-import { genesisApply } from '../node-types/genesis-apply.js';
-import { genesisCompileValidate } from '../node-types/genesis-compile-validate.js';
+import { genesisApplyRetry } from '../node-types/genesis-apply-retry.js';
+import { genesisTryApply } from '../node-types/genesis-try-apply.js';
 import { genesisDiffWorkflow } from '../node-types/genesis-diff-workflow.js';
 import { genesisCheckThreshold } from '../node-types/genesis-check-threshold.js';
 import { genesisApprove } from '../node-types/genesis-approve.js';
@@ -21,40 +22,48 @@ import { genesisReport } from '../node-types/genesis-report.js';
 
 /**
  * Genesis self-evolution cycle. Observes the project state, proposes workflow
- * changes within a budget, validates and compiles, then commits or rolls back
- * based on approval.
+ * changes within a budget, validates and compiles with retry, then commits or
+ * rolls back based on approval.
  *
  * @flowWeaver workflow
  *
- * @node cfg       weaverLoadConfig         [color: "teal"]    [icon: "settings"]     [position: 80 200]
- * @node detect    weaverDetectProvider     [color: "cyan"]    [icon: "search"]       [position: 230 200]
- * @node gCfg      genesisLoadConfig        [color: "purple"]  [icon: "settings"]     [position: 400 200]
- * @node observe   genesisObserve           [color: "blue"]    [icon: "visibility"]   [position: 570 200]
- * @node diffFp    genesisDiffFingerprint   [color: "cyan"]    [icon: "compare"]      [position: 740 200]
- * @node stabilize genesisCheckStabilize    [color: "orange"]  [icon: "lock"]         [position: 910 200]
- * @node propose   genesisPropose           [color: "blue"]    [icon: "psychology"]   [position: 1080 200]
- * @node validate  genesisValidateProposal  [color: "teal"]    [icon: "check"]        [position: 1250 200]
- * @node snapshot  genesisSnapshot          [color: "cyan"]    [icon: "backup"]       [position: 1420 200]
- * @node apply     genesisApply             [color: "purple"]  [icon: "play"]         [position: 1590 200]
- * @node compile   genesisCompileValidate   [color: "green"]   [icon: "build"]        [position: 1760 200]
- * @node diffWf    genesisDiffWorkflow      [color: "cyan"]    [icon: "compare"]      [position: 1930 200]
- * @node threshold genesisCheckThreshold    [color: "orange"]  [icon: "tune"]         [position: 2100 200]
- * @node approve   genesisApprove           [color: "orange"]  [icon: "send"]         [position: 2270 200]
- * @node commit    genesisCommit            [color: "green"]   [icon: "save"]         [position: 2440 200]
- * @node history   genesisUpdateHistory     [color: "teal"]    [icon: "history"]      [position: 2610 200]
- * @node report    genesisReport            [color: "green"]   [icon: "description"]  [position: 2780 200]
+ * @node cfg       weaverLoadConfig         [color: "teal"]    [icon: "settings"]     [position: 200 200]
+ * @node detect    weaverDetectProvider     [color: "cyan"]    [icon: "search"]       [position: 400 200]
+ * @node gCfg      genesisLoadConfig        [color: "purple"]  [icon: "settings"]     [position: 600 200]
+ * @node observe   genesisObserve           [color: "blue"]    [icon: "visibility"]   [position: 800 200]
+ * @node diffFp    genesisDiffFingerprint   [color: "cyan"]    [icon: "compare"]      [position: 1000 200]
+ * @node stabilize genesisCheckStabilize    [color: "orange"]  [icon: "lock"]         [position: 1200 200]
+ * @node propose   genesisPropose           [color: "blue"]    [icon: "psychology"]   [position: 1400 200]
+ * @node validate  genesisValidateProposal  [color: "teal"]    [icon: "check"]        [position: 1600 200]
+ * @node snapshot  genesisSnapshot          [color: "cyan"]    [icon: "backup"]       [position: 1800 200]
+ * @node applyRetry genesisApplyRetry       [color: "purple"]  [icon: "replay"]       [position: 2000 200] [size: 300 200]
+ * @node tryApply  genesisTryApply          applyRetry.attempt [position: 2050 230]
+ * @node diffWf    genesisDiffWorkflow      [color: "cyan"]    [icon: "compare"]      [position: 2340 200]
+ * @node threshold genesisCheckThreshold    [color: "orange"]  [icon: "tune"]         [position: 2540 200]
+ * @node approve   genesisApprove           [color: "orange"]  [icon: "send"]         [position: 2740 200]
+ * @node commit    genesisCommit            [color: "green"]   [icon: "save"]         [position: 2940 200]
+ * @node history   genesisUpdateHistory     [color: "teal"]    [icon: "history"]      [position: 3140 200]
+ * @node report    genesisReport            [color: "green"]   [icon: "description"]  [position: 3340 200]
  *
- * @path Start -> cfg -> detect -> gCfg -> observe -> diffFp -> stabilize -> propose -> validate -> snapshot -> apply -> compile -> diffWf -> threshold -> approve -> commit -> history -> report -> Exit
+ * @path Start -> cfg -> detect -> gCfg -> observe -> diffFp -> stabilize -> propose -> validate -> snapshot -> applyRetry -> diffWf -> threshold -> approve -> commit -> history -> report -> Exit
+ *
+ * @path applyRetry:fail -> report
+ *
+ * @connect applyRetry.attemptCtx:attempt -> tryApply.ctx
+ * @connect tryApply.ctx -> applyRetry.attemptCtx:attempt
+ *
+ * @connect history.ctx -> report.successCtx
+ * @connect applyRetry.ctx -> report.failCtx
  *
  * @connect report.summary -> Exit.summary
  *
  * @position Start 0 200
- * @position Exit 2930 200
+ * @position Exit 3540 200
  *
  * @param execute [order:-1] - Execute
  * @param projectDir [order:0] [optional] - Project directory
  * @returns onSuccess [order:-2] - On Success
- * @returns onFailure [order:-1] - On Failure
+ * @returns onFailure [order:-1] [hidden] - On Failure
  * @returns summary [order:0] - Summary text
  */
 export async function genesisTask(

@@ -1,4 +1,4 @@
-import type { WeaverEnv, GenesisConfig } from '../bot/types.js';
+import type { GenesisConfig, GenesisContext } from '../bot/types.js';
 import { GenesisStore } from '../bot/genesis-store.js';
 
 /**
@@ -9,34 +9,29 @@ import { GenesisStore } from '../bot/genesis-store.js';
  * @flowWeaver nodeType
  * @expression
  * @label Genesis Check Stabilize
- * @input env [order:0] - Weaver environment bundle
- * @input genesisConfigJson [order:1] - Genesis configuration (JSON)
- * @output env [order:0] - Weaver environment bundle (pass-through)
- * @output genesisConfigJson [order:1] - Genesis configuration (pass-through)
- * @output stabilized [order:2] - Whether stabilize mode is active
+ * @input ctx [order:0] - Genesis context (JSON)
+ * @output ctx [order:0] - Genesis context with stabilized (JSON)
+ * @output onFailure [hidden]
  */
-export function genesisCheckStabilize(
-  env: WeaverEnv,
-  genesisConfigJson: string,
-): {
-  env: WeaverEnv;
-  genesisConfigJson: string;
-  stabilized: boolean;
-} {
-  const config = JSON.parse(genesisConfigJson) as GenesisConfig;
+export function genesisCheckStabilize(ctx: string): { ctx: string } {
+  const context = JSON.parse(ctx) as GenesisContext;
+  const config = JSON.parse(context.genesisConfigJson) as GenesisConfig;
 
   if (config.stabilize) {
     console.log('\x1b[33m→ Stabilize mode: enabled by config\x1b[0m');
-    return { env, genesisConfigJson, stabilized: true };
+    context.stabilized = true;
+    return { ctx: JSON.stringify(context) };
   }
 
-  const store = new GenesisStore(env.projectDir);
+  const store = new GenesisStore(context.env.projectDir);
   const recent = store.getRecentOutcomes(3);
 
   if (recent.length >= 3 && recent.every(o => o === 'rolled-back' || o === 'rejected')) {
     console.log('\x1b[33m→ Stabilize mode: 3+ consecutive rollbacks/rejections\x1b[0m');
-    return { env, genesisConfigJson, stabilized: true };
+    context.stabilized = true;
+    return { ctx: JSON.stringify(context) };
   }
 
-  return { env, genesisConfigJson, stabilized: false };
+  context.stabilized = false;
+  return { ctx: JSON.stringify(context) };
 }

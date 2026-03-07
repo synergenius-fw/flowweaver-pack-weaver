@@ -1,44 +1,49 @@
+import type { WeaverContext } from '../bot/types.js';
+
 /**
- * Generates the final bot session report. Designed to receive input
- * from any of the three paths: read-only, main execution, or abort.
+ * Generates the final bot session report. Receives context from any
+ * of the three paths: read-only, main execution, or abort.
  *
  * @flowWeaver nodeType
  * @expression
  * @label Bot Report
  * @executeWhen DISJUNCTION
- * @input [readResult] [order:0] - From read-only path (JSON, optional)
- * @input [mainResult] [order:1] - From main execution path (JSON, optional)
- * @input [abortResult] [order:2] - From abort path (JSON, optional)
- * @input [taskJson] [order:3] - Task (JSON, optional)
- * @input [filesModified] [order:4] - Files modified (JSON array, optional)
- * @input [gitResultJson] [order:5] - Git result (JSON, optional)
+ * @input [mainCtx] [order:0] - Context from main path (JSON, optional)
+ * @input [readCtx] [order:1] - Context from read-only path (JSON, optional)
+ * @input [abortCtx] [order:2] - Context from abort path (JSON, optional)
  * @output summary [order:0] - Summary text
- * @output reportJson [order:1] - Full report (JSON)
+ * @output reportJson [order:1] [hidden] - Full report (JSON)
+ * @output onFailure [hidden]
  */
 export function weaverBotReport(
-  readResult?: string,
-  mainResult?: string,
-  abortResult?: string,
-  taskJson?: string,
-  filesModified?: string,
-  gitResultJson?: string,
+  mainCtx?: string,
+  readCtx?: string,
+  abortCtx?: string,
 ): { summary: string; reportJson: string } {
-  const task = taskJson ? JSON.parse(taskJson) as { instruction?: string; mode?: string } : {};
-  const files: string[] = filesModified ? JSON.parse(filesModified) : [];
-  const gitResult = gitResultJson ? JSON.parse(gitResultJson) : null;
+  const ctxStr = mainCtx ?? readCtx ?? abortCtx;
+
+  if (!ctxStr) {
+    const report = { task: {}, path: 'unknown', result: null, filesModified: [], gitResult: null, timestamp: Date.now() };
+    return { summary: '', reportJson: JSON.stringify(report) };
+  }
+
+  const context = JSON.parse(ctxStr) as WeaverContext;
+  const task = context.taskJson ? JSON.parse(context.taskJson) as { instruction?: string; mode?: string } : {};
+  const files: string[] = context.filesModified ? JSON.parse(context.filesModified) : [];
+  const gitResult = context.gitResultJson ? JSON.parse(context.gitResultJson) : null;
 
   let result: { success?: boolean; summary?: string; outcome?: string; results?: unknown[] } | null = null;
-  let path = 'unknown';
+  let pathName = 'unknown';
 
-  if (readResult) {
-    result = JSON.parse(readResult);
-    path = 'read';
-  } else if (mainResult) {
-    result = JSON.parse(mainResult);
-    path = 'main';
-  } else if (abortResult) {
-    result = JSON.parse(abortResult);
-    path = 'abort';
+  if (readCtx) {
+    result = context.resultJson ? JSON.parse(context.resultJson) : null;
+    pathName = 'read';
+  } else if (mainCtx) {
+    result = context.resultJson ? JSON.parse(context.resultJson) : null;
+    pathName = 'main';
+  } else if (abortCtx) {
+    result = context.resultJson ? JSON.parse(context.resultJson) : null;
+    pathName = 'abort';
   }
 
   const parts: string[] = [];
@@ -64,7 +69,7 @@ export function weaverBotReport(
 
   const report = {
     task,
-    path,
+    path: pathName,
     result,
     filesModified: files,
     gitResult,

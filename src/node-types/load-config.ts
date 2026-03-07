@@ -11,6 +11,7 @@ import type { WeaverConfig } from '../bot/types.js';
  * @input [projectDir] [order:0] - Project root directory (defaults to cwd)
  * @output projectDir [order:0] - Project root directory (pass-through)
  * @output config [order:1] - Weaver configuration
+ * @output onFailure [hidden]
  */
 export function weaverLoadConfig(projectDir?: string): { projectDir: string; config: WeaverConfig } {
   const dir = projectDir || process.cwd();
