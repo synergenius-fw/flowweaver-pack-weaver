@@ -2,12 +2,18 @@ import { execSync } from 'node:child_process';
 import type { BotAgentProvider, OnUsageCallback, StreamChunk, ToolDefinition, ToolUseResult } from './types.js';
 import { buildSystemPrompt } from './system-prompt.js';
 
+// Strip CLAUDECODE from child env so nested claude CLI invocations work.
+const childEnv = { ...process.env };
+delete childEnv.CLAUDECODE;
+
 export class CliAgentProvider implements BotAgentProvider {
   private cli: 'claude-cli' | 'copilot-cli';
+  private model?: string;
   onUsage?: OnUsageCallback;
 
-  constructor(cli: 'claude-cli' | 'copilot-cli') {
+  constructor(cli: 'claude-cli' | 'copilot-cli', model?: string) {
     this.cli = cli;
+    this.model = model;
   }
 
   async decide(request: {
@@ -26,11 +32,13 @@ export class CliAgentProvider implements BotAgentProvider {
 
     let raw: string;
     if (this.cli === 'claude-cli') {
-      raw = execSync('claude -p --output-format text', {
+      const modelFlag = this.model ? ` --model ${this.model}` : '';
+      raw = execSync(`claude -p --output-format text${modelFlag}`, {
         input: fullPrompt,
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
         timeout: 120_000,
+        env: childEnv,
       }).trim();
     } else {
       raw = execSync('copilot -p --silent --allow-all-tools', {
@@ -38,6 +46,7 @@ export class CliAgentProvider implements BotAgentProvider {
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
         timeout: 120_000,
+        env: childEnv,
       }).trim();
     }
 

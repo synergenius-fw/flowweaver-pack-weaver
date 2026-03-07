@@ -1,3 +1,6 @@
 node_modules/
 dist/
 *.tsbuildinfo
+.genesis/
+.weaver.json
+fw-exec-*

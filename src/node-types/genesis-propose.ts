@@ -69,7 +69,7 @@ export async function genesisPropose(
         userPrompt,
       );
     } else {
-      text = callCli(pInfo.type, systemPrompt + '\n\n' + userPrompt);
+      text = callCli(pInfo.type, systemPrompt + '\n\n' + userPrompt, pInfo.model);
     }
 
     const proposal = parseJsonResponse(text) as unknown as GenesisProposal;

@@ -58,7 +58,7 @@ defaultRegistry.register(
   'claude-cli',
   async (config) => {
     const { CliAgentProvider } = await import('./cli-provider.js');
-    return new CliAgentProvider('claude-cli');
+    return new CliAgentProvider('claude-cli', config.model);
   },
   {
     displayName: 'Claude CLI',
@@ -72,7 +72,7 @@ defaultRegistry.register(
   'copilot-cli',
   async (config) => {
     const { CliAgentProvider } = await import('./cli-provider.js');
-    return new CliAgentProvider('copilot-cli');
+    return new CliAgentProvider('copilot-cli', config.model);
   },
   {
     displayName: 'GitHub Copilot CLI',

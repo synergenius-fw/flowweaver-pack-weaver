@@ -1,14 +1,19 @@
 import { execSync } from 'node:child_process';
 
-export function callCli(provider: string, prompt: string): string {
+// Strip CLAUDECODE from child env so nested claude CLI invocations work.
+const childEnv = { ...process.env };
+delete childEnv.CLAUDECODE;
+
+export function callCli(provider: string, prompt: string, model?: string): string {
   if (provider === 'claude-cli') {
-    return execSync('claude -p --output-format text', {
-      input: prompt, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 120_000,
+    const modelFlag = model ? ` --model ${model}` : '';
+    return execSync(`claude -p --output-format text${modelFlag}`, {
+      input: prompt, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 300_000, env: childEnv,
     }).trim();
   }
   if (provider === 'copilot-cli') {
     return execSync('copilot -p --silent --allow-all-tools', {
-      input: prompt, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 120_000,
+      input: prompt, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 300_000, env: childEnv,
     }).trim();
   }
   throw new Error(`Unknown CLI provider: ${provider}`);

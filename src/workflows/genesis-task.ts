@@ -68,7 +68,7 @@ import { genesisReport } from '../node-types/genesis-report.js';
  */
 export async function genesisTask(
   execute: boolean,
-  projectDir?: string,
+  params: { projectDir?: string } = {},
   __abortSignal__?: AbortSignal,
 ): Promise<{ onSuccess: boolean; onFailure: boolean; summary: string | null }> {
   // @flow-weaver-body-start
