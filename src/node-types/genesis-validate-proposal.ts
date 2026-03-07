@@ -1,4 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import type { GenesisConfig, GenesisProposal, GenesisOperation, GenesisContext } from '../bot/types.js';
+import { checkDesignQuality } from '../bot/design-checker.js';
 
 const COST_MAP: Record<string, number> = {
   addNode: 1,
@@ -95,6 +97,27 @@ export function genesisValidateProposal(ctx: string): { ctx: string } {
   };
 
   console.log(`\x1b[36m→ Validated proposal: ${ops.length} ops, cost=${totalCost}/${config.budgetPerCycle}\x1b[0m`);
+
+  // Design quality gate: parse current workflow and check design score.
+  // If the score is below the threshold, flag for review.
+  const designThreshold = 50;
+  try {
+    const targetPath = config.targetWorkflow;
+    if (targetPath) {
+      const { projectDir } = context.env;
+      const astJson = execFileSync('flow-weaver', ['parse', targetPath, '--format', 'json'], {
+        cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 30_000,
+      });
+      const ast = JSON.parse(astJson);
+      const report = checkDesignQuality(ast);
+      if (report.score < designThreshold) {
+        console.log(`\x1b[33m→ Design score ${report.score} below threshold ${designThreshold}\x1b[0m`);
+        context.approvalRequired = true;
+      }
+    }
+  } catch {
+    // Non-fatal: if we can't parse the workflow yet, skip the design check
+  }
 
   context.proposalJson = JSON.stringify(validated);
   return { ctx: JSON.stringify(context) };
