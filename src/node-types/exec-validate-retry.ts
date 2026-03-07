@@ -54,14 +54,36 @@ export async function weaverExecValidateRetry(
     lastValidation = validation;
     allValid = validation.every(v => v.valid);
 
-    if (allValid) {
-      console.log('\x1b[32m→ All files valid\x1b[0m');
+    // Collect design warnings from valid files
+    const designWarnings = validation
+      .filter(v => v.valid && v.warnings.length > 0)
+      .map(v => `${v.file}:\n${v.warnings.map(w => `  - ${w}`).join('\n')}`)
+      .join('\n');
+
+    if (allValid && !designWarnings) {
+      console.log('\x1b[32m→ All files valid, no design issues\x1b[0m');
       break;
+    }
+
+    if (allValid && designWarnings) {
+      console.log('\x1b[32m→ All files valid\x1b[0m');
+      console.log(`\x1b[33m→ Design warnings:\n${designWarnings}\x1b[0m`);
+      // Design warnings don't block, but include them for the AI on the next attempt
+      if (attempt < maxAttempts) {
+        // Only retry for design issues if there are warning/error severity checks
+        const hasActionable = validation.some(v =>
+          v.designReport?.checks.some(c => c.severity === 'warning' || c.severity === 'error'),
+        );
+        if (!hasActionable) break;
+      } else {
+        break;
+      }
     }
 
     if (attempt < maxAttempts) {
       console.log(`\x1b[33m→ Validation errors found, requesting fix plan...\x1b[0m`);
-      const errors = validation.filter(v => !v.valid).map(v => `${v.file}: ${v.errors.join(', ')}`).join('\n');
+      const validationErrors = validation.filter(v => !v.valid).map(v => `${v.file}: ${v.errors.join(', ')}`).join('\n');
+      const errors = [validationErrors, designWarnings].filter(Boolean).join('\n\nDesign issues:\n');
 
       try {
         let systemPrompt: string;
