@@ -26,6 +26,17 @@ export function genesisEscrowRecover(ctx: string): { ctx: string } {
   }
 
   const store = new GenesisStore(env.projectDir);
+
+  // Check if max failures exceeded (disables self-evolution for this cycle)
+  const maxFailures = config.selfEvolveMaxFailures ?? 3;
+  const failureCount = store.getSelfFailureCount();
+  if (failureCount >= maxFailures) {
+    console.log(`\x1b[33m→ Self-evolution disabled: ${failureCount} consecutive failures (max ${maxFailures})\x1b[0m`);
+    context.escrowGraceLocked = true;
+    context.escrowGraceRemaining = 0;
+    return { ctx: JSON.stringify(context) };
+  }
+
   const token = store.loadEscrowToken();
 
   if (!token) {

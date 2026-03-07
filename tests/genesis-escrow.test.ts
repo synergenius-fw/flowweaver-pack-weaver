@@ -587,6 +587,175 @@ describe('genesisEscrowGrace', () => {
   });
 });
 
+// --- rollbackFromBackup: newly-created files ---
+
+describe('rollbackFromBackup newly-created files', () => {
+  let tmpDir: string;
+  let packRoot: string;
+  let store: GenesisStore;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    packRoot = makeTmpDir();
+    store = new GenesisStore(tmpDir);
+    store.ensureDirs();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(packRoot, { recursive: true, force: true });
+  });
+
+  it('deletes newly-created files that have no backup', () => {
+    const relFile = 'src/new-module.ts';
+    const destPath = path.join(packRoot, relFile);
+    fs.mkdirSync(path.dirname(destPath), { recursive: true });
+    fs.writeFileSync(destPath, 'new content', 'utf-8');
+
+    const token: EscrowToken = {
+      migrationId: 'mig-new',
+      cycleId: 'cyc-1',
+      stagedAt: new Date().toISOString(),
+      phase: 'migrated',
+      affectedFiles: [relFile],
+      stagedFileHashes: {},
+      backupFileHashes: {},  // no backup = newly created
+      ownerPid: process.pid,
+      graceRemaining: 2,
+      graceCycleIds: [],
+    };
+    store.saveEscrowToken(token);
+
+    rollbackFromBackup(store, token, packRoot, 'test new file rollback');
+
+    // File should be deleted
+    expect(fs.existsSync(destPath)).toBe(false);
+  });
+});
+
+// --- genesisEscrowRecover: crash recovery ---
+
+describe('genesisEscrowRecover crash recovery', () => {
+  let tmpDir: string;
+  let store: GenesisStore;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    store = new GenesisStore(tmpDir);
+    store.ensureDirs();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('detects migrating phase and rolls back on missing files', () => {
+    const config = makeConfig();
+    store.saveEscrowToken({
+      migrationId: 'mig-crash',
+      cycleId: 'cyc-1',
+      stagedAt: new Date().toISOString(),
+      phase: 'migrating',
+      affectedFiles: ['src/nonexistent-file.ts'],
+      stagedFileHashes: { 'src/nonexistent-file.ts': 'abc' },
+      backupFileHashes: {},
+      ownerPid: process.pid,
+      graceRemaining: 3,
+      graceCycleIds: [],
+    });
+    const context = makeContext(tmpDir, config);
+    const result = genesisEscrowRecover(JSON.stringify(context));
+    const ctx = JSON.parse(result.ctx) as GenesisContext;
+
+    // Should have rolled back
+    const token = store.loadEscrowToken();
+    expect(token!.phase).toBe('rolled-back');
+    expect(ctx.escrowGraceLocked).toBe(false);
+  });
+
+  it('locks self-evolution when max failures exceeded', () => {
+    const config = makeConfig({ selfEvolveMaxFailures: 2 });
+    // Add 2 consecutive failures
+    store.appendSelfMigration({
+      migrationId: 'm1', cycleId: 'c1', timestamp: '', affectedFiles: [],
+      outcome: 'rolled-back', graceCompleted: false, rollbackReason: 'fail1',
+    });
+    store.appendSelfMigration({
+      migrationId: 'm2', cycleId: 'c2', timestamp: '', affectedFiles: [],
+      outcome: 'rolled-back', graceCompleted: false, rollbackReason: 'fail2',
+    });
+
+    const context = makeContext(tmpDir, config);
+    const result = genesisEscrowRecover(JSON.stringify(context));
+    const ctx = JSON.parse(result.ctx) as GenesisContext;
+
+    expect(ctx.escrowGraceLocked).toBe(true);
+    expect(ctx.escrowGraceRemaining).toBe(0);
+  });
+});
+
+// --- genesisEscrowGrace: edge cases ---
+
+describe('genesisEscrowGrace edge cases', () => {
+  let tmpDir: string;
+  let store: GenesisStore;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    store = new GenesisStore(tmpDir);
+    store.ensureDirs();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('no-ops when token is already rolled-back', () => {
+    const config = makeConfig();
+    store.saveEscrowToken({
+      migrationId: 'mig-rb',
+      cycleId: 'cyc-1',
+      stagedAt: new Date().toISOString(),
+      phase: 'rolled-back',
+      affectedFiles: [],
+      stagedFileHashes: {},
+      backupFileHashes: {},
+      ownerPid: process.pid,
+      graceRemaining: 2,
+      graceCycleIds: [],
+    });
+    const context = makeContext(tmpDir, config);
+    genesisEscrowGrace(JSON.stringify(context));
+
+    // Token should be unchanged
+    const token = store.loadEscrowToken();
+    expect(token!.phase).toBe('rolled-back');
+    expect(token!.graceRemaining).toBe(2);
+  });
+
+  it('no-ops when token graceRemaining is already 0', () => {
+    const config = makeConfig();
+    store.saveEscrowToken({
+      migrationId: 'mig-zero',
+      cycleId: 'cyc-1',
+      stagedAt: new Date().toISOString(),
+      phase: 'migrated',
+      affectedFiles: [],
+      stagedFileHashes: {},
+      backupFileHashes: {},
+      ownerPid: process.pid,
+      graceRemaining: 0,
+      graceCycleIds: [],
+    });
+    const context = makeContext(tmpDir, config);
+    genesisEscrowGrace(JSON.stringify(context));
+
+    // Token should still exist (no clear since graceRemaining was already 0)
+    const token = store.loadEscrowToken();
+    expect(token).not.toBeNull();
+  });
+});
+
 // --- genesisValidateProposal: self-modify budget ---
 
 describe('genesisValidateProposal self-modify budget', () => {

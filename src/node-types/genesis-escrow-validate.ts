@@ -10,7 +10,6 @@ import { GenesisStore } from '../bot/genesis-store.js';
  * on a temp copy. For TypeScript modules, runs a transpile check.
  *
  * @flowWeaver nodeType
- * @expression
  * @label Genesis Escrow Validate
  * @input ctx [order:0] - Genesis context (JSON)
  * @output ctx [order:0] - Genesis context with escrow validation result (JSON)
@@ -45,14 +44,14 @@ export function genesisEscrowValidate(ctx: string): {
         fs.writeFileSync(tmpFile, content, 'utf-8');
 
         try {
-          execFileSync('npx', ['flow-weaver', 'compile', tmpFile], {
+          execFileSync('flow-weaver', ['compile', tmpFile], {
             cwd: packRoot,
             encoding: 'utf-8',
             stdio: ['pipe', 'pipe', 'pipe'],
             timeout: 30_000,
           });
 
-          execFileSync('npx', ['flow-weaver', 'validate', tmpFile], {
+          execFileSync('flow-weaver', ['validate', tmpFile], {
             cwd: packRoot,
             encoding: 'utf-8',
             stdio: ['pipe', 'pipe', 'pipe'],
@@ -113,16 +112,6 @@ export function genesisEscrowValidate(ctx: string): {
     for (const relFile of token.affectedFiles) {
       try { fs.unlinkSync(store.getEscrowStagedPath(relFile)); } catch { /* ignore */ }
     }
-
-    store.appendSelfMigration({
-      migrationId: token.migrationId,
-      cycleId: token.cycleId,
-      timestamp: new Date().toISOString(),
-      affectedFiles: token.affectedFiles,
-      outcome: 'rolled-back',
-      graceCompleted: false,
-      rollbackReason: token.rollbackReason,
-    });
 
     console.error(`\x1b[31m→ Escrow validation failed: ${msg.slice(0, 200)}\x1b[0m`);
     context.error = `Escrow validation failed: ${msg.slice(0, 200)}`;

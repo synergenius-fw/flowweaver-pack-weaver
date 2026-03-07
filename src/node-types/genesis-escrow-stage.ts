@@ -45,6 +45,14 @@ export function genesisEscrowStage(ctx: string): {
   try {
     for (const op of selfOps) {
       const relFile = op.args.file!;
+
+      // Path traversal protection
+      const normalized = path.normalize(relFile);
+      if (normalized.startsWith('..') || path.isAbsolute(normalized)) {
+        console.error(`\x1b[31m→ Rejected unsafe file path: ${relFile}\x1b[0m`);
+        continue;
+      }
+
       const absFile = path.resolve(packRoot, relFile);
       affectedFiles.push(relFile);
 
@@ -56,13 +64,11 @@ export function genesisEscrowStage(ctx: string): {
         backupHashes[relFile] = GenesisStore.hashFile(absFile);
       }
 
-      // Write staged content
+      // Write staged content then hash the file (consistent with GenesisStore.hashFile)
       const stagedDest = store.getEscrowStagedPath(relFile);
       fs.mkdirSync(path.dirname(stagedDest), { recursive: true });
       fs.writeFileSync(stagedDest, op.args.content!, 'utf-8');
-      stagedHashes[relFile] = crypto.createHash('sha256')
-        .update(op.args.content!)
-        .digest('hex');
+      stagedHashes[relFile] = GenesisStore.hashFile(stagedDest);
     }
 
     const gracePeriod = config.selfEvolveGracePeriod ?? 3;

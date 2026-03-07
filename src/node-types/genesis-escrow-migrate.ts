@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { GenesisContext } from '../bot/types.js';
+import type { GenesisContext, EscrowToken } from '../bot/types.js';
 import { GenesisStore } from '../bot/genesis-store.js';
 import { withFileLock } from '../bot/file-lock.js';
 
@@ -84,10 +84,10 @@ export async function genesisEscrowMigrate(
   }
 }
 
-/** Restore all affected files from backup. */
+/** Restore all affected files from backup, or delete newly-created files. */
 export function rollbackFromBackup(
   store: GenesisStore,
-  token: { migrationId: string; cycleId: string; affectedFiles: string[]; backupFileHashes: Record<string, string> },
+  token: EscrowToken,
   packRoot: string,
   reason: string,
 ): void {
@@ -97,14 +97,22 @@ export function rollbackFromBackup(
 
     if (fs.existsSync(backupPath)) {
       // Verify backup integrity
-      const actualHash = GenesisStore.hashFile(backupPath);
-      const expectedHash = token.backupFileHashes[relFile];
-      if (expectedHash && actualHash !== expectedHash) {
-        console.error(`\x1b[31m→ Backup integrity check failed for ${relFile}\x1b[0m`);
+      try {
+        const actualHash = GenesisStore.hashFile(backupPath);
+        const expectedHash = token.backupFileHashes[relFile];
+        if (expectedHash && actualHash !== expectedHash) {
+          console.error(`\x1b[31m→ Backup integrity check failed for ${relFile}\x1b[0m`);
+          continue;
+        }
+      } catch {
+        console.error(`\x1b[31m→ Cannot read backup for ${relFile}\x1b[0m`);
         continue;
       }
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
       fs.copyFileSync(backupPath, destPath);
+    } else if (fs.existsSync(destPath) && !token.backupFileHashes[relFile]) {
+      // File was newly created during migration (no backup), remove it
+      try { fs.unlinkSync(destPath); } catch { /* ignore */ }
     }
   }
 
