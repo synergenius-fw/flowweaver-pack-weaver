@@ -1098,9 +1098,6 @@ export async function handleGenesis(opts: ParsedArgs): Promise<void> {
 
   const config = await loadConfig(opts.configPath);
 
-  // Check for crash recovery (migrating phase = process died mid-swap)
-  await checkEscrowRecovery(projectDir, packRoot);
-
   if (opts.genesisWatch) {
     const { GenesisStore } = await import('./bot/genesis-store.js');
     const store = new GenesisStore(projectDir);
@@ -1120,11 +1117,6 @@ export async function handleGenesis(opts: ParsedArgs): Promise<void> {
 
       if (!result.success) {
         if (!opts.quiet) console.log(`\x1b[33m[weaver] Cycle ${i + 1} ended: ${result.summary}\x1b[0m`);
-        // If in grace period and cycle failed, rollback
-        await handleGraceFailure(projectDir, packRoot, `Cycle ${i + 1} failed: ${result.summary}`);
-      } else {
-        // If in grace period and cycle succeeded, decrement
-        await handleGraceSuccess(projectDir, store.loadConfig(), opts.quiet);
       }
 
       if (i < maxCycles - 1) {
@@ -1149,110 +1141,5 @@ export async function handleGenesis(opts: ParsedArgs): Promise<void> {
     console.log(`${color}Genesis: ${result.summary}\x1b[0m`);
   }
 
-  // Handle grace period tracking
-  const { GenesisStore: GS } = await import('./bot/genesis-store.js');
-  const store = new GS(projectDir);
-  if (result.success) {
-    await handleGraceSuccess(projectDir, store.loadConfig(), opts.quiet);
-  } else {
-    await handleGraceFailure(projectDir, packRoot, `Cycle failed: ${result.summary}`);
-  }
-
   process.exit(result.success ? 0 : 1);
-}
-
-async function checkEscrowRecovery(projectDir: string, packRoot: URL): Promise<void> {
-  const { GenesisStore } = await import('./bot/genesis-store.js');
-  const store = new GenesisStore(projectDir);
-  const token = store.loadEscrowToken();
-
-  if (!token || token.phase !== 'migrating') return;
-
-  console.log('\x1b[33m[weaver] Detected interrupted migration, checking file integrity...\x1b[0m');
-
-  const packRootPath = fileURLToPath(packRoot);
-  const { rollbackFromBackup } = await import('./node-types/genesis-escrow-migrate.js');
-
-  // Check if files match staged or backup hashes
-  let needsRollback = false;
-  for (const relFile of token.affectedFiles) {
-    const absFile = path.resolve(packRootPath, relFile);
-    if (!fs.existsSync(absFile)) {
-      needsRollback = true;
-      break;
-    }
-    const currentHash = GenesisStore.hashFile(absFile);
-    const stagedHash = token.stagedFileHashes[relFile];
-    const backupHash = token.backupFileHashes[relFile];
-    // If file doesn't match either staged or backup, it's inconsistent
-    if (currentHash !== stagedHash && currentHash !== backupHash) {
-      needsRollback = true;
-      break;
-    }
-  }
-
-  if (needsRollback) {
-    console.log('\x1b[33m[weaver] Inconsistent state detected, rolling back...\x1b[0m');
-    rollbackFromBackup(store, token, packRootPath, 'Crash recovery: inconsistent file state');
-  } else {
-    // Files match staged hashes, migration was actually complete
-    const allMatch = token.affectedFiles.every(f => {
-      const absFile = path.resolve(packRootPath, f);
-      return fs.existsSync(absFile) && GenesisStore.hashFile(absFile) === token.stagedFileHashes[f];
-    });
-    if (allMatch) {
-      token.phase = 'migrated';
-      token.migratedAt = new Date().toISOString();
-      store.saveEscrowToken(token);
-      console.log('\x1b[32m[weaver] Migration was complete, advancing to grace period\x1b[0m');
-    } else {
-      rollbackFromBackup(store, token, packRootPath, 'Crash recovery: partial migration');
-    }
-  }
-}
-
-async function handleGraceSuccess(projectDir: string, gConfig: { selfEvolve?: boolean }, quiet?: boolean): Promise<void> {
-  if (!gConfig.selfEvolve) return;
-
-  const { GenesisStore } = await import('./bot/genesis-store.js');
-  const store = new GenesisStore(projectDir);
-  const token = store.loadEscrowToken();
-
-  if (!token || token.phase !== 'migrated' || token.graceRemaining <= 0) return;
-
-  token.graceRemaining--;
-  token.graceCycleIds.push(GenesisStore.newCycleId());
-  store.saveEscrowToken(token);
-
-  if (!quiet) {
-    console.log(`\x1b[36m[weaver] Grace period: ${token.graceRemaining} cycle(s) remaining\x1b[0m`);
-  }
-
-  if (token.graceRemaining <= 0) {
-    // Grace period complete, clear escrow
-    store.appendSelfMigration({
-      migrationId: token.migrationId,
-      cycleId: token.cycleId,
-      timestamp: new Date().toISOString(),
-      affectedFiles: token.affectedFiles,
-      outcome: 'grace-cleared',
-      graceCompleted: true,
-    });
-    store.clearEscrow();
-    if (!quiet) {
-      console.log('\x1b[32m[weaver] Grace period complete, self-modification accepted\x1b[0m');
-    }
-  }
-}
-
-async function handleGraceFailure(projectDir: string, packRoot: URL, reason: string): Promise<void> {
-  const { GenesisStore } = await import('./bot/genesis-store.js');
-  const store = new GenesisStore(projectDir);
-  const token = store.loadEscrowToken();
-
-  if (!token || token.phase !== 'migrated' || token.graceRemaining <= 0) return;
-
-  const packRootPath = fileURLToPath(packRoot);
-  const { rollbackFromBackup } = await import('./node-types/genesis-escrow-migrate.js');
-  rollbackFromBackup(store, token, packRootPath, reason);
 }

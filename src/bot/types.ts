@@ -521,6 +521,8 @@ export interface GenesisContext {
   hasSelfModifyOps?: boolean;
   selfModifyOpsJson?: string;
   escrowResultJson?: string;
+  escrowGraceLocked?: boolean;
+  escrowGraceRemaining?: number;
 }
 
 // --- Escrow (Self-Modify) ---
