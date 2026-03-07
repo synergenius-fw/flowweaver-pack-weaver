@@ -33,8 +33,8 @@ export async function genesisEscrowMigrate(
   }
 
   if (!token || token.phase !== 'validated') {
-    context.error = 'No validated escrow token found';
-    return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
+    // No validated escrow: pass through (not an error, just nothing to migrate)
+    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   }
 
   const packRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');

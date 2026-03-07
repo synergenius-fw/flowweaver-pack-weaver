@@ -26,8 +26,8 @@ export function genesisEscrowValidate(ctx: string): {
   const token = store.loadEscrowToken();
 
   if (!token || token.phase !== 'staged') {
-    context.error = 'No staged escrow token found';
-    return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
+    // No staged escrow: pass through (not an error, just nothing to validate)
+    return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   }
 
   const packRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');

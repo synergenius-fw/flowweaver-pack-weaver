@@ -55,9 +55,7 @@ import { genesisEscrowGrace } from '../node-types/genesis-escrow-grace.js';
  * @node escGrace  genesisEscrowGrace       [color: "yellow"]  [icon: "timer"]        [position: 4040 200]
  * @node report    genesisReport            [color: "green"]   [icon: "description"]  [position: 4240 200]
  *
- * @path Start -> cfg -> detect -> gCfg -> escRecover -> observe -> diffFp -> stabilize -> propose -> validate -> snapshot -> applyRetry -> diffWf -> threshold -> approve -> commit -> history -> escGrace -> report -> Exit
- *
- * @path commit -> escStage -> escVal -> escMig -> history
+ * @path Start -> cfg -> detect -> gCfg -> escRecover -> observe -> diffFp -> stabilize -> propose -> validate -> snapshot -> applyRetry -> diffWf -> threshold -> approve -> commit -> escStage -> escVal -> escMig -> history -> escGrace -> report -> Exit
  *
  * @path applyRetry:fail -> report
  * @path escStage:fail -> report
