@@ -20,11 +20,6 @@ async function compileFile(filename: string) {
 }
 
 describe('workflow validation', () => {
-  it('weaver.ts validates without errors', async () => {
-    const result = await validateFile('weaver.ts');
-    expect(result.errors).toEqual([]);
-  });
-
   it('weaver-bot.ts validates without errors', async () => {
     const result = await validateFile('weaver-bot.ts');
     expect(result.errors).toEqual([]);
@@ -42,12 +37,6 @@ describe('workflow validation', () => {
 });
 
 describe('workflow compilation', () => {
-  it('weaver.ts compiles successfully', async () => {
-    const result = await compileFile('weaver.ts');
-    expect(result.code).toBeTruthy();
-    expect(result.code.length).toBeGreaterThan(0);
-  });
-
   it('weaver-bot.ts compiles successfully', async () => {
     const result = await compileFile('weaver-bot.ts');
     expect(result.code).toBeTruthy();

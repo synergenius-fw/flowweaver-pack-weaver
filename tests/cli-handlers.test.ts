@@ -50,6 +50,12 @@ describe('parseArgs', () => {
     expect(opts.command).toBe('eject');
   });
 
+  it('parses eject with --workflow flag', () => {
+    const opts = parseArgs(['node', 'weaver', 'eject', '--workflow', 'bot']);
+    expect(opts.command).toBe('eject');
+    expect(opts.ejectWorkflow).toBe('bot');
+  });
+
   it('parses watch command', () => {
     const opts = parseArgs(['node', 'weaver', 'watch', 'my.ts']);
     expect(opts.command).toBe('watch');
@@ -121,6 +127,12 @@ describe('parseArgs', () => {
     const opts = parseArgs(['node', 'weaver', '--approval', 'web', 'file.ts']);
     expect(opts.approvalMode).toBe('web');
   });
+
+  it('--workflow routes to historyWorkflow for history command', () => {
+    const opts = parseArgs(['node', 'weaver', 'history', '--workflow', 'my-wf.ts']);
+    expect(opts.historyWorkflow).toBe('my-wf.ts');
+    expect(opts.ejectWorkflow).toBeUndefined();
+  });
 });
 
 describe('handleEject', () => {
@@ -138,36 +150,68 @@ describe('handleEject', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('creates weaver.ts and .weaver-meta.json', async () => {
-    await handleEject();
+  it('ejects all workflows by default', async () => {
+    const opts = parseArgs(['node', 'weaver', 'eject']);
+    await handleEject(opts);
 
-    const weaverPath = path.join(tmpDir, 'weaver.ts');
+    expect(fs.existsSync(path.join(tmpDir, 'weaver-bot.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'weaver-bot-batch.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'genesis-task.ts'))).toBe(true);
+
     const metaPath = path.join(tmpDir, '.weaver-meta.json');
-
-    expect(fs.existsSync(weaverPath)).toBe(true);
     expect(fs.existsSync(metaPath)).toBe(true);
 
     const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
     expect(meta.ejected).toBe(true);
-    expect(meta.workflowFile).toBe('weaver.ts');
+    expect(meta.workflowFiles.bot).toBe('weaver-bot.ts');
+    expect(meta.workflowFiles.batch).toBe('weaver-bot-batch.ts');
+    expect(meta.workflowFiles.genesis).toBe('genesis-task.ts');
     expect(typeof meta.packVersion).toBe('string');
   });
 
-  it('rewrites imports to package imports', async () => {
-    await handleEject();
+  it('ejects a single workflow with --workflow flag', async () => {
+    const opts = parseArgs(['node', 'weaver', 'eject', '--workflow', 'bot']);
+    await handleEject(opts);
 
-    const content = fs.readFileSync(path.join(tmpDir, 'weaver.ts'), 'utf-8');
-    // Should have package imports, not relative
+    expect(fs.existsSync(path.join(tmpDir, 'weaver-bot.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'weaver-bot-batch.ts'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, 'genesis-task.ts'))).toBe(false);
+
+    const meta = JSON.parse(fs.readFileSync(path.join(tmpDir, '.weaver-meta.json'), 'utf-8'));
+    expect(meta.workflowFiles.bot).toBe('weaver-bot.ts');
+    expect(meta.workflowFiles.batch).toBeUndefined();
+  });
+
+  it('rewrites imports to package imports', async () => {
+    const opts = parseArgs(['node', 'weaver', 'eject', '--workflow', 'bot']);
+    await handleEject(opts);
+
+    const content = fs.readFileSync(path.join(tmpDir, 'weaver-bot.ts'), 'utf-8');
     expect(content).toContain('@synergenius/flowweaver-pack-weaver/node-types');
     expect(content).not.toContain('../node-types/');
   });
 
   it('ejected workflow contains flow-weaver annotations', async () => {
-    await handleEject();
+    const opts = parseArgs(['node', 'weaver', 'eject', '--workflow', 'bot']);
+    await handleEject(opts);
 
-    const content = fs.readFileSync(path.join(tmpDir, 'weaver.ts'), 'utf-8');
+    const content = fs.readFileSync(path.join(tmpDir, 'weaver-bot.ts'), 'utf-8');
     expect(content).toContain('@flowWeaver workflow');
     expect(content).toContain('weaverLoadConfig');
-    expect(content).toContain('weaverExecuteTarget');
+    expect(content).toContain('weaverReceiveTask');
+  });
+
+  it('merges with existing meta on incremental eject', async () => {
+    // Eject bot first
+    const opts1 = parseArgs(['node', 'weaver', 'eject', '--workflow', 'bot']);
+    await handleEject(opts1);
+
+    // Then eject genesis
+    const opts2 = parseArgs(['node', 'weaver', 'eject', '--workflow', 'genesis']);
+    await handleEject(opts2);
+
+    const meta = JSON.parse(fs.readFileSync(path.join(tmpDir, '.weaver-meta.json'), 'utf-8'));
+    expect(meta.workflowFiles.bot).toBe('weaver-bot.ts');
+    expect(meta.workflowFiles.genesis).toBe('genesis-task.ts');
   });
 });

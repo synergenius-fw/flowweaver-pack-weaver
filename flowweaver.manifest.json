@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "name": "@synergenius/flowweaver-pack-weaver",
   "version": "0.6.0",
-  "description": "Autonomous workflow runner for Flow Weaver. Auto-detect providers, execute workflows, notify results.",
+  "description": "AI bot for Flow Weaver. Execute tasks, run workflows, evolve autonomously.",
   "engineVersion": ">=0.19.4",
   "categories": [
     "automation",
@@ -843,7 +843,7 @@
   "cliCommands": [
     {
       "name": "run",
-      "description": "Run a workflow file",
+      "description": "Run a workflow file through the bot",
       "usage": "<file>"
     },
     {
@@ -881,11 +881,12 @@
     },
     {
       "name": "eject",
-      "description": "Eject managed workflow for customization"
+      "description": "Eject bot workflows for customization",
+      "usage": "[--workflow <bot|batch|genesis>]"
     },
     {
       "name": "bot",
-      "description": "Run the autonomous bot with a task",
+      "description": "Execute a task from natural language",
       "usage": "<task>"
     },
     {
@@ -904,7 +905,7 @@
     },
     {
       "name": "genesis",
-      "description": "Run a Genesis self-evolution cycle on a target workflow",
+      "description": "Run bot self-evolution cycle on a target workflow",
       "usage": "[--init] [--watch]"
     }
   ],
@@ -912,7 +913,7 @@
   "mcpTools": [
     {
       "name": "fw_weaver_run",
-      "description": "Execute a workflow with the AI runner"
+      "description": "Run a workflow file through the bot"
     },
     {
       "name": "fw_weaver_history",
@@ -928,7 +929,7 @@
     },
     {
       "name": "fw_weaver_bot",
-      "description": "Run the autonomous bot with a task"
+      "description": "Execute a task from natural language"
     },
     {
       "name": "fw_weaver_steer",
@@ -944,7 +945,7 @@
     },
     {
       "name": "fw_weaver_genesis",
-      "description": "Run a Genesis self-evolution cycle on a target workflow"
+      "description": "Run bot self-evolution cycle on a target workflow"
     }
   ],
   "initContributions": {
@@ -954,7 +955,6 @@
       "description": "Autonomous workflow execution with AI providers and notifications"
     },
     "templates": [
-      "weaver",
       "weaver-bot"
     ]
   },

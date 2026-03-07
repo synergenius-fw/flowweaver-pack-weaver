@@ -1,4 +1,10 @@
-import type { WorkflowTemplate } from './weaver-template.js';
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  generate: (opts: { projectDir?: string }) => string;
+}
 
 export const weaverBotTemplate: WorkflowTemplate = {
   id: 'weaver-bot',

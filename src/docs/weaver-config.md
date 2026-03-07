@@ -1,26 +1,20 @@
-# Weaver Configuration Reference
+# Weaver Bot Configuration Reference
 
-Weaver is a Flow Weaver workflow template that runs any other workflow autonomously. It auto-detects AI providers, resolves the target workflow, executes it with an agent channel, and sends notifications.
+The weaver bot runs workflows, executes tasks from natural language, and evolves autonomously. It auto-detects AI providers, manages approval gates, handles git operations, and sends notifications.
 
-Weaver has deep knowledge of the full flow-weaver ecosystem: annotation grammar, CLI tools, node patterns, error diagnosis, and the genesis protocol (loaded dynamically from `@synergenius/flow-weaver/doc-metadata`).
+The bot has deep knowledge of the full flow-weaver ecosystem: annotation grammar, CLI tools, node patterns, error diagnosis, and the genesis protocol (loaded dynamically from `@synergenius/flow-weaver/doc-metadata`).
 
 ## Getting started
 
-Scaffold via `flow-weaver init` and select the "AI Workflow Runner" use case, or use it programmatically:
-
-```typescript
-import { weaverTemplate } from '@synergenius/flowweaver-pack-weaver/templates';
-const source = weaverTemplate.generate({ projectDir: '.' });
-```
-
-Then compile and run:
+Run the bot directly via CLI:
 
 ```bash
-flow-weaver compile weaver.ts
-tsx weaver.ts
+flow-weaver weaver bot "Create a workflow that processes CSV files"
+flow-weaver weaver run my-workflow.ts
+flow-weaver weaver session
 ```
 
-Or run via MCP: `fw_execute_workflow` pointing at the compiled `weaver.ts`.
+Or scaffold a project via `flow-weaver init` and select the "AI Workflow Runner" use case.
 
 ## .weaver.json
 
