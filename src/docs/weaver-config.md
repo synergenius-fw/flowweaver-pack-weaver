@@ -121,7 +121,7 @@ import {
   detectProvider,
   runWorkflow,
   BotAgentChannel,
-} from '@synergenius/flowweaver-pack-weaver';
+} from '@synergenius/flow-weaver-pack-weaver';
 
 // Auto-detect and run
 const result = await runWorkflow('path/to/workflow.ts', { verbose: true });

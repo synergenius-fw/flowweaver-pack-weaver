@@ -10,7 +10,7 @@ describe('weaverBotTemplate', () => {
 
   it('generates workflow with pack node type imports', () => {
     const code = weaverBotTemplate.generate({});
-    expect(code).toContain("from '@synergenius/flowweaver-pack-weaver/node-types'");
+    expect(code).toContain("from '@synergenius/flow-weaver-pack-weaver/node-types'");
     expect(code).toContain('weaverLoadConfig');
     expect(code).toContain('weaverDetectProvider');
     expect(code).toContain('weaverReceiveTask');

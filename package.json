@@ -1,5 +1,5 @@
 {
-  "name": "@synergenius/flowweaver-pack-weaver",
+  "name": "@synergenius/flow-weaver-pack-weaver",
   "version": "0.8.1",
   "description": "AI bot for Flow Weaver. Execute tasks, run workflows, evolve autonomously.",
   "type": "module",
@@ -73,6 +73,6 @@
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
-    "url": "https://github.com/synergenius-fw/flowweaver-pack-weaver"
+    "url": "https://github.com/synergenius-fw/flow-weaver-pack-weaver"
   }
 }
