@@ -1,6 +1,6 @@
 {
   "name": "@synergenius/flowweaver-pack-weaver",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "AI bot for Flow Weaver. Execute tasks, run workflows, evolve autonomously.",
   "type": "module",
   "main": "./dist/index.js",
@@ -21,10 +21,12 @@
   },
   "keywords": [
     "flowweaver-marketplace-pack",
+    "flowweaver-bot-pack",
     "flow-weaver",
     "weaver",
     "automation",
-    "ai-agent"
+    "ai-agent",
+    "bot"
   ],
   "flowWeaver": {
     "type": "marketplace-pack",
