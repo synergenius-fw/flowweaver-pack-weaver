@@ -21,10 +21,12 @@
   },
   "keywords": [
     "flowweaver-marketplace-pack",
+    "flowweaver-bot-pack",
     "flow-weaver",
     "weaver",
     "automation",
-    "ai-agent"
+    "ai-agent",
+    "bot"
   ],
   "flowWeaver": {
     "type": "marketplace-pack",
