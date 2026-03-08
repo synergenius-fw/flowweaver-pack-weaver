@@ -17,18 +17,18 @@ import { validateFiles } from '../bot/file-validator.js';
  * @output taskJson [order:2] - Task (pass-through)
  * @output allValid [order:3] - Whether all files passed validation
  */
-export function weaverValidateResult(
+export async function weaverValidateResult(
   env: WeaverEnv,
   executionResultJson: string,
   taskJson: string,
   filesModified: string,
-): {
+): Promise<{
   env: WeaverEnv;
   validationResultJson: string; taskJson: string; allValid: boolean;
-} {
+}> {
   const { projectDir } = env;
   const files: string[] = JSON.parse(filesModified);
-  const results = validateFiles(files, projectDir);
+  const results = await validateFiles(files, projectDir);
 
   for (const r of results) {
     if (r.valid) console.log(`\x1b[32m  ✓ ${r.file}\x1b[0m`);

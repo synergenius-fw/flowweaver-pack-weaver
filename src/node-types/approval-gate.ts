@@ -1,5 +1,6 @@
 import * as readline from 'node:readline';
 import type { WeaverContext } from '../bot/types.js';
+import { auditEmit } from '../bot/audit-logger.js';
 
 /**
  * Presents the plan to the user for approval. Branching:
@@ -35,6 +36,7 @@ export async function weaverApprovalGate(
   const task = JSON.parse(context.taskJson!) as { options?: { autoApprove?: boolean } };
   if (task.options?.autoApprove || approvalMode === 'auto') {
     console.log('\x1b[36m→ Auto-approved\x1b[0m');
+    auditEmit('approval-decision', { approved: true, mode: 'auto' });
     context.rejectionReason = '';
     return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   }
@@ -60,12 +62,14 @@ export async function weaverApprovalGate(
 
   if (approved) {
     console.log('\x1b[32m→ Plan approved\x1b[0m');
+    auditEmit('approval-decision', { approved: true, mode: 'prompt' });
     context.rejectionReason = '';
     return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   }
 
   const reason = answer || 'rejected by user';
   console.log(`\x1b[33m→ Plan rejected: ${reason}\x1b[0m`);
+  auditEmit('approval-decision', { approved: false, reason });
   context.rejectionReason = reason;
   return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
 }

@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import type { WeaverContext } from '../bot/types.js';
+import { auditEmit } from '../bot/audit-logger.js';
 
 /**
  * Git operations on created/modified files: stage, commit, branch.
@@ -65,6 +66,7 @@ export function weaverGitOps(ctx: string): { ctx: string } {
     results.push('Nothing to commit');
   }
 
+  auditEmit('git-operation', { branch: gitConfig.branch, filesCount: files.length, results });
   context.gitResultJson = JSON.stringify({ skipped: false, results });
   return { ctx: JSON.stringify(context) };
 }

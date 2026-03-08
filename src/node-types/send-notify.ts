@@ -1,4 +1,5 @@
 import type { WeaverContext } from '../bot/types.js';
+import { auditEmit } from '../bot/audit-logger.js';
 
 function sendWebhook(
   config: { channel: string; url: string; headers?: Record<string, string> },
@@ -66,6 +67,9 @@ export function weaverSendNotify(ctx: string): { ctx: string } {
     sendWebhook(ch, { ...result, targetPath: projectDir, providerType: config.provider, projectDir });
   }
 
-  if (channels.length > 0) console.log(`\x1b[36m→ Sent ${channels.length} notification(s)\x1b[0m`);
+  if (channels.length > 0) {
+    auditEmit('notification-sent', { channelCount: channels.length });
+    console.log(`\x1b[36m→ Sent ${channels.length} notification(s)\x1b[0m`);
+  }
   return { ctx };
 }
