@@ -28,6 +28,8 @@ interface CliCommandDoc {
   name: string;
   description: string;
   group?: string;
+  botCompatible?: boolean;
+  options?: { flags: string; arg?: string; description: string }[];
 }
 
 let cachedPrompt: string | null = null;
@@ -140,13 +142,7 @@ Data flow:
 
 ${formatCliCommands(cliCommands)}
 
-Key workflows:
-  flow-weaver compile <file>  -- Generate executable code (in-place)
-  flow-weaver validate <file> -- Check for errors without compiling
-  flow-weaver modify <op> --file <f> -- Structural changes (addNode, removeNode, addConnection, removeConnection)
-  flow-weaver implement <file> -- Replace declare stubs with implementations
-  flow-weaver diff <a> <b> -- Semantic diff between two workflow versions
-  flow-weaver diagram <file> -f ascii-compact -- Generate ASCII diagram
+Note: compile, validate, modify, diff, diagram, and describe operations are available as direct plan steps (no CLI needed). The run-cli operation is an escape hatch for other CLI commands.
 
 ## Validation Errors
 
@@ -207,7 +203,35 @@ export async function buildSystemPrompt(): Promise<string> {
   return cachedPrompt;
 }
 
-export function buildBotSystemPrompt(contextBundle?: string): string {
+function formatBotOperations(cliCommands: CliCommandDoc[]): string {
+  const packOps = [
+    '- create-workflow: Create a new workflow file. args: { file, content }',
+    '- implement-node: Write a node type implementation. args: { file, content }',
+    '- modify-source: Direct source file modification. args: { file, content }',
+    '- read-file: Read a file for context. args: { file }',
+    '- write-file: Write a file. args: { file, content }',
+  ];
+
+  const fwOps = cliCommands
+    .filter(cmd => cmd.botCompatible)
+    .map(cmd => {
+      const argNames = (cmd.options ?? [])
+        .filter(o => !o.flags.includes('--verbose') && !o.flags.includes('--quiet') && !o.flags.includes('--json') && o.arg)
+        .map(o => {
+          const match = o.flags.match(/--(\S+)/);
+          return match ? match[1] : null;
+        })
+        .filter(Boolean);
+      const argsStr = argNames.length ? `file, ${argNames.join(', ')}` : 'file';
+      return `- ${cmd.name}: ${cmd.description}. args: { ${argsStr} }`;
+    });
+
+  return [...packOps, ...fwOps].join('\n');
+}
+
+export function buildBotSystemPrompt(contextBundle?: string, cliCommands?: CliCommandDoc[]): string {
+  const operationsList = formatBotOperations(cliCommands ?? []);
+
   const planSchema = `## Bot Plan Schema
 
 When asked to plan a task, return a JSON object with this structure:
@@ -224,19 +248,7 @@ When asked to plan a task, return a JSON object with this structure:
 }
 
 Available operations:
-- create-workflow: Create a new workflow file. args: { file, name, description, nodes, connections }
-- implement-node: Write a node type implementation. args: { file, functionName, body }
-- add-node: Add a node to a workflow. args: { file, nodeId, nodeType }
-- remove-node: Remove a node. args: { file, nodeId }
-- add-connection: Add a connection. args: { file, from, to }
-- remove-connection: Remove a connection. args: { file, from, to }
-- compile: Compile a workflow. args: { file }
-- validate: Validate a workflow. args: { file }
-- modify-source: Direct source file modification. args: { file, content }
-- scaffold: Create from template. args: { template, file }
-- read-file: Read a file. args: { file }
-- write-file: Write a file. args: { file, content }
-- run-cli: Run a flow-weaver CLI command. args: { command, args }`;
+${operationsList}`;
 
   const botInstructions = `## Bot Mode Instructions
 
@@ -246,7 +258,7 @@ When planning:
 1. Break the task into concrete, ordered steps using the plan schema above
 2. For new workflows, plan: scaffold/create -> implement nodes -> compile -> validate
 3. For modifications, plan: read current state -> modify -> compile -> validate
-4. Each step should be independently executable via the flow-weaver CLI
+4. Each step is executed via the flow-weaver programmatic API
 5. Use templates when they match the task
 6. Prefer @expression nodes for deterministic operations
 7. Use proper JSDoc annotations on all node types and workflows

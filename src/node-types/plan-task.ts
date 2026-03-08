@@ -35,7 +35,12 @@ export async function weaverPlanTask(
   try {
     const mod = await import('../bot/system-prompt.js');
     const basePrompt = await mod.buildSystemPrompt();
-    const botPrompt = mod.buildBotSystemPrompt(context.contextBundle!);
+    let cliCommands: { name: string; description: string; group?: string; botCompatible?: boolean; options?: { flags: string; arg?: string; description: string }[] }[] = [];
+    try {
+      const docMeta = await import('@synergenius/flow-weaver/doc-metadata');
+      cliCommands = docMeta.CLI_COMMANDS ?? [];
+    } catch { /* older flow-weaver version */ }
+    const botPrompt = mod.buildBotSystemPrompt(context.contextBundle!, cliCommands);
     systemPrompt = basePrompt + '\n\n' + botPrompt;
   } catch {
     systemPrompt = 'You are Weaver, an AI workflow bot. Return ONLY valid JSON with a plan.';

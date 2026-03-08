@@ -1,5 +1,5 @@
-import { execFileSync } from 'node:child_process';
 import { checkDesignQuality, type DesignReport } from './design-checker.js';
+import { fwValidate } from './fw-api.js';
 
 export interface FileValidationResult {
   file: string;
@@ -9,44 +9,33 @@ export interface FileValidationResult {
   designReport?: DesignReport;
 }
 
-export function validateFiles(
+export async function validateFiles(
   files: string[],
   projectDir: string,
-): FileValidationResult[] {
+): Promise<FileValidationResult[]> {
   const results: FileValidationResult[] = [];
 
   for (const file of files) {
     if (!file.endsWith('.ts')) continue;
     try {
-      execFileSync('flow-weaver', ['validate', file], {
-        cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 30_000,
-      });
-      // Run design quality check on the AST
-      const designReport = runDesignCheck(file, projectDir);
-      const designWarnings = designReport
-        ? designReport.checks
-            .filter((c) => c.severity === 'warning' || c.severity === 'error')
-            .map((c) => `[${c.code}] ${c.message}`)
-        : [];
-      results.push({ file, valid: true, errors: [], warnings: designWarnings, designReport: designReport ?? undefined });
+      const { valid, errors, warnings, ast } = await fwValidate(file);
+
+      if (!valid) {
+        results.push({ file, valid: false, errors, warnings });
+        continue;
+      }
+
+      const designReport = checkDesignQuality(ast);
+      const designWarnings = designReport.checks
+        .filter((c) => c.severity === 'warning' || c.severity === 'error')
+        .map((c) => `[${c.code}] ${c.message}`);
+
+      results.push({ file, valid: true, errors: [], warnings: [...warnings, ...designWarnings], designReport });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? (err as { stderr?: string }).stderr ?? err.message : String(err);
+      const msg = err instanceof Error ? err.message : String(err);
       results.push({ file, valid: false, errors: [msg], warnings: [] });
     }
   }
 
   return results;
-}
-
-function runDesignCheck(file: string, projectDir: string): DesignReport | null {
-  try {
-    const astJson = execFileSync('flow-weaver', ['parse', file, '--format', 'json'], {
-      cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 30_000,
-    });
-    const ast = JSON.parse(astJson);
-    return checkDesignQuality(ast);
-  } catch {
-    // If parse fails, skip design checks (validation already caught the error)
-    return null;
-  }
 }

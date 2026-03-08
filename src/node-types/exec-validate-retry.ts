@@ -48,12 +48,12 @@ export async function weaverExecValidateRetry(
     console.log(`\x1b[36m→ Attempt ${attempt}/${maxAttempts}\x1b[0m`);
     auditEmit('step-start', { attempt, stepCount: currentPlan.steps?.length });
 
-    const execResult = executePlanSteps(currentPlan, projectDir);
+    const execResult = await executePlanSteps(currentPlan, projectDir);
     lastExecResult = execResult;
     allFilesModified = [...new Set([...allFilesModified, ...execResult.filesModified])];
     auditEmit('step-complete', { attempt, filesModified: execResult.filesModified, errors: execResult.errors });
 
-    const validation = validateFiles(execResult.filesModified, projectDir);
+    const validation = await validateFiles(execResult.filesModified, projectDir);
     lastValidation = validation;
     allValid = validation.every(v => v.valid);
     const errorCount = validation.filter(v => !v.valid).length;
@@ -128,10 +128,10 @@ export async function weaverExecValidateRetry(
   return { onSuccess: allValid, onFailure: !allValid, ctx: JSON.stringify(context) };
 }
 
-function executePlanSteps(
+async function executePlanSteps(
   plan: { steps: Array<{ id: string; operation: string; description: string; args: Record<string, unknown> }> },
   projectDir: string,
-): { success: boolean; filesModified: string[]; errors: string[]; stepsCompleted: number; stepsTotal: number } {
+): Promise<{ success: boolean; filesModified: string[]; errors: string[]; stepsCompleted: number; stepsTotal: number }> {
   const filesModified: string[] = [];
   const errors: string[] = [];
   let completed = 0;
@@ -145,7 +145,7 @@ function executePlanSteps(
     }
 
     try {
-      const result = executeStep(step, projectDir);
+      const result = await executeStep(step, projectDir);
       if (result.file) filesModified.push(result.file);
       if (result.files) filesModified.push(...result.files);
       completed++;

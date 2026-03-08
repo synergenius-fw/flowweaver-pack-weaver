@@ -67,7 +67,7 @@ export async function weaverExecutePlan(
     }
 
     try {
-      const result = executeStep(step, projectDir);
+      const result = await executeStep(step, projectDir);
       if (result.file) {
         if (result.created) filesCreated.push(result.file);
         else filesModified.push(result.file);

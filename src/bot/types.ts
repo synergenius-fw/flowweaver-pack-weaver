@@ -390,9 +390,7 @@ export interface BotTask {
 
 export interface BotPlanStep {
   id: string;
-  operation: 'create-workflow' | 'implement-node' | 'add-node' | 'remove-node' |
-             'add-connection' | 'remove-connection' | 'compile' | 'validate' |
-             'modify-source' | 'scaffold' | 'read-file' | 'write-file' | 'run-cli';
+  operation: string;
   description: string;
   args: Record<string, unknown>;
 }

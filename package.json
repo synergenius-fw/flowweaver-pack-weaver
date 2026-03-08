@@ -36,7 +36,7 @@
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.30.0",
-    "@synergenius/flow-weaver": ">=0.20.5",
+    "@synergenius/flow-weaver": ">=0.21.0",
     "zod": ">=3.22.0"
   },
   "peerDependenciesMeta": {
