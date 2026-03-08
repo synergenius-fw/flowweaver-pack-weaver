@@ -744,7 +744,7 @@ function deduplicateImports(source: string): string {
 /** Rewrite node-type source: ../bot/*.js → package barrel, deduplicate. */
 function rewriteNodeTypeImports(source: string): string {
   const rewritten = source
-    .replace(/from\s+['"]\.\.\/bot\/[^'"]+['"]/g, "from '@synergenius/flowweaver-pack-weaver/bot'");
+    .replace(/from\s+['"]\.\.\/bot\/[^'"]+['"]/g, "from '@synergenius/flow-weaver-pack-weaver/bot'");
   return deduplicateImports(rewritten);
 }
 
@@ -752,7 +752,7 @@ function rewriteNodeTypeImports(source: string): string {
 function rewriteWorkflowImports(source: string): string {
   const rewritten = source
     .replace(/from\s+['"]\.\.\/node-types\//g, "from './node-types/")
-    .replace(/from\s+['"]\.\.\/bot\/[^'"]+['"]/g, "from '@synergenius/flowweaver-pack-weaver/bot'");
+    .replace(/from\s+['"]\.\.\/bot\/[^'"]+['"]/g, "from '@synergenius/flow-weaver-pack-weaver/bot'");
   return deduplicateImports(rewritten);
 }
 
@@ -851,7 +851,7 @@ function collectBotDeps(packRoot: URL, ntFiles: string[]): string[] {
  * directory).
  *
  * When `standalone` is false (default), bot imports are rewritten to
- * the package barrel (`@synergenius/flowweaver-pack-weaver/bot`).
+ * the package barrel (`@synergenius/flow-weaver-pack-weaver/bot`).
  */
 export function ejectWorkflows(opts: {
   destDir: string;
