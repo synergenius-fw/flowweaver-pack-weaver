@@ -3,7 +3,7 @@ import { weaverBotTemplate } from '../src/templates/weaver-bot-template.js';
 describe('weaverBotTemplate', () => {
   it('has correct metadata', () => {
     expect(weaverBotTemplate.id).toBe('weaver-bot');
-    expect(weaverBotTemplate.category).toBe('automation');
+    expect(weaverBotTemplate.category).toBe('bot');
     expect(typeof weaverBotTemplate.name).toBe('string');
     expect(typeof weaverBotTemplate.description).toBe('string');
   });

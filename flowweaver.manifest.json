@@ -8,6 +8,28 @@
     "automation",
     "ai"
   ],
+  "botRegistrations": [
+    {
+      "id": "weaver-bot",
+      "name": "Weaver Bot",
+      "description": "AI-powered autonomous workflow creator",
+      "icon": "psychology",
+      "color": "#6366f1",
+      "workflowExport": "weaverBot",
+      "paramName": "taskJson",
+      "sourceTemplateId": "weaver-bot"
+    },
+    {
+      "id": "weaver-genesis",
+      "name": "Weaver Genesis",
+      "description": "Self-evolution cycle for a target workflow",
+      "icon": "autoAwesome",
+      "color": "#9f5fe3",
+      "workflowExport": "genesisTask",
+      "paramName": "config",
+      "sourceTemplateId": "genesis-task"
+    }
+  ],
   "nodeTypes": [
     {
       "name": "weaverLoadConfig",
