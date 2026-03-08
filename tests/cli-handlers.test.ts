@@ -182,13 +182,22 @@ describe('handleEject', () => {
     expect(meta.workflowFiles.batch).toBeUndefined();
   });
 
-  it('rewrites imports to package imports', async () => {
+  it('rewrites node-types imports to local paths in standalone mode', async () => {
     const opts = parseArgs(['node', 'weaver', 'eject', '--workflow', 'bot']);
     await handleEject(opts);
 
     const content = fs.readFileSync(path.join(tmpDir, 'weaver-bot.ts'), 'utf-8');
-    expect(content).toContain('@synergenius/flowweaver-pack-weaver/node-types');
+    expect(content).toContain('./node-types/');
     expect(content).not.toContain('../node-types/');
+  });
+
+  it('ejects node-types and bot directories in standalone mode', async () => {
+    const opts = parseArgs(['node', 'weaver', 'eject', '--workflow', 'bot']);
+    await handleEject(opts);
+
+    expect(fs.existsSync(path.join(tmpDir, 'node-types'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'bot'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'bot', 'types.ts'))).toBe(true);
   });
 
   it('ejected workflow contains flow-weaver annotations', async () => {

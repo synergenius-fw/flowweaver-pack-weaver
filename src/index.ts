@@ -171,3 +171,7 @@ export {
   genesisUpdateHistory,
   genesisReport,
 } from './node-types/index.js';
+
+// Eject API (for platform/studio server-side use)
+export { ejectWorkflows } from './cli-handlers.js';
+export type { EjectResult } from './cli-handlers.js';
