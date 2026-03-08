@@ -24,6 +24,26 @@ export async function weaverApprovalGate(
   const context = JSON.parse(ctx) as WeaverContext;
   const { env } = context;
 
+  // Studio sandbox: use agent channel instead of readline
+  const channel = (globalThis as any).__fw_agent_channel__;
+  if (channel) {
+    const plan = JSON.parse(context.planJson!) as { steps: Array<{ id: string; operation: string; description: string }>; summary: string };
+    const result = await channel.request({
+      agentId: 'weaver-approval',
+      context: { plan: { steps: plan.steps || [] }, summary: plan.summary || '' },
+      prompt: `Review and approve/reject this plan with ${(plan.steps || []).length} steps.`,
+    });
+    const approved = (result as Record<string, unknown>).approved !== false;
+    if (approved) {
+      context.rejectionReason = '';
+      return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
+    } else {
+      const reason = ((result as Record<string, unknown>).reason as string) || 'rejected by agent';
+      context.rejectionReason = reason;
+      return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
+    }
+  }
+
   if (!execute) {
     context.rejectionReason = '';
     return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
