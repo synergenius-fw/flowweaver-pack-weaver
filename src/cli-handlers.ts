@@ -708,16 +708,9 @@ const MANAGED_WORKFLOWS: Record<string, string> = {
   genesis: 'genesis-task',
 };
 
-/** Rewrite pack-relative imports to package imports and deduplicate. */
-function rewritePackImports(source: string): string {
-  // Rewrite ../node-types/*.js → package/node-types
-  // Rewrite ../bot/*.js → package/bot
-  const rewritten = source
-    .replace(/from\s+['"]\.\.\/node-types\/[^'"]+['"]/g, "from '@synergenius/flowweaver-pack-weaver/node-types'")
-    .replace(/from\s+['"]\.\.\/bot\/[^'"]+['"]/g, "from '@synergenius/flowweaver-pack-weaver/bot'");
-
-  // Deduplicate import lines: collapse multiple imports from the same module
-  const lines = rewritten.split('\n');
+/** Deduplicate import lines: collapse multiple imports from the same module. */
+function deduplicateImports(source: string): string {
+  const lines = source.split('\n');
   const importMap = new Map<string, Set<string>>();
   const nonImportLines: string[] = [];
   let pastImports = false;
@@ -748,6 +741,21 @@ function rewritePackImports(source: string): string {
   return [...dedupedImports, ...nonImportLines].join('\n');
 }
 
+/** Rewrite node-type source: ../bot/*.js → package barrel, deduplicate. */
+function rewriteNodeTypeImports(source: string): string {
+  const rewritten = source
+    .replace(/from\s+['"]\.\.\/bot\/[^'"]+['"]/g, "from '@synergenius/flowweaver-pack-weaver/bot'");
+  return deduplicateImports(rewritten);
+}
+
+/** Rewrite workflow source: ../node-types/ → ./node-types/ (local ejected), ../bot/ → package barrel. */
+function rewriteWorkflowImports(source: string): string {
+  const rewritten = source
+    .replace(/from\s+['"]\.\.\/node-types\//g, "from './node-types/")
+    .replace(/from\s+['"]\.\.\/bot\/[^'"]+['"]/g, "from '@synergenius/flowweaver-pack-weaver/bot'");
+  return deduplicateImports(rewritten);
+}
+
 /** Read a managed workflow source from the pack. */
 function readPackWorkflowSource(packRoot: URL, workflowBaseName: string): string {
   const candidates = [
@@ -763,6 +771,180 @@ function readPackWorkflowSource(packRoot: URL, workflowBaseName: string): string
   }
 
   throw new Error(`Could not find managed workflow: ${workflowBaseName}`);
+}
+
+export interface EjectResult {
+  workflow: string;
+  file: string;
+  nodeTypes: string[];
+  botFiles?: string[];
+}
+
+/**
+ * Read a pack source file, trying src/ then dist/.
+ */
+function readPackFile(packRoot: URL, relativePath: string): string {
+  const srcCandidate = new URL(`src/${relativePath}`, packRoot);
+  const distCandidate = new URL(`dist/${relativePath}`, packRoot);
+  try {
+    return fs.readFileSync(srcCandidate, 'utf-8');
+  } catch {
+    return fs.readFileSync(distCandidate, 'utf-8');
+  }
+}
+
+/**
+ * Collect bot utility files transitively imported by node-type files.
+ * Traces `from '../bot/<file>.js'` and `from './<file>.js'` within bot/.
+ */
+function collectBotDeps(packRoot: URL, ntFiles: string[]): string[] {
+  const visited = new Set<string>();
+  const queue: string[] = [];
+
+  // Seed from node-type files: look for ../bot/ imports
+  for (const ntFile of ntFiles) {
+    let ntSource: string;
+    try { ntSource = readPackFile(packRoot, `node-types/${ntFile}`); } catch { continue; }
+    const botImportRegex = /from\s+['"]\.\.\/bot\/([^'"]+)['"]/g;
+    let m;
+    while ((m = botImportRegex.exec(ntSource)) !== null) {
+      const botFile = m[1]!.replace(/\.js$/, '.ts');
+      if (!visited.has(botFile)) {
+        visited.add(botFile);
+        queue.push(botFile);
+      }
+    }
+  }
+
+  // Always include types.ts
+  if (!visited.has('types.ts')) {
+    visited.add('types.ts');
+    queue.push('types.ts');
+  }
+
+  // Trace transitive deps within bot/
+  while (queue.length > 0) {
+    const botFile = queue.shift()!;
+    let botSource: string;
+    try { botSource = readPackFile(packRoot, `bot/${botFile}`); } catch { continue; }
+    const localImportRegex = /from\s+['"]\.\/([^'"]+)['"]/g;
+    let m;
+    while ((m = localImportRegex.exec(botSource)) !== null) {
+      const dep = m[1]!.replace(/\.js$/, '.ts');
+      if (!visited.has(dep)) {
+        visited.add(dep);
+        queue.push(dep);
+      }
+    }
+  }
+
+  return [...visited];
+}
+
+/**
+ * Eject workflow + node-type files into a destination directory.
+ *
+ * When `standalone` is true, bot utility files are also ejected so the
+ * workflows run without the pack installed. Import paths in workflows
+ * are rewritten from `../node-types/` to `./node-types/`, and `../bot/`
+ * imports in node-type files remain as-is (pointing to the local `bot/`
+ * directory).
+ *
+ * When `standalone` is false (default), bot imports are rewritten to
+ * the package barrel (`@synergenius/flowweaver-pack-weaver/bot`).
+ */
+export function ejectWorkflows(opts: {
+  destDir: string;
+  workflows?: string[];
+  force?: boolean;
+  standalone?: boolean;
+}): EjectResult[] {
+  const packRoot = new URL('..', import.meta.url);
+  const workflowKeys = opts.workflows ?? Object.keys(MANAGED_WORKFLOWS);
+  const standalone = opts.standalone === true;
+  const results: EjectResult[] = [];
+  const allNtFiles: string[] = [];
+
+  for (const key of workflowKeys) {
+    const baseName = MANAGED_WORKFLOWS[key];
+    if (!baseName) continue;
+
+    const source = readPackWorkflowSource(packRoot, baseName);
+
+    // In standalone mode, only rewrite ../node-types/ to ./node-types/
+    // and keep ../bot/ as-is (local bot/ dir). Otherwise use package barrel.
+    let rewritten: string;
+    if (standalone) {
+      rewritten = source.replace(/from\s+['"]\.\.\/node-types\//g, "from './node-types/");
+    } else {
+      rewritten = rewriteWorkflowImports(source);
+    }
+
+    const wfFile = `${baseName}.ts`;
+    const wfPath = path.join(opts.destDir, wfFile);
+
+    // Collect node-type files referenced by the workflow
+    const ntImportRegex = /from\s+['"]\.\.\/node-types\/([^'"]+)['"]/g;
+    const ntFiles: string[] = [];
+    let ntMatch;
+    while ((ntMatch = ntImportRegex.exec(source)) !== null) {
+      const ntFile = ntMatch[1]!.replace(/\.js$/, '.ts');
+      if (!ntFiles.includes(ntFile)) ntFiles.push(ntFile);
+      if (!allNtFiles.includes(ntFile)) allNtFiles.push(ntFile);
+    }
+
+    // Write workflow (skip if exists and not forced)
+    let exists = false;
+    try { fs.statSync(wfPath); exists = true; } catch {}
+    if (!exists || opts.force) {
+      fs.mkdirSync(path.join(opts.destDir, 'node-types'), { recursive: true });
+      fs.writeFileSync(wfPath, rewritten, 'utf-8');
+
+      // Eject each referenced node-type file
+      for (const ntFile of ntFiles) {
+        const ntSrcCandidates = [
+          new URL(`src/node-types/${ntFile}`, packRoot),
+          new URL(`dist/node-types/${ntFile}`, packRoot),
+        ];
+        for (const candidate of ntSrcCandidates) {
+          try {
+            const ntSource = fs.readFileSync(candidate, 'utf-8');
+            // In standalone mode, keep ../bot/ as-is (local). Otherwise rewrite to barrel.
+            const ntRewritten = standalone ? ntSource : rewriteNodeTypeImports(ntSource);
+            fs.writeFileSync(path.join(opts.destDir, 'node-types', ntFile), ntRewritten, 'utf-8');
+            break;
+          } catch { /* try next */ }
+        }
+      }
+    }
+
+    results.push({ workflow: key, file: wfFile, nodeTypes: ntFiles });
+  }
+
+  // In standalone mode, eject bot utility files
+  if (standalone) {
+    const botFiles = collectBotDeps(packRoot, allNtFiles);
+    fs.mkdirSync(path.join(opts.destDir, 'bot'), { recursive: true });
+    for (const botFile of botFiles) {
+      const destPath = path.join(opts.destDir, 'bot', botFile);
+      let exists = false;
+      try { fs.statSync(destPath); exists = true; } catch {}
+      if (!exists || opts.force) {
+        try {
+          const botSource = readPackFile(packRoot, `bot/${botFile}`);
+          fs.writeFileSync(destPath, botSource, 'utf-8');
+        } catch {
+          // File not found in pack, skip
+        }
+      }
+    }
+    // Attach bot files to results
+    for (const r of results) {
+      r.botFiles = botFiles;
+    }
+  }
+
+  return results;
 }
 
 /**
@@ -798,13 +980,6 @@ function resolveWorkflowPath(workflowKey: string, cwd: string): string {
 }
 
 export async function handleEject(opts: ParsedArgs): Promise<void> {
-  const packRoot = new URL('..', import.meta.url);
-
-  // Determine which workflows to eject
-  const workflowKeys = opts.ejectWorkflow
-    ? [opts.ejectWorkflow]
-    : Object.keys(MANAGED_WORKFLOWS);
-
   if (opts.ejectWorkflow && !MANAGED_WORKFLOWS[opts.ejectWorkflow]) {
     console.error(`[weaver] Unknown workflow: ${opts.ejectWorkflow}`);
     console.error(`[weaver] Available: ${Object.keys(MANAGED_WORKFLOWS).join(', ')}`);
@@ -812,29 +987,25 @@ export async function handleEject(opts: ParsedArgs): Promise<void> {
     return;
   }
 
-  const ejectedFiles: Record<string, string> = {};
+  const destDir = process.cwd();
+  const workflows = opts.ejectWorkflow ? [opts.ejectWorkflow] : undefined;
 
-  for (const key of workflowKeys) {
-    const baseName = MANAGED_WORKFLOWS[key]!;
-    let source: string;
-    try {
-      source = readPackWorkflowSource(packRoot, baseName);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[weaver] ${msg}`);
-      process.exit(1);
-      return;
-    }
+  let results: EjectResult[];
+  try {
+    results = ejectWorkflows({ destDir, workflows, force: true, standalone: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[weaver] ${msg}`);
+    process.exit(1);
+    return;
+  }
 
-    const finalSource = rewritePackImports(source);
-    const fileName = `${baseName}.ts`;
-    const destPath = path.resolve(process.cwd(), fileName);
-    fs.writeFileSync(destPath, finalSource, 'utf-8');
-    ejectedFiles[key] = fileName;
-    console.log(`[weaver] Ejected ${key} → ${destPath}`);
+  for (const r of results) {
+    console.log(`[weaver] Ejected ${r.workflow} → ${path.resolve(destDir, r.file)} (${r.nodeTypes.length} node types)`);
   }
 
   // Read pack version
+  const packRoot = new URL('..', import.meta.url);
   let packVersion = 'unknown';
   try {
     const pkgPath = new URL('package.json', packRoot);
@@ -843,13 +1014,16 @@ export async function handleEject(opts: ParsedArgs): Promise<void> {
   } catch { /* ignore */ }
 
   // Write/update .weaver-meta.json (merge with existing if present)
-  const metaPath = path.resolve(process.cwd(), '.weaver-meta.json');
+  const metaPath = path.resolve(destDir, '.weaver-meta.json');
   let existingMeta: Record<string, unknown> = {};
   try {
     existingMeta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
   } catch { /* start fresh */ }
 
   const existingWorkflows = (existingMeta.workflowFiles as Record<string, string>) ?? {};
+  const ejectedFiles: Record<string, string> = {};
+  for (const r of results) ejectedFiles[r.workflow] = r.file;
+
   const meta = {
     ejected: true,
     packVersion,
