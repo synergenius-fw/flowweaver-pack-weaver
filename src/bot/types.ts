@@ -1,7 +1,7 @@
 export type ProviderName = 'anthropic' | 'claude-cli' | 'copilot-cli' | (string & {});
 
 export interface ProviderInfo {
-  type: 'anthropic' | 'claude-cli' | 'copilot-cli';
+  type: 'anthropic' | 'claude-cli' | 'copilot-cli' | 'platform';
   model?: string;
   maxTokens?: number;
   apiKey?: string;

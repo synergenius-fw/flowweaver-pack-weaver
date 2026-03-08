@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { WeaverContext } from '../bot/types.js';
-import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
+import { callAI, parseJsonResponse } from '../bot/ai-client.js';
 import { executeStep } from '../bot/step-executor.js';
 import { validateFiles } from '../bot/file-validator.js';
 import { auditEmit } from '../bot/audit-logger.js';
@@ -103,12 +103,7 @@ export async function weaverExecValidateRetry(
 
         const fixPrompt = `The following validation errors occurred:\n${errors}\n\nProvide a fix plan as JSON with steps and summary.`;
 
-        let text: string;
-        if (pInfo.type === 'anthropic') {
-          text = await callApi(pInfo.apiKey!, pInfo.model ?? 'claude-sonnet-4-6', pInfo.maxTokens ?? 8192, systemPrompt, fixPrompt);
-        } else {
-          text = callCli(pInfo.type, systemPrompt + '\n\n' + fixPrompt);
-        }
+        const text = await callAI(pInfo, systemPrompt, fixPrompt, 8192);
 
         currentPlan = parseJsonResponse(text);
         console.log(`\x1b[36m→ Fix plan: ${(currentPlan as { summary?: string }).summary ?? 'generated'}\x1b[0m`);

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { GenesisConfig, GenesisContext } from '../bot/types.js';
-import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
+import { callAI, parseJsonResponse } from '../bot/ai-client.js';
 import { GenesisStore } from '../bot/genesis-store.js';
 import { getGenesisSystemPrompt, getOperationExamples } from '../bot/genesis-prompt-context.js';
 
@@ -126,12 +126,7 @@ async function reviseProposal(
     'Return the full revised proposal as JSON. Use node IDs and port names that exist in the workflow structure above.',
   ].join('\n');
 
-  let text: string;
-  if (pInfo.type === 'anthropic') {
-    text = await callApi(pInfo.apiKey!, pInfo.model ?? 'claude-sonnet-4-6', pInfo.maxTokens ?? 8192, systemPrompt, userPrompt);
-  } else {
-    text = callCli(pInfo.type, systemPrompt + '\n\n' + userPrompt);
-  }
+  const text = await callAI(pInfo, systemPrompt, userPrompt, 8192);
 
   const parsed = parseJsonResponse(text);
   return JSON.stringify(parsed);

@@ -1,5 +1,5 @@
 import type { WeaverContext } from '../bot/types.js';
-import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
+import { callAI, parseJsonResponse } from '../bot/ai-client.js';
 import { auditEmit } from '../bot/audit-logger.js';
 
 /**
@@ -49,18 +49,7 @@ export async function weaverPlanTask(
   const userPrompt = `Task: ${task.instruction}\nMode: ${task.mode ?? 'create'}\n${task.targets ? 'Targets: ' + task.targets.join(', ') : ''}\n\nPlan this task. Return a JSON plan with steps and summary.`;
 
   try {
-    let text: string;
-    if (pInfo.type === 'anthropic') {
-      text = await callApi(
-        pInfo.apiKey!,
-        pInfo.model ?? 'claude-sonnet-4-6',
-        pInfo.maxTokens ?? 8192,
-        systemPrompt,
-        userPrompt,
-      );
-    } else {
-      text = callCli(pInfo.type, systemPrompt + '\n\n' + userPrompt);
-    }
+    const text = await callAI(pInfo, systemPrompt, userPrompt, 8192);
 
     const plan = parseJsonResponse(text);
     console.log(`\x1b[36m→ Plan: ${(plan as { summary?: string }).summary ?? 'generated'}\x1b[0m`);

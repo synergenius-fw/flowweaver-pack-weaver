@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import type { GenesisConfig, GenesisProposal, GenesisContext } from '../bot/types.js';
-import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
+import { callAI, parseJsonResponse } from '../bot/ai-client.js';
 import { getGenesisSystemPrompt, getOperationExamples } from '../bot/genesis-prompt-context.js';
 
 /**
@@ -60,18 +60,7 @@ export async function genesisPropose(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      let text: string;
-      if (pInfo.type === 'anthropic') {
-        text = await callApi(
-          pInfo.apiKey!,
-          pInfo.model ?? 'claude-sonnet-4-6',
-          pInfo.maxTokens ?? 8192,
-          systemPrompt,
-          userPrompt,
-        );
-      } else {
-        text = callCli(pInfo.type, systemPrompt + '\n\n' + userPrompt, pInfo.model);
-      }
+      const text = await callAI(pInfo, systemPrompt, userPrompt, 8192);
 
       const proposal = parseJsonResponse(text) as unknown as GenesisProposal;
       console.log(`\x1b[36m→ Proposal: ${proposal.summary} (${proposal.operations.length} ops, impact=${proposal.impactLevel})\x1b[0m`);

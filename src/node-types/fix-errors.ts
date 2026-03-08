@@ -1,5 +1,5 @@
 import type { WeaverEnv } from '../bot/types.js';
-import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
+import { callAI, parseJsonResponse } from '../bot/ai-client.js';
 
 /**
  * When validation fails, sends errors + context to the AI and
@@ -50,12 +50,7 @@ export async function weaverFixErrors(
   const userPrompt = `The following validation errors occurred:\n${errorSummary}\n\nProvide a fix plan as JSON with "steps" and "summary". Each step needs "id", "operation", "description", and "args".`;
 
   try {
-    let text: string;
-    if (pInfo.type === 'anthropic') {
-      text = await callApi(pInfo.apiKey!, pInfo.model ?? 'claude-sonnet-4-6', pInfo.maxTokens ?? 8192, systemPrompt, userPrompt);
-    } else {
-      text = callCli(pInfo.type, systemPrompt + '\n\n' + userPrompt);
-    }
+    const text = await callAI(pInfo, systemPrompt, userPrompt, 8192);
 
     const plan = parseJsonResponse(text);
     console.log(`\x1b[36m→ Fix plan: ${(plan as { summary?: string }).summary ?? 'generated'}\x1b[0m`);

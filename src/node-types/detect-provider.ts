@@ -39,7 +39,9 @@ export function weaverDetectProvider(projectDir: string, config: WeaverConfig): 
   } else if (providerSetting !== 'auto') {
     type = providerSetting;
   } else {
-    if (process.env.ANTHROPIC_API_KEY) {
+    if ((globalThis as any).__fw_llm_provider__) {
+      type = 'platform';
+    } else if (process.env.ANTHROPIC_API_KEY) {
       type = 'anthropic';
     } else if (whichSafe('claude', projectDir)) {
       type = 'claude-cli';

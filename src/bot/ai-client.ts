@@ -1,6 +1,6 @@
 import { execSync, spawn } from 'node:child_process';
 import { parseStreamLine, extractTextFromChunks } from './cli-stream-parser.js';
-import type { StreamChunk } from './types.js';
+import type { ProviderInfo, StreamChunk } from './types.js';
 
 // Strip CLAUDECODE from child env so nested claude CLI invocations work.
 const childEnv = { ...process.env };
@@ -95,6 +95,50 @@ export async function callApi(
   }
   const json = await response.json() as { content: Array<{ type: string; text: string }> };
   return json.content[0]?.text ?? '';
+}
+
+/**
+ * Call the platform-injected AI proxy (routes through IPC to the host process).
+ * Available when running inside the Studio sandbox.
+ */
+export async function callPlatform(
+  systemPrompt: string,
+  userPrompt: string,
+  model?: string,
+  maxTokens?: number,
+): Promise<string> {
+  const provider = (globalThis as any).__fw_llm_provider__;
+  if (!provider) throw new Error('Platform AI provider not available');
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ];
+  const response = await provider.chat(messages, { model, maxTokens });
+  return response.content ?? '';
+}
+
+/**
+ * Unified AI call that dispatches to the right backend based on provider type.
+ */
+export async function callAI(
+  pInfo: Pick<ProviderInfo, 'type' | 'apiKey' | 'model' | 'maxTokens'>,
+  systemPrompt: string,
+  userPrompt: string,
+  defaultMaxTokens = 4096,
+): Promise<string> {
+  if (pInfo.type === 'platform') {
+    return callPlatform(systemPrompt, userPrompt, pInfo.model, pInfo.maxTokens ?? defaultMaxTokens);
+  }
+  if (pInfo.type === 'anthropic') {
+    return callApi(
+      pInfo.apiKey!,
+      pInfo.model ?? 'claude-sonnet-4-6',
+      pInfo.maxTokens ?? defaultMaxTokens,
+      systemPrompt,
+      userPrompt,
+    );
+  }
+  return callCli(pInfo.type, systemPrompt + '\n\n' + userPrompt, pInfo.model);
 }
 
 export function parseJsonResponse(text: string): Record<string, unknown> {

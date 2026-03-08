@@ -1,5 +1,5 @@
 import type { WeaverEnv, ProviderInfo, WeaverContext } from '../bot/types.js';
-import { callCli, callApi, parseJsonResponse } from '../bot/ai-client.js';
+import { callAI, parseJsonResponse } from '../bot/ai-client.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function buildWeaverPrompt(): Promise<string> {
@@ -195,18 +195,7 @@ export async function weaverExecuteTarget(
         : JSON.stringify(req.context, null, 2);
       const userPrompt = `Context:\n${contextStr}\n\nInstructions:\n${req.prompt}`;
 
-      let text: string;
-      if (pInfo.type === 'anthropic') {
-        text = await callApi(
-          pInfo.apiKey!,
-          pInfo.model ?? 'claude-sonnet-4-6',
-          pInfo.maxTokens ?? 4096,
-          systemPrompt,
-          userPrompt,
-        );
-      } else {
-        text = callCli(pInfo.type, systemPrompt + '\n\n' + userPrompt);
-      }
+      const text = await callAI(pInfo, systemPrompt, userPrompt);
 
       return parseJsonResponse(text);
     },
