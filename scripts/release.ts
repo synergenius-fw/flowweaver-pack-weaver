@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Release script for flowweaver-pack-weaver.
+ * Release script for flow-weaver-pack-weaver.
  *
  * Usage:
  *   npm run release patch       # 0.2.0 → 0.2.1
