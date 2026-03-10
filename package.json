@@ -1,6 +1,6 @@
 {
   "name": "@synergenius/flow-weaver-pack-weaver",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "AI bot for Flow Weaver. Execute tasks, run workflows, evolve autonomously.",
   "type": "module",
   "main": "./dist/index.js",
