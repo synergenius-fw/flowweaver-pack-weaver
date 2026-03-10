@@ -1,20 +1,21 @@
 #!/usr/bin/env tsx
 /**
- * Release script for flow-weaver-pack-weaver.
+ * Release script -- bump version, build, create a PR, and let CI handle the rest.
  *
  * Usage:
- *   npm run release patch       # 0.2.0 → 0.2.1
- *   npm run release minor       # 0.2.0 → 0.3.0
- *   npm run release major       # 0.2.0 → 1.0.0
+ *   npm run release patch       # 0.2.0 -> 0.2.1
+ *   npm run release minor       # 0.2.0 -> 0.3.0
+ *   npm run release major       # 0.2.0 -> 1.0.0
  *   npm run release 0.5.0       # explicit version
  *
  * What it does:
  *   1. Bumps version in package.json and flowweaver.manifest.json
  *   2. Builds the project
  *   3. Creates a release branch, commits, pushes
- *   4. Creates and merges a PR (squash)
- *   5. Tags the merge commit and creates a GitHub release
- *   6. Publishes to npm
+ *   4. Creates a PR with auto-merge enabled
+ *
+ * After the PR merges, publish the draft release at the repo's releases page.
+ * Publishing the draft triggers npm publish automatically.
  */
 
 import * as fs from 'fs';
@@ -26,7 +27,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const pkgPath = path.join(rootDir, 'package.json');
-const manifestPath = path.join(rootDir, 'flowweaver.manifest.json');
 
 function run(cmd: string, opts?: { cwd?: string; stdio?: 'inherit' | 'pipe' }): string {
   const result = execSync(cmd, {
@@ -66,26 +66,6 @@ function bumpVersion(current: string, bump: string): string {
   }
 }
 
-function generateReleaseNotes(lastTag: string): string {
-  let commits: string;
-  try {
-    commits = run(`git log ${lastTag}..HEAD --oneline --no-merges`);
-  } catch {
-    commits = run('git log --oneline --no-merges -20');
-  }
-
-  if (!commits.trim()) return 'Maintenance release.';
-
-  const lines = commits
-    .split('\n')
-    .map((line) => {
-      const msg = line.replace(/^[a-f0-9]+ /, '');
-      return `- ${msg}`;
-    });
-
-  return `### Changes\n\n${lines.join('\n')}`;
-}
-
 function preflight(): void {
   const branch = run('git rev-parse --abbrev-ref HEAD');
   if (branch !== 'main') {
@@ -110,8 +90,6 @@ function preflight(): void {
   }
 }
 
-// ── Main ─────────────────────────────────────────────────────────────
-
 const bump = process.argv[2];
 if (!bump) {
   console.log('Usage: npm run release <patch|minor|major|x.y.z>');
@@ -135,11 +113,11 @@ try {
   // Good
 }
 
-// 1. Bump version in package.json
+// 1. Bump version in package.json and manifest
 pkg.version = newVersion;
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 
-// 2. Bump version in flowweaver.manifest.json
+const manifestPath = path.join(rootDir, 'flowweaver.manifest.json');
 if (fs.existsSync(manifestPath)) {
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
   manifest.version = newVersion;
@@ -147,62 +125,28 @@ if (fs.existsSync(manifestPath)) {
 }
 success(`Updated versions to ${newVersion}`);
 
-// 3. Build
+// 2. Build
 info('Building...');
 run('npm run build', { stdio: 'inherit' });
 success('Build complete');
 
-// 4. Create release branch, commit, push
+// 3. Create release branch, commit, push
 run(`git checkout -b ${releaseBranch}`);
 run('git add package.json flowweaver.manifest.json');
 run(`git commit -m "Release ${tag}"`);
 run(`git push -u origin ${releaseBranch}`);
 success(`Pushed ${releaseBranch}`);
 
-// 5. Create and merge PR
+// 4. Create PR with auto-merge
 const prUrl = run(
   `gh pr create --title "Release ${tag}" --body "Bump version to ${newVersion}" --base main --head ${releaseBranch}`
 );
 info(`PR created: ${prUrl}`);
 
-// Enable auto-merge (waits for CI to pass before merging)
-info('Enabling auto-merge (waiting for CI)...');
 run(`gh pr merge ${releaseBranch} --squash --subject "Release ${tag}" --body "Bump version to ${newVersion}" --auto`);
+success('Auto-merge enabled. CI will merge the PR when checks pass.');
 
-// Poll until the PR is merged
-info('Waiting for CI to pass and PR to merge...');
-for (let i = 0; i < 60; i++) {
-  const state = run(`gh pr view ${releaseBranch} --json state --jq .state`);
-  if (state === 'MERGED') break;
-  if (i === 59) fail('Timed out waiting for PR to merge (5 minutes). Check CI status.');
-  execSync('sleep 5');
-}
-
-success('PR merged');
-
-// 6. Pull the merge commit
 run('git checkout main');
-run('git pull origin main');
 
-// 7. Create GitHub release
-const lastTag = run('git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo ""');
-const notes = generateReleaseNotes(lastTag || '');
-
-const notesFile = path.join(rootDir, '.release-notes.tmp');
-fs.writeFileSync(notesFile, notes);
-try {
-  run(`gh release create ${tag} --target main --title "${tag}" --notes-file ${notesFile}`);
-} finally {
-  fs.unlinkSync(notesFile);
-}
-success(`Release ${tag} published on GitHub`);
-
-success(`Release ${tag} published on GitHub (npm publish handled by CI)`);
-
-// Cleanup
-try {
-  run(`git branch -d ${releaseBranch}`);
-  run(`git push origin --delete ${releaseBranch}`);
-} catch {
-  // Non-critical
-}
+info('Once merged, publish the draft release on the GitHub releases page.');
+info('Publishing the draft triggers npm publish automatically.');
