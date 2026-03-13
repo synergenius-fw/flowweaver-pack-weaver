@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import { withFileLock } from './file-lock.js';
+import { parseNdjson } from './safe-json.js';
 
 export interface QueuedTask {
   id: string;
@@ -93,14 +94,11 @@ export class TaskQueue {
   }
 
   private readAll(): QueuedTask[] {
-    try {
-      if (!fs.existsSync(this.filePath)) return [];
-      const content = fs.readFileSync(this.filePath, 'utf-8').trim();
-      if (!content) return [];
-      return content.split('\n').map(line => JSON.parse(line) as QueuedTask);
-    } catch {
-      return [];
-    }
+    if (!fs.existsSync(this.filePath)) return [];
+    const content = fs.readFileSync(this.filePath, 'utf-8').trim();
+    if (!content) return [];
+    const { records } = parseNdjson<QueuedTask>(content, 'task-queue');
+    return records;
   }
 
   private writeAll(tasks: QueuedTask[]): void {

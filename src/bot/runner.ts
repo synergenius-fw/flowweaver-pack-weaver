@@ -58,15 +58,27 @@ function resolveWeaverConfig(
   const dir = path.dirname(filePath);
   const localConfig = path.join(dir, '.weaver.json');
   if (fs.existsSync(localConfig)) {
-    return JSON.parse(fs.readFileSync(localConfig, 'utf-8'));
+    return parseConfigFile(localConfig);
   }
 
   const cwdConfig = path.join(process.cwd(), '.weaver.json');
   if (fs.existsSync(cwdConfig)) {
-    return JSON.parse(fs.readFileSync(cwdConfig, 'utf-8'));
+    return parseConfigFile(cwdConfig);
   }
 
   return { provider: 'auto' };
+}
+
+function parseConfigFile(configPath: string): WeaverConfig {
+  const content = fs.readFileSync(configPath, 'utf-8');
+  try {
+    return JSON.parse(content) as WeaverConfig;
+  } catch {
+    throw new Error(
+      `Invalid JSON in config file: ${configPath}\n` +
+      `  Fix the file or delete it to use defaults.`,
+    );
+  }
 }
 
 function buildSummary(result: unknown): string {
