@@ -10,7 +10,7 @@ describe('flowweaver.manifest.json', () => {
   });
 
   it('is valid JSON with required fields', () => {
-    expect(manifest.manifestVersion).toBe(1);
+    expect(manifest.manifestVersion).toBe(2);
     expect(manifest.name).toBe('@synergenius/flow-weaver-pack-weaver');
     expect(typeof manifest.version).toBe('string');
   });

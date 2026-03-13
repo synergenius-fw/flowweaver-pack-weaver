@@ -1,5 +1,5 @@
 {
-  "manifestVersion": 1,
+  "manifestVersion": 2,
   "name": "@synergenius/flow-weaver-pack-weaver",
   "version": "0.8.4",
   "description": "AI bot for Flow Weaver. Execute tasks, run workflows, evolve autonomously.",
@@ -973,6 +973,76 @@
       "name": "fw_weaver_genesis",
       "description": "Run bot self-evolution cycle on a target workflow"
     }
+  ],
+  "eventSubscriptions": [
+    {
+      "event": "execution.failed",
+      "handler": "dist/handlers/on-execution-failure.js",
+      "functionName": "onExecutionFailure",
+      "capabilities": ["fetch:hooks.slack.com", "fetch:discord.com"]
+    },
+    {
+      "event": "schedule.tick",
+      "handler": "dist/handlers/scheduled-run.js",
+      "functionName": "onScheduledRun",
+      "schedule": "*/30 * * * *",
+      "capabilities": ["ai:chat", "events:emit"]
+    },
+    {
+      "event": "bot.completed",
+      "handler": "dist/handlers/on-bot-completed.js",
+      "functionName": "onBotCompleted",
+      "capabilities": ["events:emit"]
+    }
+  ],
+  "webhooks": [
+    {
+      "id": "task-notifications",
+      "name": "Task Completion Notifications",
+      "events": ["bot.completed", "execution.failed"],
+      "configSchema": {
+        "type": "object",
+        "properties": {
+          "webhookUrl": {
+            "type": "string",
+            "description": "Webhook URL (Slack, Discord, or generic)"
+          },
+          "provider": {
+            "type": "string",
+            "enum": ["slack", "discord", "generic"],
+            "description": "Webhook provider format"
+          },
+          "onlyFailures": {
+            "type": "boolean",
+            "description": "Only send notifications on failures"
+          }
+        },
+        "required": ["webhookUrl"]
+      }
+    }
+  ],
+  "uiContributions": [
+    {
+      "type": "dashboard-widget",
+      "id": "weaver-status",
+      "name": "Weaver Bot Status",
+      "component": "dist/ui/status-widget.js",
+      "area": "dashboard",
+      "size": "medium"
+    },
+    {
+      "type": "result-renderer",
+      "id": "weaver-report",
+      "name": "Weaver Report View",
+      "component": "dist/ui/report-renderer.js",
+      "mimeType": "application/x-weaver-report"
+    }
+  ],
+  "sandboxCapabilities": [
+    "fetch:hooks.slack.com",
+    "fetch:discord.com",
+    "ai:chat",
+    "events:emit"
   ],
   "initContributions": {
     "useCase": {
