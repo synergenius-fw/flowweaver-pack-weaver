@@ -112,6 +112,11 @@ export { GenesisStore } from './genesis-store.js';
 export { withFileLock } from './file-lock.js';
 export type { FileLockOptions } from './file-lock.js';
 
+// Safe utilities
+export { safeJsonParse, jsonParseOr, parseNdjson } from './safe-json.js';
+export type { SafeParseResult } from './safe-json.js';
+export { safePath, safePathOrThrow } from './safe-path.js';
+
 // Shared modules
 export { callCli, callApi, parseJsonResponse } from './ai-client.js';
 export { executeStep } from './step-executor.js';

@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { AuditEvent } from './types.js';
+import { parseNdjson } from './safe-json.js';
 
 export class AuditStore {
   private readonly dir: string;
@@ -53,17 +54,7 @@ export class AuditStore {
     if (!fs.existsSync(this.filePath)) return [];
 
     const content = fs.readFileSync(this.filePath, 'utf-8');
-    const lines = content.split('\n').filter((line) => line.trim().length > 0);
-    const events: AuditEvent[] = [];
-
-    for (const line of lines) {
-      try {
-        events.push(JSON.parse(line) as AuditEvent);
-      } catch {
-        // skip corrupt line
-      }
-    }
-
-    return events;
+    const { records } = parseNdjson<AuditEvent>(content, 'audit');
+    return records;
   }
 }

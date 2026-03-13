@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import type { GenesisConfig, GenesisHistory, GenesisCycleRecord, GenesisFingerprint, EscrowToken, GenesisSelfMigrationRecord } from './types.js';
+import { jsonParseOr } from './safe-json.js';
 
 const DEFAULT_CONFIG: GenesisConfig = {
   intent: 'Improve workflow reliability and efficiency',
@@ -32,7 +33,8 @@ export class GenesisStore {
       fs.writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2), 'utf-8');
       return { ...DEFAULT_CONFIG };
     }
-    const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const content = fs.readFileSync(configPath, 'utf-8');
+    const raw = jsonParseOr(content, {} as Record<string, unknown>, 'genesis config');
     return { ...DEFAULT_CONFIG, ...raw };
   }
 
@@ -46,7 +48,8 @@ export class GenesisStore {
     if (!fs.existsSync(historyPath)) {
       return { configHash: '', cycles: [] };
     }
-    return JSON.parse(fs.readFileSync(historyPath, 'utf-8'));
+    const content = fs.readFileSync(historyPath, 'utf-8');
+    return jsonParseOr<GenesisHistory>(content, { configHash: '', cycles: [] }, 'genesis history');
   }
 
   appendCycle(cycle: GenesisCycleRecord): void {
@@ -79,11 +82,8 @@ export class GenesisStore {
   getLastFingerprint(): GenesisFingerprint | null {
     const fpPath = path.join(this.genesisDir, 'fingerprint.json');
     if (!fs.existsSync(fpPath)) return null;
-    try {
-      return JSON.parse(fs.readFileSync(fpPath, 'utf-8'));
-    } catch {
-      return null;
-    }
+    const content = fs.readFileSync(fpPath, 'utf-8');
+    return jsonParseOr<GenesisFingerprint | null>(content, null, 'genesis fingerprint');
   }
 
   getRecentOutcomes(count: number): string[] {
@@ -109,11 +109,8 @@ export class GenesisStore {
   loadEscrowToken(): EscrowToken | null {
     const tokenPath = path.join(this.genesisDir, 'escrow', 'token.json');
     if (!fs.existsSync(tokenPath)) return null;
-    try {
-      return JSON.parse(fs.readFileSync(tokenPath, 'utf-8'));
-    } catch {
-      return null;
-    }
+    const content = fs.readFileSync(tokenPath, 'utf-8');
+    return jsonParseOr<EscrowToken | null>(content, null, 'escrow token');
   }
 
   saveEscrowToken(token: EscrowToken): void {
@@ -145,11 +142,8 @@ export class GenesisStore {
   loadSelfHistory(): GenesisSelfMigrationRecord[] {
     const histPath = path.join(this.genesisDir, 'self-history.json');
     if (!fs.existsSync(histPath)) return [];
-    try {
-      return JSON.parse(fs.readFileSync(histPath, 'utf-8'));
-    } catch {
-      return [];
-    }
+    const content = fs.readFileSync(histPath, 'utf-8');
+    return jsonParseOr<GenesisSelfMigrationRecord[]>(content, [], 'genesis self-history');
   }
 
   appendSelfMigration(record: GenesisSelfMigrationRecord): void {

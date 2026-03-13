@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import * as os from 'node:os';
 import type { RunRecord, RunFilter, RetentionPolicy } from './types.js';
+import { parseNdjson } from './safe-json.js';
 
 export class RunStore {
   private readonly dir: string;
@@ -153,17 +154,7 @@ export class RunStore {
     if (!fs.existsSync(this.filePath)) return [];
 
     const content = fs.readFileSync(this.filePath, 'utf-8');
-    const lines = content.split('\n').filter((line) => line.trim().length > 0);
-    const records: RunRecord[] = [];
-
-    for (const line of lines) {
-      try {
-        records.push(JSON.parse(line) as RunRecord);
-      } catch {
-        console.error('[weaver] Skipping corrupt history line');
-      }
-    }
-
+    const { records } = parseNdjson<RunRecord>(content, 'history');
     return records;
   }
 }

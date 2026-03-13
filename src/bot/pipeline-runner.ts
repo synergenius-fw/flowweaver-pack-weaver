@@ -31,7 +31,13 @@ export class PipelineRunner {
       throw new Error(`Pipeline config not found: ${absPath}`);
     }
 
-    const raw = JSON.parse(fs.readFileSync(absPath, 'utf-8')) as PipelineConfig;
+    let raw: PipelineConfig;
+    try {
+      raw = JSON.parse(fs.readFileSync(absPath, 'utf-8')) as PipelineConfig;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Invalid JSON in pipeline config: ${absPath}\n  ${msg}`);
+    }
     const configDir = path.dirname(absPath);
 
     // Resolve workflow paths relative to config file

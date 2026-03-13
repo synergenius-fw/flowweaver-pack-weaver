@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { CostRecord, CostSummary } from './types.js';
+import { parseNdjson } from './safe-json.js';
 
 const MAX_ENTRIES = 10_000;
 const CAP_CHECK_INTERVAL = 100;
@@ -29,18 +30,16 @@ export class CostStore {
     if (!fs.existsSync(this.filePath)) return [];
 
     const content = fs.readFileSync(this.filePath, 'utf-8');
-    const lines = content.split('\n').filter((l) => l.trim().length > 0);
-    const records: CostRecord[] = [];
+    const { records: all } = parseNdjson<CostRecord>(content, 'costs');
 
-    for (const line of lines) {
-      try {
-        const record = JSON.parse(line) as CostRecord;
-        if (filters?.since && record.timestamp < filters.since) continue;
-        if (filters?.model && record.model !== filters.model) continue;
-        records.push(record);
-      } catch {
-        // skip corrupt lines
-      }
+    let records = all;
+    if (filters?.since) {
+      const since = filters.since;
+      records = records.filter((r) => r.timestamp >= since);
+    }
+    if (filters?.model) {
+      const model = filters.model;
+      records = records.filter((r) => r.model === model);
     }
 
     return records;
