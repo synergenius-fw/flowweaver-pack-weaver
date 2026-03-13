@@ -1,7 +1,7 @@
 {
   "manifestVersion": 2,
   "name": "@synergenius/flow-weaver-pack-weaver",
-  "version": "0.8.5",
+  "version": "0.9.0",
   "description": "AI bot for Flow Weaver. Execute tasks, run workflows, evolve autonomously.",
   "engineVersion": ">=0.19.4",
   "categories": [
@@ -979,27 +979,38 @@
       "event": "execution.failed",
       "handler": "dist/handlers/on-execution-failure.js",
       "functionName": "onExecutionFailure",
-      "capabilities": ["fetch:hooks.slack.com", "fetch:discord.com"]
+      "capabilities": [
+        "fetch:hooks.slack.com",
+        "fetch:discord.com"
+      ]
     },
     {
       "event": "schedule.tick",
       "handler": "dist/handlers/scheduled-run.js",
       "functionName": "onScheduledRun",
       "schedule": "*/30 * * * *",
-      "capabilities": ["ai:chat", "events:emit"]
+      "capabilities": [
+        "ai:chat",
+        "events:emit"
+      ]
     },
     {
       "event": "bot.completed",
       "handler": "dist/handlers/on-bot-completed.js",
       "functionName": "onBotCompleted",
-      "capabilities": ["events:emit"]
+      "capabilities": [
+        "events:emit"
+      ]
     }
   ],
   "webhooks": [
     {
       "id": "task-notifications",
       "name": "Task Completion Notifications",
-      "events": ["bot.completed", "execution.failed"],
+      "events": [
+        "bot.completed",
+        "execution.failed"
+      ],
       "configSchema": {
         "type": "object",
         "properties": {
@@ -1009,7 +1020,11 @@
           },
           "provider": {
             "type": "string",
-            "enum": ["slack", "discord", "generic"],
+            "enum": [
+              "slack",
+              "discord",
+              "generic"
+            ],
             "description": "Webhook provider format"
           },
           "onlyFailures": {
@@ -1017,7 +1032,9 @@
             "description": "Only send notifications on failures"
           }
         },
-        "required": ["webhookUrl"]
+        "required": [
+          "webhookUrl"
+        ]
       }
     }
   ],
