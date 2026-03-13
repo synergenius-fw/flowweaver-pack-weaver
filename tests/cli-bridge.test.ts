@@ -24,7 +24,7 @@ describe('cli-bridge handleCommand', () => {
   });
 
   it('rejects commands not in the handler map', async () => {
-    const bogus = ['foo', 'bar', 'deploy', 'init'];
+    const bogus = ['foo', 'bar', 'deploy'];
     for (const cmd of bogus) {
       await expect(handleCommand(cmd, [])).rejects.toThrow('Unknown weaver command');
     }

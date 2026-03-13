@@ -3,7 +3,7 @@ import {
   handleRun, handleHistory, handleCosts, handleWatch,
   handleCron, handlePipeline, handleDashboard, handleProviders,
   handleEject, handleBot, handleSession, handleSteer, handleQueue,
-  handleGenesis, handleAudit,
+  handleGenesis, handleAudit, handleInit, printHelp,
 } from './cli-handlers.js';
 
 const handlers: Record<string, (opts: ParsedArgs) => Promise<void>> = {
@@ -22,6 +22,7 @@ const handlers: Record<string, (opts: ParsedArgs) => Promise<void>> = {
   queue: handleQueue,
   genesis: handleGenesis,
   audit: handleAudit,
+  init: handleInit,
 };
 
 export async function handleCommand(
@@ -33,9 +34,13 @@ export async function handleCommand(
     throw new Error(`Unknown weaver command: ${name}`);
   }
 
-  // Import parseArgs to handle the remaining flags
   const { parseArgs } = await import('./cli-handlers.js');
-  // Prepend dummy entries so parseArgs skips argv[0] and argv[1]
   const opts = parseArgs(['node', 'weaver', name, ...args]);
+
+  if (opts.showHelp) {
+    printHelp(name);
+    return;
+  }
+
   await handler(opts);
 }
