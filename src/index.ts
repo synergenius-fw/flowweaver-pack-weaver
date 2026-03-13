@@ -172,6 +172,11 @@ export {
   genesisReport,
 } from './node-types/index.js';
 
+// Event handlers (for platform extension system)
+export { onExecutionFailure } from './handlers/on-execution-failure.js';
+export { onScheduledRun } from './handlers/scheduled-run.js';
+export { onBotCompleted } from './handlers/on-bot-completed.js';
+
 // Eject API (for platform/studio server-side use)
 export { ejectWorkflows } from './cli-handlers.js';
 export type { EjectResult } from './cli-handlers.js';
