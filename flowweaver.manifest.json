@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "name": "@synergenius/flow-weaver-pack-weaver",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "AI bot for Flow Weaver. Execute tasks, run workflows, evolve autonomously.",
   "engineVersion": ">=0.19.4",
   "categories": [
