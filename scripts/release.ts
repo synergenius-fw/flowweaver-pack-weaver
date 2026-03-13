@@ -14,8 +14,8 @@
  *   3. Creates a release branch, commits, pushes
  *   4. Creates a PR with auto-merge enabled
  *
- * After the PR merges, publish the draft release at the repo's releases page.
- * Publishing the draft triggers npm publish automatically.
+ * After CI passes, the PR auto-merges. A GitHub Action then creates the
+ * release and tag, which triggers npm publish automatically.
  */
 
 import * as fs from 'fs';
@@ -148,5 +148,4 @@ success('Auto-merge enabled. CI will merge the PR when checks pass.');
 
 run('git checkout main');
 
-info('Once merged, publish the draft release on the GitHub releases page.');
-info('Publishing the draft triggers npm publish automatically.');
+info('Once CI passes, the PR will auto-merge, create a GitHub release, and publish to npm.');

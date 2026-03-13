@@ -1,0 +1,31 @@
+name: Create Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  create-release:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from branch name
+        id: version
+        run: |
+          BRANCH="${{ github.event.pull_request.head.ref }}"
+          TAG="${BRANCH#release/}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --generate-notes \
+            --target main
