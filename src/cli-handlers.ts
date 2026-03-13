@@ -13,7 +13,7 @@ import type { ExecutionEvent, WeaverConfig, RunRecord, RunOutcome, RunCostSummar
 import { AuditStore } from './bot/audit-store.js';
 
 export interface ParsedArgs {
-  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'genesis' | 'audit';
+  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'genesis' | 'audit' | 'init';
   file?: string;
   verbose: boolean;
   dryRun: boolean;
@@ -236,6 +236,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       }
     } else if (arg === 'genesis') {
       result.command = 'genesis';
+    } else if (arg === 'init') {
+      result.command = 'init';
     } else if (arg === '--init') {
       result.genesisInit = true;
     } else if (arg === '--watch') {
@@ -1442,4 +1444,156 @@ function printAuditEvents(events: AuditEvent[], json: boolean): void {
     const dataStr = e.data ? ' ' + JSON.stringify(e.data) : '';
     console.log(`${time} [${e.type}]${dataStr}`);
   }
+}
+
+// --- Help ---
+
+const COMMAND_HELP: Record<string, string> = {
+  run:       'run <workflow.ts>              Execute a workflow with AI agent channel',
+  bot:       'bot "task description"         Create or modify a workflow from a task',
+  init:      'init                           Create a .weaver.json config file',
+  history:   'history [id] [--limit N]       Show execution history',
+  costs:     'costs [--since 7d]             Show AI token usage and costs',
+  providers: 'providers                      List available AI providers',
+  watch:     'watch <workflow.ts>            Re-run on file changes',
+  cron:      'cron "*/5 * * * *" <file>      Schedule workflow execution',
+  pipeline:  'pipeline <config.json>         Run multi-stage pipeline',
+  dashboard: 'dashboard <file> [--port N]    Start live execution dashboard',
+  session:   'session                        Start continuous task queue processing',
+  queue:     'queue <add|list|clear> [task]  Manage task queue',
+  steer:     'steer <pause|resume|cancel>    Control a running session',
+  genesis:   'genesis [--init] [--watch]     Run self-evolution cycle',
+  eject:     'eject [--workflow bot|genesis]  Export managed workflows',
+  audit:     'audit [runId] [--limit N]      View audit log',
+};
+
+export function printHelp(command?: string): void {
+  if (command && command !== 'help' && COMMAND_HELP[command]) {
+    console.log(`\nUsage: flow-weaver weaver ${COMMAND_HELP[command]}\n`);
+    printCommandHelp(command);
+    return;
+  }
+
+  console.log(`
+Weaver — AI-powered workflow automation for Flow Weaver
+
+Usage: flow-weaver weaver <command> [options]
+
+Commands:
+  ${Object.values(COMMAND_HELP).join('\n  ')}
+
+Global options:
+  -h, --help          Show help
+  -v, --verbose       Show detailed output
+  -n, --dry-run       Preview without executing
+  --quiet             Suppress output
+  -p, --params <json> Input parameters as JSON
+  -c, --config <path> Path to .weaver.json config
+  --approval <mode>   Override approval mode (auto|prompt|web|timeout-auto)
+
+Quick start:
+  flow-weaver weaver init                              # create .weaver.json
+  flow-weaver weaver providers                         # check available AI providers
+  flow-weaver weaver bot "Create a hello world workflow"  # create your first workflow
+`);
+}
+
+function printCommandHelp(command: string): void {
+  const help: Record<string, string> = {
+    run: `Options:
+  --dashboard         Enable live dashboard
+  --port <n>          Dashboard port (default: 4242)`,
+    bot: `Options:
+  --file <path>       Target file for modification (switches to modify mode)
+  --template <name>   Use a template for scaffolding
+  --batch <n>         Process multiple tasks
+  --auto-approve      Skip approval gate
+  --dashboard         Enable live dashboard`,
+    history: `Options:
+  --limit <n>         Number of records (default: 20)
+  --outcome <type>    Filter: completed, failed, error, skipped
+  --workflow <path>   Filter by workflow file
+  --since <range>     Time range: 7d, 2h, or ISO date
+  --json              Output as JSON
+  --prune             Remove old records
+  --clear             Delete all history`,
+    costs: `Options:
+  --since <range>     Time range: 7d, 30d, or ISO date
+  --model <name>      Filter by model`,
+    genesis: `Options:
+  --init              Initialize .genesis/config.json
+  --watch             Run multiple evolution cycles
+  --project-dir <p>   Project directory`,
+    watch: `Options:
+  --debounce <ms>     Debounce interval (default: 500)
+  --log <path>        Log file for daemon output`,
+    pipeline: `Options:
+  --stage <id>        Run a specific stage only`,
+    queue: `Actions:
+  add "task"          Add task to queue
+  list                Show queue contents
+  clear               Remove all tasks
+  remove <id>         Remove a specific task`,
+    steer: `Commands:
+  pause               Pause current execution
+  resume              Resume paused execution
+  cancel              Cancel current execution
+  redirect "task"     Switch to a different task
+  queue "task"        Add task to queue from steer`,
+  };
+
+  if (help[command]) {
+    console.log(help[command]);
+    console.log('');
+  }
+}
+
+// --- Init ---
+
+export async function handleInit(opts: ParsedArgs): Promise<void> {
+  const dir = opts.file ? path.resolve(opts.file) : process.cwd();
+  const configPath = path.join(dir, '.weaver.json');
+
+  if (fs.existsSync(configPath)) {
+    console.log(`[weaver] Config already exists: ${configPath}`);
+    console.log('  Edit it directly or delete it to regenerate.');
+    return;
+  }
+
+  // Detect best available provider
+  let provider: string = 'auto';
+  try {
+    if (process.env.ANTHROPIC_API_KEY) {
+      provider = 'anthropic';
+    } else {
+      const { execFileSync } = await import('node:child_process');
+      try {
+        execFileSync('claude', ['--version'], { stdio: 'pipe' });
+        provider = 'claude-cli';
+      } catch {
+        try {
+          execFileSync('copilot', ['--version'], { stdio: 'pipe' });
+          provider = 'copilot-cli';
+        } catch {
+          // Stay with auto
+        }
+      }
+    }
+  } catch {
+    // Stay with auto
+  }
+
+  const config = {
+    provider: provider === 'auto' ? 'auto' : { name: provider },
+    approval: 'auto',
+  };
+
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+
+  console.log(`\x1b[32m✓\x1b[0m Created ${configPath}`);
+  console.log(`  Provider: ${provider}`);
+  console.log('');
+  console.log('Next steps:');
+  console.log('  flow-weaver weaver providers              # verify provider detection');
+  console.log('  flow-weaver weaver bot "Create a ..."     # create your first workflow');
 }

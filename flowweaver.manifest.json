@@ -929,6 +929,10 @@
       "name": "genesis",
       "description": "Run bot self-evolution cycle on a target workflow",
       "usage": "[--init] [--watch]"
+    },
+    {
+      "name": "init",
+      "description": "Create .weaver.json config with auto-detected provider"
     }
   ],
   "mcpEntrypoint": "dist/mcp-tools.js",
