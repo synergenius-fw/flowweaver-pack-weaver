@@ -57,6 +57,51 @@ describe('callAI', () => {
   });
 });
 
+describe('extractCliJsonResult', () => {
+  it('extracts structured_output from CLI JSON wrapper', async () => {
+    const { extractCliJsonResult } = await import('../src/bot/ai-client.js');
+    const wrapper = JSON.stringify({
+      type: 'result',
+      result: '',
+      structured_output: { steps: [{ id: 's1', operation: 'read-file', description: 'Read', args: { file: 'x.ts' } }], summary: 'test' },
+    });
+    const result = extractCliJsonResult(wrapper);
+    const parsed = JSON.parse(result);
+    expect(parsed.steps).toHaveLength(1);
+    expect(parsed.summary).toBe('test');
+  });
+
+  it('falls back to result field when no structured_output', async () => {
+    const { extractCliJsonResult } = await import('../src/bot/ai-client.js');
+    const wrapper = JSON.stringify({
+      type: 'result',
+      result: '{"steps": [], "summary": "empty"}',
+    });
+    const result = extractCliJsonResult(wrapper);
+    expect(result).toBe('{"steps": [], "summary": "empty"}');
+  });
+
+  it('returns raw output when not a CLI wrapper', async () => {
+    const { extractCliJsonResult } = await import('../src/bot/ai-client.js');
+    const raw = '{"steps": [{"id": "s1", "operation": "run-shell", "description": "test", "args": {"command": "echo hi"}}], "summary": "direct"}';
+    const result = extractCliJsonResult(raw);
+    expect(result).toBe(raw);
+  });
+
+  it('returns raw text for non-JSON input', async () => {
+    const { extractCliJsonResult } = await import('../src/bot/ai-client.js');
+    const result = extractCliJsonResult('This is not JSON');
+    expect(result).toBe('This is not JSON');
+  });
+
+  it('handles empty result with type:result wrapper', async () => {
+    const { extractCliJsonResult } = await import('../src/bot/ai-client.js');
+    const wrapper = JSON.stringify({ type: 'result', result: '' });
+    const result = extractCliJsonResult(wrapper);
+    expect(result).toBe(wrapper); // returns full wrapper when result is empty
+  });
+});
+
 describe('parseJsonResponse and normalizePlan still work', () => {
   it('parseJsonResponse strips code fences', async () => {
     const { parseJsonResponse } = await import('../src/bot/ai-client.js');

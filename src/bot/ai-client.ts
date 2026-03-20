@@ -37,6 +37,33 @@ export function callCli(provider: string, prompt: string, model?: string, system
   throw new Error(`callCli only supports copilot-cli. Use callCliAsync for claude-cli.`);
 }
 
+/**
+ * Extract the model's response from the claude CLI --output-format json wrapper.
+ * With --json-schema: structured_output contains the validated JSON.
+ * Without: result contains the raw text.
+ */
+export function extractCliJsonResult(raw: string): string {
+  const trimmed = raw.trim();
+  try {
+    const wrapper = JSON.parse(trimmed);
+    // Prefer structured_output (schema-validated JSON)
+    if (wrapper?.structured_output) {
+      return JSON.stringify(wrapper.structured_output);
+    }
+    // Fall back to result field (raw text)
+    if (typeof wrapper?.result === 'string' && wrapper.result.trim()) {
+      return wrapper.result;
+    }
+    // If wrapper has type: "result" but empty result, return the whole thing
+    if (wrapper?.type === 'result') {
+      return trimmed;
+    }
+  } catch {
+    // Not valid JSON wrapper — return raw output
+  }
+  return trimmed;
+}
+
 export async function callCliAsync(provider: string, prompt: string, model?: string, systemPrompt?: string): Promise<string> {
   if (provider === 'copilot-cli') {
     return callCli(provider, prompt, model);
@@ -83,15 +110,7 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
     child.on('error', reject);
   });
 
-  // --output-format json returns the result JSON object with a `result` field
-  // containing the actual model output as a string.
-  const parsed = JSON.parse(output.trim());
-  // The CLI wraps the result: { result: "..." } — extract the inner string.
-  // If it's already a plain string (direct output), return as-is.
-  if (typeof parsed === 'object' && parsed !== null && 'result' in parsed) {
-    return typeof parsed.result === 'string' ? parsed.result : JSON.stringify(parsed.result);
-  }
-  return typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+  return extractCliJsonResult(output);
 }
 
 export async function callApi(
