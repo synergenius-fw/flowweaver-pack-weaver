@@ -208,8 +208,11 @@ function formatBotOperations(cliCommands: CliCommandDoc[]): string {
     '- create-workflow: Create a new workflow file. args: { file, content }',
     '- implement-node: Write a node type implementation. args: { file, content }',
     '- modify-source: Direct source file modification. args: { file, content }',
-    '- read-file: Read a file for context. args: { file }',
-    '- write-file: Write a file. args: { file, content }',
+    '- read-file: Read a file and return its content. args: { file }. ALWAYS use this before modifying an existing file.',
+    '- write-file: Write a file. args: { file, content }. IMPORTANT: content must be the COMPLETE file. Writing truncated content will be BLOCKED by safety guards. Always read-file first, then write the full modified content back.',
+    '',
+    'SAFETY: Writes that shrink a file by >50% or write empty content are automatically blocked.',
+    'PATTERN: For modifying existing files, always: 1) read-file → 2) modify content → 3) write-file with COMPLETE content.',
   ];
 
   const fwOps = cliCommands
