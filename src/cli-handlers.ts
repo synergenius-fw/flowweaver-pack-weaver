@@ -13,7 +13,7 @@ import type { ExecutionEvent, WeaverConfig, RunRecord, RunOutcome, RunCostSummar
 import { AuditStore } from './bot/audit-store.js';
 
 export interface ParsedArgs {
-  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'genesis' | 'audit' | 'init';
+  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'status' | 'genesis' | 'audit' | 'init';
   file?: string;
   verbose: boolean;
   dryRun: boolean;
@@ -57,6 +57,10 @@ export interface ParsedArgs {
   genesisWatch: boolean;
   // eject
   ejectWorkflow?: string;
+  // session scheduling
+  sessionContinuous: boolean;
+  sessionUntil?: string;
+  sessionMaxTasks?: number;
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -81,6 +85,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     autoApprove: false,
     genesisInit: false,
     genesisWatch: false,
+    sessionContinuous: false,
   };
 
   const args = argv.slice(2);
@@ -192,6 +197,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       }
     } else if (arg === 'session') {
       result.command = 'session';
+    } else if (arg === 'status') {
+      result.command = 'status';
     } else if (arg === 'steer') {
       result.command = 'steer';
       // Next arg is the subcommand
@@ -242,6 +249,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.genesisInit = true;
     } else if (arg === '--watch') {
       result.genesisWatch = true;
+    } else if (arg === '--continuous') {
+      result.sessionContinuous = true;
+    } else if (arg === '--until' && i + 1 < args.length) {
+      i++;
+      result.sessionUntil = args[i];
+    } else if (arg === '--max-tasks' && i + 1 < args.length) {
+      i++;
+      result.sessionMaxTasks = parseInt(args[i]!, 10) || undefined;
     } else if (arg === '--project-dir' && i + 1 < args.length) {
       i++;
       result.file = args[i];
@@ -338,6 +353,14 @@ function printRunDetail(r: RunRecord): void {
   console.log(`  Summary:        ${r.summary}`);
   if (r.params) {
     console.log(`  Params:         ${JSON.stringify(r.params)}`);
+  }
+  if (r.stepLog && r.stepLog.length > 0) {
+    console.log(`\n  Steps (${r.stepLog.length}):`);
+    for (const entry of r.stepLog) {
+      const icon = entry.status === 'ok' ? '\x1b[32m+\x1b[0m' : entry.status === 'blocked' ? '\x1b[33m⚠\x1b[0m' : '\x1b[31m✗\x1b[0m';
+      const detail = entry.detail ? ` — ${entry.detail}` : '';
+      console.log(`    ${icon} ${entry.step}${detail}`);
+    }
   }
   console.log('');
 }
@@ -1214,32 +1237,107 @@ export async function handleBot(opts: ParsedArgs): Promise<void> {
 
 export async function handleSession(opts: ParsedArgs): Promise<void> {
   const workflowPath = resolveWorkflowPath('bot', opts.file ?? process.cwd());
-
   const config = await loadConfig(opts.configPath);
+  const projectDir = opts.file ?? process.cwd();
+
+  // Parse --until HH:MM into a deadline timestamp
+  let deadline: number | undefined;
+  if (opts.sessionUntil) {
+    const match = opts.sessionUntil.match(/^(\d{1,2}):(\d{2})$/);
+    if (match) {
+      const now = new Date();
+      const target = new Date(now);
+      target.setHours(parseInt(match[1]!, 10), parseInt(match[2]!, 10), 0, 0);
+      if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1); // next day
+      deadline = target.getTime();
+      if (!opts.quiet) console.log(`[weaver] Session deadline: ${target.toLocaleTimeString()}`);
+    }
+  }
+
+  const maxTasks = opts.sessionMaxTasks ?? Infinity;
+  const continuous = opts.sessionContinuous || !!opts.sessionUntil || maxTasks < Infinity;
 
   if (!opts.quiet) {
     console.log('[weaver] Starting bot session (Ctrl+C to stop)');
+    if (continuous) console.log('[weaver] Continuous mode — polling queue for tasks');
     console.log('[weaver] Add tasks with: flow-weaver weaver queue add "task"');
   }
 
-  try {
-    const result = await runWorkflow(workflowPath, {
-      params: { projectDir: opts.file ?? process.cwd() },
-      verbose: opts.verbose,
-      dryRun: opts.dryRun,
-      config,
-    });
+  // Single-run mode (backwards compatible)
+  if (!continuous) {
+    try {
+      const result = await runWorkflow(workflowPath, {
+        params: { projectDir },
+        verbose: opts.verbose,
+        dryRun: opts.dryRun,
+        config,
+      });
+      if (!opts.quiet) {
+        const color = result.success ? '\x1b[32m' : '\x1b[31m';
+        console.log(`${color}Session: ${result.outcome}\x1b[0m`);
+      }
+      process.exit(result.success ? 0 : 1);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`\x1b[31m[weaver] Fatal: ${msg}\x1b[0m`);
+      process.exit(1);
+    }
+    return;
+  }
 
-    if (!opts.quiet) {
-      const color = result.success ? '\x1b[32m' : '\x1b[31m';
-      console.log(`${color}Session: ${result.outcome}\x1b[0m`);
+  // Continuous mode: loop until deadline/maxTasks/interrupt
+  const { TaskQueue } = await import('./bot/task-queue.js');
+  const queue = new TaskQueue();
+  let taskCount = 0;
+  let interrupted = false;
+
+  process.on('SIGINT', () => { interrupted = true; });
+  process.on('SIGTERM', () => { interrupted = true; });
+
+  while (taskCount < maxTasks && !interrupted) {
+    if (deadline && Date.now() >= deadline) {
+      if (!opts.quiet) console.log('[weaver] Deadline reached, stopping session.');
+      break;
     }
 
-    process.exit(result.success ? 0 : 1);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`\x1b[31m[weaver] Fatal: ${msg}\x1b[0m`);
-    process.exit(1);
+    const task = await queue.next();
+    if (!task) {
+      // No pending tasks — wait and retry
+      await new Promise(r => setTimeout(r, 5_000));
+      continue;
+    }
+
+    taskCount++;
+    if (!opts.quiet) console.log(`\x1b[36m[weaver] Task ${taskCount}/${maxTasks === Infinity ? '∞' : maxTasks}: ${(task.instruction ?? task.id).slice(0, 60)}\x1b[0m`);
+
+    await queue.markRunning(task.id);
+    try {
+      const result = await runWorkflow(workflowPath, {
+        params: { projectDir, taskJson: JSON.stringify(task) },
+        verbose: opts.verbose,
+        dryRun: opts.dryRun,
+        config,
+      });
+
+      if (result.success) {
+        await queue.markComplete(task.id);
+      } else {
+        await queue.markFailed(task.id);
+      }
+
+      if (!opts.quiet) {
+        const color = result.success ? '\x1b[32m' : '\x1b[31m';
+        console.log(`${color}[weaver] Task ${task.id.slice(0, 8)}: ${result.outcome}\x1b[0m`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`\x1b[31m[weaver] Task ${task.id.slice(0, 8)} error: ${msg}\x1b[0m`);
+      await queue.markFailed(task.id);
+    }
+  }
+
+  if (!opts.quiet) {
+    console.log(`[weaver] Session complete: ${taskCount} task${taskCount === 1 ? '' : 's'} processed.`);
   }
 }
 
@@ -1312,6 +1410,49 @@ export async function handleQueue(opts: ParsedArgs): Promise<void> {
       break;
     }
   }
+}
+
+export async function handleStatus(opts: ParsedArgs): Promise<void> {
+  const store = new RunStore();
+  const { TaskQueue } = await import('./bot/task-queue.js');
+  const queue = new TaskQueue();
+
+  const orphans = store.checkOrphans();
+  const recentRuns = store.list({ limit: 5 });
+  const tasks = await queue.list();
+  const pending = tasks.filter(t => t.status === 'pending').length;
+  const running = tasks.filter(t => t.status === 'running').length;
+  const completed = tasks.filter(t => t.status === 'completed').length;
+  const failed = tasks.filter(t => t.status === 'failed').length;
+
+  if (opts.historyJson) {
+    console.log(JSON.stringify({
+      queue: { pending, running, completed, failed, total: tasks.length },
+      orphanedRuns: orphans.length,
+      recentRuns: recentRuns.map(r => ({
+        id: r.id, outcome: r.outcome, summary: r.summary,
+        startedAt: r.startedAt, durationMs: r.durationMs,
+      })),
+    }, null, 2));
+    return;
+  }
+
+  console.log('\n\x1b[1mWeaver Status\x1b[0m\n');
+  console.log(`  Queue:  ${pending} pending, ${running} running, ${completed} completed, ${failed} failed`);
+  if (orphans.length > 0) {
+    console.log(`  \x1b[33mOrphaned runs: ${orphans.length} (recovered)\x1b[0m`);
+  }
+
+  if (recentRuns.length > 0) {
+    console.log(`\n  Recent runs:`);
+    for (const r of recentRuns) {
+      const icon = r.success ? '\x1b[32m✓\x1b[0m' : '\x1b[31m✗\x1b[0m';
+      console.log(`    ${icon} ${r.id.slice(0, 8)} ${r.outcome.padEnd(9)} ${formatDuration(r.durationMs).padEnd(8)} ${r.summary.slice(0, 60)}`);
+    }
+  } else {
+    console.log('\n  No recent runs.');
+  }
+  console.log('');
 }
 
 export async function handleGenesis(opts: ParsedArgs): Promise<void> {

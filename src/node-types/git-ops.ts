@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import * as path from 'node:path';
 import type { WeaverContext } from '../bot/types.js';
 import { auditEmit } from '../bot/audit-logger.js';
 
@@ -48,16 +49,38 @@ export function weaverGitOps(ctx: string): { ctx: string } {
     }
   }
 
-  // Stage files
+  // Get actually-changed files from git (avoids phantom commits)
+  let changedFiles: Set<string>;
+  try {
+    const diff = execFileSync('git', ['diff', '--name-only'], { cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    changedFiles = new Set([...diff.split('\n'), ...untracked.split('\n')].filter(Boolean));
+  } catch {
+    changedFiles = new Set(files); // fallback: trust filesModified
+  }
+
+  // Stage only files that are both in filesModified AND actually changed
+  let staged = 0;
   for (const file of files) {
+    // Resolve to relative path for comparison
+    const relative = path.relative(projectDir, path.resolve(projectDir, file));
+    if (!changedFiles.has(relative) && !changedFiles.has(file)) continue;
     try {
       execFileSync('git', ['add', file], { cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+      staged++;
     } catch { /* ignore unstaged files */ }
+  }
+
+  if (staged === 0) {
+    results.push('No actual changes to commit');
+    auditEmit('git-operation', { branch: gitConfig.branch, filesCount: 0, results });
+    context.gitResultJson = JSON.stringify({ skipped: true, reason: 'no actual changes', results });
+    return { ctx: JSON.stringify(context) };
   }
 
   // Commit
   const prefix = gitConfig.commitPrefix ?? 'weaver:';
-  const commitMsg = `${prefix} bot task (${files.length} file${files.length === 1 ? '' : 's'})`;
+  const commitMsg = `${prefix} bot task (${staged} file${staged === 1 ? '' : 's'})`;
   try {
     execFileSync('git', ['commit', '-m', commitMsg], { cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
     results.push(`Committed: ${commitMsg}`);
@@ -66,7 +89,7 @@ export function weaverGitOps(ctx: string): { ctx: string } {
     results.push('Nothing to commit');
   }
 
-  auditEmit('git-operation', { branch: gitConfig.branch, filesCount: files.length, results });
+  auditEmit('git-operation', { branch: gitConfig.branch, filesCount: staged, results });
   context.gitResultJson = JSON.stringify({ skipped: false, results });
   return { ctx: JSON.stringify(context) };
 }

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type { WeaverContext } from '../bot/types.js';
+import type { WeaverContext, StepLogEntry } from '../bot/types.js';
 import { callAI, parseJsonResponse, normalizePlan } from '../bot/ai-client.js';
 import { executeStep } from '../bot/step-executor.js';
 import { validateFiles } from '../bot/file-validator.js';
@@ -40,6 +40,7 @@ export async function weaverExecValidateRetry(
   const maxAttempts = 3;
   let currentPlan = JSON.parse(context.planJson!);
   let allFilesModified: string[] = [];
+  let allStepLog: StepLogEntry[] = [];
   let lastExecResult: Record<string, unknown> = {};
   let lastValidation: Array<{ file: string; valid: boolean; errors: string[] }> = [];
   let allValid = false;
@@ -51,6 +52,7 @@ export async function weaverExecValidateRetry(
     const execResult = await executePlanSteps(currentPlan, projectDir);
     lastExecResult = execResult;
     allFilesModified = [...new Set([...allFilesModified, ...execResult.filesModified])];
+    allStepLog.push(...execResult.stepLog);
     auditEmit('step-complete', { attempt, filesModified: execResult.filesModified, errors: execResult.errors });
 
     const validation = await validateFiles(execResult.filesModified, projectDir);
@@ -119,6 +121,7 @@ export async function weaverExecValidateRetry(
   context.resultJson = JSON.stringify(lastExecResult);
   context.validationResultJson = JSON.stringify(lastValidation);
   context.filesModified = JSON.stringify(allFilesModified);
+  context.stepLogJson = JSON.stringify(allStepLog);
   context.allValid = allValid;
 
   return { onSuccess: allValid, onFailure: !allValid, ctx: JSON.stringify(context) };
@@ -127,9 +130,10 @@ export async function weaverExecValidateRetry(
 async function executePlanSteps(
   plan: { steps: Array<{ id: string; operation: string; description: string; args: Record<string, unknown> }> },
   projectDir: string,
-): Promise<{ success: boolean; filesModified: string[]; errors: string[]; stepsCompleted: number; stepsTotal: number }> {
+): Promise<{ success: boolean; filesModified: string[]; errors: string[]; stepsCompleted: number; stepsTotal: number; stepLog: StepLogEntry[] }> {
   const filesModified: string[] = [];
   const errors: string[] = [];
+  const stepLog: StepLogEntry[] = [];
   let completed = 0;
   const steps = plan.steps ?? [];
 
@@ -137,6 +141,7 @@ async function executePlanSteps(
     const steering = checkSteeringSignal();
     if (steering === 'cancel') {
       errors.push(`Cancelled at step ${step.id}`);
+      stepLog.push({ step: step.id, status: 'error', detail: 'Cancelled by steering signal' });
       break;
     }
 
@@ -144,20 +149,23 @@ async function executePlanSteps(
       const result = await executeStep(step, projectDir);
       if (result.blocked) {
         console.error(`\x1b[33m  ⚠ ${step.id}: ${result.blockReason}\x1b[0m`);
+        stepLog.push({ step: step.id, status: 'blocked', detail: result.blockReason });
         continue;
       }
       if (result.file) filesModified.push(result.file);
       if (result.files) filesModified.push(...result.files);
       completed++;
       console.log(`\x1b[32m  + ${step.id}: ${step.description}\x1b[0m`);
+      stepLog.push({ step: step.id, status: 'ok', detail: step.description });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`${step.id}: ${msg}`);
       console.error(`\x1b[31m  x ${step.id}: ${msg}\x1b[0m`);
+      stepLog.push({ step: step.id, status: 'error', detail: msg });
     }
   }
 
-  return { success: errors.length === 0, filesModified: [...new Set(filesModified)], errors, stepsCompleted: completed, stepsTotal: steps.length };
+  return { success: errors.length === 0, filesModified: [...new Set(filesModified)], errors, stepsCompleted: completed, stepsTotal: steps.length, stepLog };
 }
 
 function checkSteeringSignal(): 'cancel' | null {

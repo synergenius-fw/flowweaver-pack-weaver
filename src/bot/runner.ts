@@ -224,6 +224,16 @@ export async function runWorkflow(
     const summary = buildSummary(result);
     const outcome = success ? 'completed' : 'failed';
 
+    // Extract stepLog from WeaverContext if available
+    let stepLog: import('./types.js').StepLogEntry[] | undefined;
+    try {
+      const ctxStr = result?.ctx as string | undefined;
+      if (ctxStr) {
+        const ctx = JSON.parse(ctxStr);
+        if (ctx.stepLogJson) stepLog = JSON.parse(ctx.stepLogJson);
+      }
+    } catch { /* stepLog extraction is best-effort */ }
+
     await notifier({
       type: 'workflow-complete',
       workflowFile: absPath,
@@ -237,7 +247,7 @@ export async function runWorkflow(
     recordRun(store, {
       id: runId, workflowFile: absPath, startedAt, success, outcome: outcome as RunOutcome, summary,
       functionName: execResult.functionName, executionTime: execResult.executionTime,
-      dryRun: false, provider: providerConfig.name, params: options?.params,
+      dryRun: false, provider: providerConfig.name, params: options?.params, stepLog,
     }, verbose);
 
     auditEmit('run-complete', { success, outcome, summary });
@@ -282,6 +292,7 @@ function recordRun(
     outcome: RunOutcome; summary: string; functionName?: string;
     executionTime?: number; dryRun: boolean; provider?: string;
     params?: Record<string, unknown>;
+    stepLog?: import('./types.js').StepLogEntry[];
   },
   verbose: boolean,
 ): void {

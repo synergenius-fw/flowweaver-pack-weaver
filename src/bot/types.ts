@@ -171,6 +171,12 @@ export interface WorkflowResult {
 
 export type RunOutcome = 'completed' | 'failed' | 'error' | 'skipped';
 
+export interface StepLogEntry {
+  step: string;
+  status: 'ok' | 'blocked' | 'error';
+  detail?: string;
+}
+
 export interface RunRecord {
   id: string;
   workflowFile: string;
@@ -187,6 +193,7 @@ export interface RunRecord {
   provider?: string;
   pipelineName?: string;
   stageName?: string;
+  stepLog?: StepLogEntry[];
 }
 
 export interface RunFilter {
@@ -494,6 +501,7 @@ export interface WeaverContext {
   resultJson?: string;
   validationResultJson?: string;
   filesModified?: string;
+  stepLogJson?: string;
   allValid?: boolean;
   gitResultJson?: string;
 }
