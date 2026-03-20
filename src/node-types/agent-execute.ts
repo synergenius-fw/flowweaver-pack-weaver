@@ -142,7 +142,10 @@ export async function weaverAgentExecute(
  * Create an AgentProvider from pack-weaver's ProviderInfo.
  */
 function createProvider(pInfo: { type: string; apiKey?: string; model?: string; maxTokens?: number }): AgentProvider {
-  if (pInfo.type === 'anthropic' && pInfo.apiKey) {
+  const type = pInfo.type ?? 'auto';
+
+  // Explicit Anthropic API
+  if (type === 'anthropic' && pInfo.apiKey) {
     return createAnthropicProvider({
       apiKey: pInfo.apiKey,
       model: pInfo.model,
@@ -150,22 +153,25 @@ function createProvider(pInfo: { type: string; apiKey?: string; model?: string; 
     });
   }
 
-  if (pInfo.type === 'claude-cli') {
-    return createClaudeCliProvider({
-      model: pInfo.model,
-    });
+  // Explicit Claude CLI
+  if (type === 'claude-cli') {
+    return createClaudeCliProvider({ model: pInfo.model });
   }
 
-  // Fallback: try Anthropic with env var
-  if (process.env.ANTHROPIC_API_KEY) {
-    return createAnthropicProvider({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      model: pInfo.model,
-      maxTokens: pInfo.maxTokens,
-    });
+  // Auto mode: try Anthropic API key from env, then fall back to Claude CLI
+  if (type === 'auto') {
+    if (process.env.ANTHROPIC_API_KEY) {
+      return createAnthropicProvider({
+        apiKey: process.env.ANTHROPIC_API_KEY,
+        model: pInfo.model,
+        maxTokens: pInfo.maxTokens,
+      });
+    }
+    // No API key — use Claude CLI (works with Claude Code subscription)
+    return createClaudeCliProvider({ model: pInfo.model });
   }
 
   throw new Error(
-    `Unsupported provider type: ${pInfo.type}. Use 'anthropic' with API key or 'claude-cli'.`,
+    `Unsupported provider type: ${type}. Use 'anthropic', 'claude-cli', or 'auto'.`,
   );
 }
