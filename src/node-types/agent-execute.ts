@@ -1,6 +1,16 @@
 import type { WeaverContext } from '../bot/types.js';
-import { runAgentLoop } from '../bot/agent-loop.js';
+import {
+  runAgentLoop,
+  createAnthropicProvider,
+  createClaudeCliProvider,
+  type AgentProvider,
+  type ToolEvent,
+} from '@synergenius/flow-weaver/agent';
+import { WEAVER_TOOLS, createWeaverExecutor } from '../bot/weaver-tools.js';
 import { auditEmit } from '../bot/audit-logger.js';
+
+// Re-use StepLogEntry shape from the bot types
+type LocalStepLogEntry = { step: string; status: string; detail: string };
 
 /**
  * Tool-use agent execution. Claude drives the entire task via tool calls
@@ -58,21 +68,58 @@ export async function weaverAgentExecute(
   auditEmit('run-start', { task: task.instruction });
 
   try {
-    const result = await runAgentLoop(pInfo, systemPrompt, taskPrompt, projectDir);
+    // Create provider based on config
+    const provider = createProvider(pInfo);
+    const executor = createWeaverExecutor(projectDir);
+
+    // Track files modified and step log via callbacks
+    const filesModified: string[] = [];
+    const stepLog: LocalStepLogEntry[] = [];
+
+    const onToolEvent = (event: ToolEvent) => {
+      if (event.type === 'tool_call_start') {
+        const args = event.args ?? {};
+        const preview = args.file ? String(args.file).split('/').pop() : args.command ? String(args.command).slice(0, 60) : '';
+        process.stderr.write(`\x1b[33m  ⚡ ${event.name}(${preview})\x1b[0m\n`);
+      }
+      if (event.type === 'tool_call_result') {
+        const icon = event.isError ? '\x1b[31m  ✗' : '\x1b[32m  →';
+        process.stderr.write(`${icon} ${(event.result ?? '').slice(0, 150).replace(/\n/g, ' ')}\x1b[0m\n`);
+
+        stepLog.push({
+          step: event.name,
+          status: event.isError ? 'error' : 'ok',
+          detail: event.isError ? (event.result ?? '').slice(0, 200) : event.name,
+        });
+
+        // Track file modifications
+        if ((event.name === 'patch_file' || event.name === 'write_file') && !event.isError && event.args?.file) {
+          filesModified.push(event.args.file as string);
+        }
+      }
+    };
+
+    const result = await runAgentLoop(
+      provider,
+      WEAVER_TOOLS,
+      executor,
+      [{ role: 'user', content: taskPrompt }],
+      { systemPrompt, maxIterations: 15, onToolEvent },
+    );
 
     context.resultJson = JSON.stringify({
       success: result.success,
       summary: result.summary,
       toolCallCount: result.toolCallCount,
     });
-    context.filesModified = JSON.stringify(result.filesModified);
-    context.stepLogJson = JSON.stringify(result.stepLog);
+    context.filesModified = JSON.stringify([...new Set(filesModified)]);
+    context.stepLogJson = JSON.stringify(stepLog);
     context.allValid = result.success;
 
     auditEmit('run-complete', {
       success: result.success,
       toolCalls: result.toolCallCount,
-      filesModified: result.filesModified.length,
+      filesModified: filesModified.length,
     });
 
     console.log(`\x1b[${result.success ? '32' : '31'}m→ Agent: ${result.summary.slice(0, 100)} (${result.toolCallCount} tool calls)\x1b[0m`);
@@ -89,4 +136,36 @@ export async function weaverAgentExecute(
 
     return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
   }
+}
+
+/**
+ * Create an AgentProvider from pack-weaver's ProviderInfo.
+ */
+function createProvider(pInfo: { type: string; apiKey?: string; model?: string; maxTokens?: number }): AgentProvider {
+  if (pInfo.type === 'anthropic' && pInfo.apiKey) {
+    return createAnthropicProvider({
+      apiKey: pInfo.apiKey,
+      model: pInfo.model,
+      maxTokens: pInfo.maxTokens,
+    });
+  }
+
+  if (pInfo.type === 'claude-cli') {
+    return createClaudeCliProvider({
+      model: pInfo.model,
+    });
+  }
+
+  // Fallback: try Anthropic with env var
+  if (process.env.ANTHROPIC_API_KEY) {
+    return createAnthropicProvider({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      model: pInfo.model,
+      maxTokens: pInfo.maxTokens,
+    });
+  }
+
+  throw new Error(
+    `Unsupported provider type: ${pInfo.type}. Use 'anthropic' with API key or 'claude-cli'.`,
+  );
 }
