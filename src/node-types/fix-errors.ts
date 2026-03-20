@@ -47,7 +47,20 @@ export async function weaverFixErrors(
   }
 
   const errorSummary = errors.map(e => `${e.file}: ${e.errors.join(', ')}`).join('\n');
-  const userPrompt = `The following validation errors occurred:\n${errorSummary}\n\nProvide a fix plan as JSON with "steps" and "summary". Each step needs "id", "operation", "description", and "args".`;
+  const userPrompt = `The following validation errors occurred:
+${errorSummary}
+
+Provide a fix plan as JSON: {"steps": [...], "summary": "..."}
+
+Each step MUST have: "id" (string), "operation" (string), "description" (string), "args" (object).
+
+Available operations for fixes:
+- patch-file: Surgical find-and-replace. args: { "file": "path", "patches": [{ "find": "old text", "replace": "new text" }] }
+  PREFERRED for fixing @input annotations. Example: { "find": "@input portName", "replace": "@input [portName]" }
+- run-shell: Execute a command. args: { "command": "..." }
+- read-file: Read file content. args: { "file": "path" }
+
+Return ONLY valid JSON. No explanation outside the JSON.`;
 
   try {
     const text = await callAI(pInfo, systemPrompt, userPrompt, 8192);
