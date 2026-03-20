@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { WeaverContext } from '../bot/types.js';
-import { callAI, parseJsonResponse } from '../bot/ai-client.js';
+import { callAI, parseJsonResponse, normalizePlan } from '../bot/ai-client.js';
 import { executeStep } from '../bot/step-executor.js';
 import { validateFiles } from '../bot/file-validator.js';
 import { auditEmit } from '../bot/audit-logger.js';
@@ -101,12 +101,13 @@ export async function weaverExecValidateRetry(
           systemPrompt = 'You are Weaver. Return ONLY valid JSON.';
         }
 
-        const fixPrompt = `The following validation errors occurred:\n${errors}\n\nProvide a fix plan as JSON with steps and summary.`;
+        const fixPrompt = `The following validation errors occurred:\n${errors}\n\nProvide a fix plan as JSON: {"steps": [{"id": "fix-1", "operation": "patch-file|run-shell|read-file", "description": "...", "args": {...}}], "summary": "..."}`;
 
         const text = await callAI(pInfo, systemPrompt, fixPrompt, 8192);
 
-        currentPlan = parseJsonResponse(text);
-        console.log(`\x1b[36m→ Fix plan: ${(currentPlan as { summary?: string }).summary ?? 'generated'}\x1b[0m`);
+        const parsed = parseJsonResponse(text);
+        currentPlan = normalizePlan(parsed);
+        console.log(`\x1b[36m→ Fix plan: ${currentPlan.summary} (${currentPlan.steps.length} steps)\x1b[0m`);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`\x1b[31m→ Fix planning failed: ${msg}\x1b[0m`);

@@ -19,17 +19,26 @@ const MAX_FILES_PER_PLAN = 50;
 /** Maximum shell command execution time (ms). */
 const SHELL_TIMEOUT = 60_000;
 
+/** Maximum file size for read/patch operations (1MB). */
+const MAX_READ_SIZE = 1_048_576;
+
+/** Maximum files returned by list-files. */
+const MAX_LIST_FILES = 1000;
+
 /** Shell commands that are NEVER allowed (destructive operations). */
 const BLOCKED_SHELL_PATTERNS = [
-  /\brm\s+-rf?\s+[\/~]/i,        // rm -rf /
+  /\brm\s+(-[a-z]*r|-[a-z]*f)[a-z]*\s/i,  // rm with -r or -f flags
   /\bgit\s+push\b/i,              // git push (no remote ops)
+  /\bgit\s+reset\s+--hard\b/i,    // git reset --hard
   /\bnpm\s+publish\b/i,           // npm publish
-  /\bcurl\b.*\|\s*sh/i,           // curl | sh (pipe to shell)
+  /\bcurl\b.*\|\s*(sh|bash)\b/i,  // curl | sh/bash
+  /\bwget\b.*\|\s*(sh|bash)\b/i,  // wget | sh/bash
   /\bsudo\b/i,                    // sudo
   /\bchmod\s+777\b/i,             // chmod 777
   /\bkill\s+-9\b/i,               // kill -9
   /\bmkfs\b/i,                    // format disk
   /\bdd\s+if=/i,                  // dd (disk destroyer)
+  />\s*\/dev\/sd/i,               // write to raw disk
 ];
 
 /** Track files written in this process to enforce the per-plan cap. */
@@ -177,11 +186,16 @@ export async function executeStep(
         return { blocked: true, blockReason: `File not found: ${file}` };
       }
 
+      // File size guard
+      const fileSize = fs.statSync(filePath).size;
+      if (fileSize > MAX_READ_SIZE) {
+        return { blocked: true, blockReason: `File too large for patch-file (${fileSize} bytes, max ${MAX_READ_SIZE}).` };
+      }
+
       let content = fs.readFileSync(filePath, 'utf-8');
       const patches = (args.patches as Array<{ find: string; replace: string }>) ?? [];
 
       if (!patches.length && args.find && args.replace !== undefined) {
-        // Single patch shorthand: { find: "old", replace: "new" }
         patches.push({ find: args.find as string, replace: args.replace as string });
       }
 
@@ -194,7 +208,7 @@ export async function executeStep(
 
       for (const patch of patches) {
         if (content.includes(patch.find)) {
-          content = content.replace(patch.find, patch.replace);
+          content = content.split(patch.find).join(patch.replace); // replaceAll without regex
           applied++;
         } else {
           notFound.push(patch.find.substring(0, 60));
@@ -231,6 +245,10 @@ export async function executeStep(
       if (fs.statSync(filePath).isDirectory()) {
         const entries = fs.readdirSync(filePath, { encoding: 'utf-8' });
         return { output: `"${file}" is a directory. Contents:\n${entries.join('\n')}` };
+      }
+      const fileSize = fs.statSync(filePath).size;
+      if (fileSize > MAX_READ_SIZE) {
+        return { output: `File too large to read (${fileSize} bytes, max ${MAX_READ_SIZE}). Use run-shell with head/tail instead.` };
       }
       const content = fs.readFileSync(filePath, 'utf-8');
       return { file: filePath, output: content };
@@ -287,14 +305,23 @@ export async function executeStep(
       const entries = fs.readdirSync(targetDir, { recursive: true, encoding: 'utf-8' }) as string[];
       let files = entries
         .filter(e => {
+          if (e.includes('node_modules') || e.includes('.git')) return false;
           const full = path.join(targetDir, e);
           try { return fs.statSync(full).isFile(); } catch { return false; }
         })
         .sort();
 
       if (pattern) {
-        const regex = new RegExp(pattern);
-        files = files.filter(f => regex.test(f));
+        try {
+          const regex = new RegExp(pattern);
+          files = files.filter(f => regex.test(f));
+        } catch {
+          return { output: `Invalid regex pattern: ${pattern}` };
+        }
+      }
+
+      if (files.length > MAX_LIST_FILES) {
+        files = files.slice(0, MAX_LIST_FILES);
       }
 
       return { files: files.map(f => path.join(dir, f)), output: files.join('\n') };

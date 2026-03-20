@@ -179,6 +179,10 @@ When stabilize mode is active, only fix-up operations are allowed: removeNode, r
 
 ## Response Format
 
+You are generating a JSON execution plan. You do NOT execute anything — the executor handles all execution.
+
+NEVER ask for permission, approval, or tool access. NEVER say "I need to run" or "Could you approve". Just output the JSON plan.
+
 Return ONLY valid JSON. No markdown, no code fences, no explanation outside the JSON structure. Your response must parse with JSON.parse() directly.`;
 }
 

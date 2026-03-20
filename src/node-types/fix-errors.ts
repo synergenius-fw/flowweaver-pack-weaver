@@ -1,5 +1,5 @@
 import type { WeaverEnv } from '../bot/types.js';
-import { callAI, parseJsonResponse } from '../bot/ai-client.js';
+import { callAI, parseJsonResponse, normalizePlan } from '../bot/ai-client.js';
 
 /**
  * When validation fails, sends errors + context to the AI and
@@ -65,8 +65,9 @@ Return ONLY valid JSON. No explanation outside the JSON.`;
   try {
     const text = await callAI(pInfo, systemPrompt, userPrompt, 8192);
 
-    const plan = parseJsonResponse(text);
-    console.log(`\x1b[36m→ Fix plan: ${(plan as { summary?: string }).summary ?? 'generated'}\x1b[0m`);
+    const parsed = parseJsonResponse(text);
+    const plan = normalizePlan(parsed);
+    console.log(`\x1b[36m→ Fix plan: ${plan.summary} (${plan.steps.length} steps)\x1b[0m`);
     return { onSuccess: true, onFailure: false, env, taskJson, fixPlanJson: JSON.stringify(plan) };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
