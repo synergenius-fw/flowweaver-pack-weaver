@@ -118,7 +118,12 @@ export async function weaverExecValidateRetry(
           systemPrompt = 'You are Weaver. Return ONLY valid JSON.';
         }
 
-        const fixPrompt = `The following validation errors occurred:\n${errors}\n\nProvide a fix plan as JSON: {"steps": [{"id": "fix-1", "operation": "patch-file|run-shell|read-file", "description": "...", "args": {...}}], "summary": "..."}`;
+        // Include step outputs so the AI has context from discovery steps
+        const outputContext = Object.entries(execResult.stepOutputs)
+          .map(([id, out]) => `--- Output of ${id} ---\n${out}`)
+          .join('\n\n');
+
+        const fixPrompt = `The following validation errors occurred:\n${errors}\n\n${outputContext ? `Discovery step outputs:\n${outputContext}\n\n` : ''}Provide a CONCRETE fix plan. Every patch-file step MUST include "file" (absolute path from the outputs above) and "patches" array with exact "find"/"replace" strings. Do NOT use placeholders.`;
 
         const text = await callAI(pInfo, systemPrompt, fixPrompt, 8192);
 
@@ -145,10 +150,11 @@ export async function weaverExecValidateRetry(
 async function executePlanSteps(
   plan: { steps: Array<{ id: string; operation: string; description: string; args: Record<string, unknown> }> },
   projectDir: string,
-): Promise<{ success: boolean; filesModified: string[]; errors: string[]; stepsCompleted: number; stepsTotal: number; stepLog: StepLogEntry[] }> {
+): Promise<{ success: boolean; filesModified: string[]; errors: string[]; stepsCompleted: number; stepsTotal: number; stepLog: StepLogEntry[]; stepOutputs: Record<string, string> }> {
   const filesModified: string[] = [];
   const errors: string[] = [];
   const stepLog: StepLogEntry[] = [];
+  const stepOutputs: Record<string, string> = {};
   let completed = 0;
   const steps = plan.steps ?? [];
 
@@ -169,6 +175,10 @@ async function executePlanSteps(
       }
       if (result.file) filesModified.push(result.file);
       if (result.files) filesModified.push(...result.files);
+      // Capture step output for feeding into fix prompts
+      if (result.output) {
+        stepOutputs[step.id] = result.output.slice(0, 4000); // cap at 4k to fit in prompt
+      }
       completed++;
       console.log(`\x1b[32m  + ${step.id}: ${step.description}\x1b[0m`);
       stepLog.push({ step: step.id, status: 'ok', detail: step.description });
@@ -180,7 +190,7 @@ async function executePlanSteps(
     }
   }
 
-  return { success: errors.length === 0, filesModified: [...new Set(filesModified)], errors, stepsCompleted: completed, stepsTotal: steps.length, stepLog };
+  return { success: errors.length === 0, filesModified: [...new Set(filesModified)], errors, stepsCompleted: completed, stepsTotal: steps.length, stepLog, stepOutputs };
 }
 
 function checkSteeringSignal(): 'cancel' | null {
