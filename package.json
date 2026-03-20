@@ -64,7 +64,7 @@
     "typecheck": "tsc --noEmit",
     "release": "tsx scripts/release.ts",
     "dev:build": "npm run build && echo '✓ Pack built. Ready to test in target project.'",
-    "dev:ai-ops": "npm run build && cd ../flow-weaver-pack-ai-ops && npm install ../flow-weaver-pack-weaver && echo '✓ ai-ops updated with local build'"
+    "dev:ai-ops": "npm run build && npm pack --pack-destination /tmp && cd ../flow-weaver-pack-ai-ops && npm install /tmp/synergenius-flow-weaver-pack-weaver-$(node -p 'require(\"../flow-weaver-pack-weaver/package.json\").version').tgz && echo '✓ ai-ops updated with local tarball'"
   },
   "devDependencies": {
     "@types/node": "^25.3.5",
