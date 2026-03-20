@@ -46,7 +46,13 @@ export async function weaverPlanTask(
     systemPrompt = 'You are Weaver, an AI workflow bot. Return ONLY valid JSON with a plan.';
   }
 
-  const userPrompt = `Task: ${task.instruction}\nMode: ${task.mode ?? 'create'}\n${task.targets ? 'Targets: ' + task.targets.join(', ') : ''}\n\nPlan this task. Return a JSON plan with steps and summary.`;
+  const userPrompt = `Task: ${task.instruction}\nMode: ${task.mode ?? 'create'}\n${task.targets ? 'Targets: ' + task.targets.join(', ') : ''}
+
+Plan this task. IMPORTANT rules:
+1. Every step MUST have complete, concrete args — no empty patches, no placeholders.
+2. If you need to discover file contents or errors before fixing, plan ONLY the discovery steps (run-shell, read-file, list-files) in this first plan. The system will automatically provide a second planning round with actual errors if validation fails.
+3. Do NOT plan patch-file steps unless you already know the exact find/replace strings.
+4. Prefer run-shell with "npx flow-weaver validate <file> --json" to discover errors, then read-file to see the file, then patch-file with exact strings.`;
 
   try {
     const text = await callAI(pInfo, systemPrompt, userPrompt, 8192);

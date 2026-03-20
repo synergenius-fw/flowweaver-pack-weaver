@@ -72,10 +72,8 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
     throw new Error(`Unknown CLI provider: ${provider}`);
   }
 
-  // Use --output-format json + --json-schema to enforce structured JSON output.
-  // This eliminates hallucination (permission requests, markdown, explanations)
-  // because the CLI validates the response against the schema before returning.
-  const args = ['-p', '--output-format', 'json', '--json-schema', PLAN_JSON_SCHEMA];
+  // Use --output-format stream-json for real-time feedback + --json-schema for structured output.
+  const args = ['-p', '--output-format', 'stream-json', '--include-partial-messages', '--json-schema', PLAN_JSON_SCHEMA];
   if (model) args.push('--model', model);
   if (systemPrompt) args.push('--system-prompt', systemPrompt);
 
@@ -85,18 +83,59 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
   });
   trackChild(child);
 
+  // Stream stderr to console for real-time feedback (thinking, progress)
+  child.stderr.on('data', (data: Buffer) => {
+    const msg = data.toString().trim();
+    if (msg) process.stderr.write(`\x1b[90m  ${msg}\x1b[0m\n`);
+  });
+
   child.stdin.write(prompt);
   child.stdin.end();
 
   const timeout = setTimeout(() => child.kill('SIGTERM'), 300_000);
 
-  // With --output-format json, stdout is a single JSON object (not stream-json).
-  // Collect all stdout data.
-  let output = '';
+  // Collect stream-json lines, print partial text messages for feedback
+  let resultJson = '';
+  let buffer = '';
 
   try {
     for await (const data of child.stdout) {
-      output += data.toString();
+      buffer += data.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop()!;
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const event = JSON.parse(line);
+          // Print thinking/text content as it streams for user feedback
+          if (event.type === 'assistant' && event.message?.content) {
+            for (const block of event.message.content) {
+              if (block.type === 'thinking' && block.thinking) {
+                // Show truncated thinking
+                const preview = block.thinking.slice(0, 120).replace(/\n/g, ' ');
+                process.stderr.write(`\x1b[90m  💭 ${preview}${block.thinking.length > 120 ? '...' : ''}\x1b[0m\n`);
+              } else if (block.type === 'text' && block.text) {
+                process.stderr.write(`\x1b[36m  → ${block.text.slice(0, 200)}\x1b[0m\n`);
+              }
+            }
+          }
+          // Capture the final result event
+          if (event.type === 'result') {
+            resultJson = line;
+          }
+        } catch {
+          // Not JSON — ignore partial lines
+        }
+      }
+    }
+
+    // Process remaining buffer
+    if (buffer.trim()) {
+      try {
+        const event = JSON.parse(buffer);
+        if (event.type === 'result') resultJson = buffer;
+      } catch { /* ignore */ }
     }
   } finally {
     clearTimeout(timeout);
@@ -110,7 +149,7 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
     child.on('error', reject);
   });
 
-  return extractCliJsonResult(output);
+  return extractCliJsonResult(resultJson || buffer);
 }
 
 export async function callApi(
