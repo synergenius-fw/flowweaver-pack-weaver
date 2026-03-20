@@ -1,4 +1,4 @@
-import { execSync, spawn } from 'node:child_process';
+import { execSync, execFileSync, spawn } from 'node:child_process';
 import { parseStreamLine, extractTextFromChunks } from './cli-stream-parser.js';
 import type { ProviderInfo, StreamChunk } from './types.js';
 
@@ -6,10 +6,12 @@ import type { ProviderInfo, StreamChunk } from './types.js';
 const childEnv = { ...process.env };
 delete childEnv.CLAUDECODE;
 
-export function callCli(provider: string, prompt: string, model?: string): string {
+export function callCli(provider: string, prompt: string, model?: string, systemPrompt?: string): string {
   if (provider === 'claude-cli') {
-    const modelFlag = model ? ` --model ${model}` : '';
-    return execSync(`claude -p --output-format text${modelFlag}`, {
+    const args = ['-p', '--output-format', 'text'];
+    if (model) args.push('--model', model);
+    if (systemPrompt) args.push('--system-prompt', systemPrompt);
+    return execFileSync('claude', args, {
       input: prompt, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 300_000, env: childEnv,
     }).trim();
   }
@@ -21,7 +23,7 @@ export function callCli(provider: string, prompt: string, model?: string): strin
   throw new Error(`Unknown CLI provider: ${provider}`);
 }
 
-export async function callCliAsync(provider: string, prompt: string, model?: string): Promise<string> {
+export async function callCliAsync(provider: string, prompt: string, model?: string, systemPrompt?: string): Promise<string> {
   if (provider === 'copilot-cli') {
     return callCli(provider, prompt, model);
   }
@@ -31,6 +33,7 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
 
   const args = ['-p', '--output-format', 'stream-json'];
   if (model) args.push('--model', model);
+  if (systemPrompt) args.push('--system-prompt', systemPrompt);
 
   const child = spawn('claude', args, {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -138,26 +141,30 @@ export async function callAI(
       userPrompt,
     );
   }
-  const fullPrompt = systemPrompt + '\n\n' + userPrompt;
+  // Pass system prompt separately via --system-prompt flag so Claude CLI
+  // treats it as a proper system prompt instead of burying it in user text.
+  // This is the root cause fix for "permission hallucination" — when system
+  // and user prompts were concatenated, the JSON-only instruction got lost
+  // in 60k+ chars of context.
   let result: string;
   try {
-    result = callCli(pInfo.type, fullPrompt, pInfo.model);
+    result = callCli(pInfo.type, userPrompt, pInfo.model, systemPrompt);
   } catch (err: unknown) {
     // CLI exit code 1 can happen with large prompts — try async as fallback
     try {
-      result = await callCliAsync(pInfo.type, fullPrompt, pInfo.model);
+      result = await callCliAsync(pInfo.type, userPrompt, pInfo.model, systemPrompt);
     } catch {
       throw err; // re-throw original error
     }
   }
 
-  // If CLI returned non-JSON (permission hallucination), retry once with reinforced prompt
+  // Safety net: if CLI still returned non-JSON, retry once with reinforced prompt
   const trimmed = result.trim();
   if (trimmed && !trimmed.startsWith('{') && !trimmed.startsWith('[')) {
     console.error('\x1b[33m→ AI returned non-JSON, retrying with reinforced prompt...\x1b[0m');
-    const retryPrompt = fullPrompt +
+    const retryPrompt = userPrompt +
       '\n\nIMPORTANT: Your previous response was NOT valid JSON. Return ONLY a JSON object. Do not ask for permission or explain — just output the JSON.';
-    return callCli(pInfo.type, retryPrompt, pInfo.model);
+    return callCli(pInfo.type, retryPrompt, pInfo.model, systemPrompt);
   }
 
   return result;

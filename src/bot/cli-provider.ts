@@ -29,20 +29,20 @@ export class CliAgentProvider implements BotAgentProvider {
         ? request.context
         : JSON.stringify(request.context, null, 2);
 
-    const fullPrompt = `${systemPrompt}\n\nContext:\n${contextStr}\n\nInstructions:\n${request.prompt}`;
+    const userPrompt = `Context:\n${contextStr}\n\nInstructions:\n${request.prompt}`;
 
     if (this.cli === 'claude-cli') {
       const chunks: StreamChunk[] = [];
-      for await (const chunk of this.streamRaw(fullPrompt)) {
+      for await (const chunk of this.streamRaw(userPrompt, systemPrompt)) {
         chunks.push(chunk);
       }
       const raw = extractTextFromChunks(chunks);
       return this.parseJson(raw);
     }
 
-    // copilot-cli: no stream-json support, keep execSync
+    // copilot-cli: no --system-prompt support, keep concatenated
     const raw = execSync('copilot -p --silent --allow-all-tools', {
-      input: fullPrompt,
+      input: systemPrompt + '\n\n' + userPrompt,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 120_000,
@@ -64,10 +64,10 @@ export class CliAgentProvider implements BotAgentProvider {
         ? request.context
         : JSON.stringify(request.context, null, 2);
 
-    const fullPrompt = `${systemPrompt}\n\nContext:\n${contextStr}\n\nInstructions:\n${request.prompt}`;
+    const userPrompt = `Context:\n${contextStr}\n\nInstructions:\n${request.prompt}`;
 
     if (this.cli === 'claude-cli') {
-      yield* this.streamRaw(fullPrompt);
+      yield* this.streamRaw(userPrompt, systemPrompt);
     } else {
       const result = await this.decide(request);
       yield { type: 'text', text: JSON.stringify(result) };
@@ -85,10 +85,13 @@ export class CliAgentProvider implements BotAgentProvider {
     return { result };
   }
 
-  private async *streamRaw(fullPrompt: string): AsyncGenerator<StreamChunk> {
+  private async *streamRaw(userPrompt: string, systemPrompt?: string): AsyncGenerator<StreamChunk> {
     const args = ['-p', '--output-format', 'stream-json', '--include-partial-messages'];
     if (this.model) {
       args.push('--model', this.model);
+    }
+    if (systemPrompt) {
+      args.push('--system-prompt', systemPrompt);
     }
 
     const child = spawn('claude', args, {
@@ -96,7 +99,7 @@ export class CliAgentProvider implements BotAgentProvider {
       env: childEnv,
     });
 
-    child.stdin.write(fullPrompt);
+    child.stdin.write(userPrompt);
     child.stdin.end();
 
     const timeout = setTimeout(() => {
