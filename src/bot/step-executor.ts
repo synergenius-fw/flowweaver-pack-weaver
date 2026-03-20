@@ -228,6 +228,10 @@ export async function executeStep(
       if (!fs.existsSync(filePath)) {
         return { output: `File not found: ${file}` };
       }
+      if (fs.statSync(filePath).isDirectory()) {
+        const entries = fs.readdirSync(filePath, { encoding: 'utf-8' });
+        return { output: `"${file}" is a directory. Contents:\n${entries.join('\n')}` };
+      }
       const content = fs.readFileSync(filePath, 'utf-8');
       return { file: filePath, output: content };
     }
