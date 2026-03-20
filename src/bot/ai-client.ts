@@ -138,15 +138,26 @@ export async function callAI(
       userPrompt,
     );
   }
-  const result = await callCliAsync(pInfo.type, systemPrompt + '\n\n' + userPrompt, pInfo.model);
+  const fullPrompt = systemPrompt + '\n\n' + userPrompt;
+  let result: string;
+  try {
+    result = callCli(pInfo.type, fullPrompt, pInfo.model);
+  } catch (err: unknown) {
+    // CLI exit code 1 can happen with large prompts — try async as fallback
+    try {
+      result = await callCliAsync(pInfo.type, fullPrompt, pInfo.model);
+    } catch {
+      throw err; // re-throw original error
+    }
+  }
 
   // If CLI returned non-JSON (permission hallucination), retry once with reinforced prompt
   const trimmed = result.trim();
   if (trimmed && !trimmed.startsWith('{') && !trimmed.startsWith('[')) {
     console.error('\x1b[33m→ AI returned non-JSON, retrying with reinforced prompt...\x1b[0m');
-    const retryPrompt = systemPrompt + '\n\n' + userPrompt +
+    const retryPrompt = fullPrompt +
       '\n\nIMPORTANT: Your previous response was NOT valid JSON. Return ONLY a JSON object. Do not ask for permission or explain — just output the JSON.';
-    return callCliAsync(pInfo.type, retryPrompt, pInfo.model);
+    return callCli(pInfo.type, retryPrompt, pInfo.model);
   }
 
   return result;
