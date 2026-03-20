@@ -142,6 +142,10 @@ async function executePlanSteps(
 
     try {
       const result = await executeStep(step, projectDir);
+      if (result.blocked) {
+        console.error(`\x1b[33m  ⚠ ${step.id}: ${result.blockReason}\x1b[0m`);
+        continue;
+      }
       if (result.file) filesModified.push(result.file);
       if (result.files) filesModified.push(...result.files);
       completed++;
