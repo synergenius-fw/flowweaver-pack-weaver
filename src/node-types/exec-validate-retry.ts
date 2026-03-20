@@ -38,14 +38,22 @@ export async function weaverExecValidateRetry(
 
   const { providerInfo: pInfo, projectDir } = env;
   const maxAttempts = 3;
+  const taskDeadline = Date.now() + 180_000; // 3 minute max per task
   let currentPlan = JSON.parse(context.planJson!);
   let allFilesModified: string[] = [];
   let allStepLog: StepLogEntry[] = [];
   let lastExecResult: Record<string, unknown> = {};
   let lastValidation: Array<{ file: string; valid: boolean; errors: string[] }> = [];
   let allValid = false;
+  let prevErrorCount = Infinity;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // Task timeout — stop if we've exceeded the deadline
+    if (Date.now() > taskDeadline) {
+      console.error('\x1b[33m→ Task timeout (3 min), moving on\x1b[0m');
+      break;
+    }
+
     console.log(`\x1b[36m→ Attempt ${attempt}/${maxAttempts}\x1b[0m`);
     auditEmit('step-start', { attempt, stepCount: currentPlan.steps?.length });
 
@@ -60,6 +68,13 @@ export async function weaverExecValidateRetry(
     allValid = validation.every(v => v.valid);
     const errorCount = validation.filter(v => !v.valid).length;
     auditEmit('validation-run', { attempt, allValid, errorCount });
+
+    // Stop retrying if errors didn't decrease — AI is stuck
+    if (attempt > 1 && errorCount >= prevErrorCount) {
+      console.error(`\x1b[33m→ Errors not decreasing (${errorCount} >= ${prevErrorCount}), stopping retry\x1b[0m`);
+      break;
+    }
+    prevErrorCount = errorCount;
 
     // Collect design warnings from valid files
     const designWarnings = validation
