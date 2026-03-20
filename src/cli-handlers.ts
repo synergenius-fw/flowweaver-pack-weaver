@@ -737,6 +737,7 @@ export async function handleProviders(): Promise<void> {
 
 const MANAGED_WORKFLOWS: Record<string, string> = {
   bot: 'weaver-bot',
+  agent: 'weaver-agent',
   batch: 'weaver-bot-batch',
   genesis: 'genesis-task',
 };
@@ -1244,9 +1245,14 @@ export async function handleBot(opts: ParsedArgs): Promise<void> {
 }
 
 export async function handleSession(opts: ParsedArgs): Promise<void> {
-  const workflowPath = resolveWorkflowPath('bot', opts.file ?? process.cwd());
-  const config = await loadConfig(opts.configPath);
+  // Use agent workflow (tool-use loop) when Anthropic API key is available
   const projectDir = opts.file ?? process.cwd();
+  const config = await loadConfig(opts.configPath);
+  const providerCfg = config?.provider;
+  const hasApiKey = (typeof providerCfg === 'object' && providerCfg !== null && 'apiKey' in providerCfg && (providerCfg as Record<string, unknown>).apiKey) || process.env.ANTHROPIC_API_KEY;
+  const workflowKey = hasApiKey ? 'agent' : 'bot';
+  if (!opts.quiet && hasApiKey) console.log('[weaver] Using agent mode (Anthropic API with tool-use)');
+  const workflowPath = resolveWorkflowPath(workflowKey, projectDir);
 
   // Parse --until HH:MM into a deadline timestamp
   let deadline: number | undefined;

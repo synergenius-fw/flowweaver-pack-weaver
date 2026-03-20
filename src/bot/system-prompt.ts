@@ -177,25 +177,24 @@ Genesis is a 17-step self-evolving workflow engine:
 
 When stabilize mode is active, only fix-up operations are allowed: removeNode, removeConnection, implementNode. No new nodes or connections.
 
-## Response Format
+## Tool Use
 
-You are generating a JSON execution plan. You do NOT execute anything — the executor handles all execution.
+You have tools available: validate, read_file, patch_file, run_shell, list_files, write_file.
 
-NEVER ask for permission, approval, or tool access. NEVER say "I need to run" or "Could you approve". Just output the JSON plan.
+USE TOOLS to complete tasks. Do NOT describe what you would do — actually do it by calling tools. You can see tool results and decide your next action dynamically.
 
-Return ONLY valid JSON. No markdown, no code fences, no explanation outside the JSON structure. Your response must parse with JSON.parse() directly.
+Workflow for fixing validation errors:
+1. Call validate(file) to see exact errors
+2. Call read_file(file) to see the code
+3. Call patch_file(file, patches) with exact find/replace strings
+4. Call validate(file) again to confirm fixes
+5. Repeat if errors remain
 
-## Step Planning Rules
-
-Every step MUST have concrete file paths and arguments. Steps execute independently — a step CANNOT read the output of a previous step.
-
-NEVER use placeholder values like "DETERMINED_BY_STEP_1", "TBD", or "see above". If you don't know a file path, use a read-file or run-shell step FIRST to discover it, then use patch-file with the ACTUAL path.
-
-Pattern for fixing validation errors:
-1. run-shell: \`npx flow-weaver validate <file> --json\` — get actual errors
-2. read-file: read the file that needs fixing
-3. patch-file: apply specific fixes with real find/replace strings
-4. run-shell: re-validate to confirm fixes`;
+Rules:
+- Always validate BEFORE and AFTER patching
+- Always read a file before patching it (you need exact strings for find/replace)
+- Use patch_file for modifications, write_file only for new files
+- Be concise in your text responses — let tool results speak`;
 }
 
 export async function buildSystemPrompt(): Promise<string> {
