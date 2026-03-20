@@ -61,6 +61,7 @@ export interface ParsedArgs {
   sessionContinuous: boolean;
   sessionUntil?: string;
   sessionMaxTasks?: number;
+  sessionParallel?: number;
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -257,6 +258,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === '--max-tasks' && i + 1 < args.length) {
       i++;
       result.sessionMaxTasks = parseInt(args[i]!, 10) || undefined;
+    } else if (arg === '--parallel' && i + 1 < args.length) {
+      i++;
+      result.sessionParallel = Math.min(Math.max(parseInt(args[i]!, 10) || 1, 1), 5);
     } else if (arg === '--project-dir' && i + 1 < args.length) {
       i++;
       result.file = args[i];
@@ -1322,32 +1326,22 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
 
   // Continuous mode: loop until deadline/maxTasks/interrupt
   const { TaskQueue } = await import('./bot/task-queue.js');
+  const { isTransientError } = await import('./bot/retry-utils.js');
   const queue = new TaskQueue();
   let taskCount = 0;
   let interrupted = false;
   let consecutiveErrors = 0;
   const MAX_CONSECUTIVE_ERRORS = 3;
+  const parallelism = opts.sessionParallel ?? 1;
 
   process.on('SIGINT', () => { interrupted = true; });
   process.on('SIGTERM', () => { interrupted = true; });
 
-  while (taskCount < maxTasks && !interrupted) {
-    if (deadline && Date.now() >= deadline) {
-      if (!opts.quiet) console.log('[weaver] Deadline reached, stopping session.');
-      break;
-    }
+  // Parallel task tracking
+  const running = new Map<string, Promise<void>>();
+  const filesInUse = new Set<string>();
 
-    const task = await queue.next();
-    if (!task) {
-      // No pending tasks — wait and retry
-      await new Promise(r => setTimeout(r, 5_000));
-      continue;
-    }
-
-    taskCount++;
-    if (!opts.quiet) console.log(`\x1b[36m[weaver] Task ${taskCount}/${maxTasks === Infinity ? '∞' : maxTasks}: ${(task.instruction ?? task.id).slice(0, 60)}\x1b[0m`);
-
-    await queue.markRunning(task.id);
+  const processTask = async (task: { id: string; instruction?: string; targets?: string[] }) => {
     try {
       const result = await runWorkflow(workflowPath, {
         params: { projectDir, taskJson: JSON.stringify(task) },
@@ -1372,14 +1366,75 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`\x1b[31m[weaver] Task ${task.id.slice(0, 8)} error: ${msg}\x1b[0m`);
       await queue.markFailed(task.id);
-      consecutiveErrors++;
+      if (!isTransientError(err)) {
+        consecutiveErrors++;
+      }
+    } finally {
+      // Release files
+      for (const f of task.targets ?? []) filesInUse.delete(f);
+      running.delete(task.id);
+    }
+  };
+
+  while (taskCount < maxTasks && !interrupted) {
+    if (deadline && Date.now() >= deadline) {
+      if (!opts.quiet) console.log('[weaver] Deadline reached, stopping session.');
+      break;
     }
 
-    // Stop if too many consecutive errors (likely a systemic issue like bad API key)
+    // Stop if too many consecutive errors
     if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
       console.error(`\x1b[31m[weaver] ${MAX_CONSECUTIVE_ERRORS} consecutive errors — stopping session. Check your API key or provider config.\x1b[0m`);
       break;
     }
+
+    // Wait if at capacity
+    if (running.size >= parallelism) {
+      await Promise.race(running.values());
+      continue;
+    }
+
+    const task = await queue.next();
+    if (!task) {
+      if (running.size > 0) {
+        // Tasks still running — wait for one to finish
+        await Promise.race(running.values());
+        continue;
+      }
+      // No pending or running tasks — wait and retry
+      await new Promise(r => setTimeout(r, 5_000));
+      continue;
+    }
+
+    // File conflict check: if task targets overlap with files in use, wait
+    const taskTargets = task.targets ?? [];
+    const hasConflict = taskTargets.some(f => filesInUse.has(f));
+    if (hasConflict && running.size > 0) {
+      // Put task back by not marking it, wait for running tasks to free files
+      await Promise.race(running.values());
+      continue;
+    }
+
+    taskCount++;
+    if (!opts.quiet) console.log(`\x1b[36m[weaver] Task ${taskCount}/${maxTasks === Infinity ? '∞' : maxTasks}: ${(task.instruction ?? task.id).slice(0, 60)}\x1b[0m`);
+
+    await queue.markRunning(task.id);
+    // Reserve files
+    for (const f of taskTargets) filesInUse.add(f);
+
+    // Launch task (parallel or sequential based on parallelism setting)
+    const promise = processTask(task);
+    running.set(task.id, promise);
+
+    // In sequential mode (parallelism=1), await immediately
+    if (parallelism <= 1) {
+      await promise;
+    }
+  }
+
+  // Wait for all remaining parallel tasks
+  if (running.size > 0) {
+    await Promise.allSettled(running.values());
   }
 
   if (!opts.quiet) {

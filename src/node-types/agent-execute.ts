@@ -2,12 +2,77 @@ import type { WeaverContext } from '../bot/types.js';
 import {
   runAgentLoop,
   createAnthropicProvider,
-  createClaudeCliProvider,
+  getOrCreateCliSession,
+  killAllCliSessions,
   type AgentProvider,
+  type AgentMessage,
+  type ToolDefinition,
+  type StreamEvent,
+  type StreamOptions,
   type ToolEvent,
 } from '@synergenius/flow-weaver/agent';
 import { WEAVER_TOOLS, createWeaverExecutor } from '../bot/weaver-tools.js';
 import { auditEmit } from '../bot/audit-logger.js';
+import { withRetry } from '../bot/retry-utils.js';
+import { CostTracker } from '../bot/cost-tracker.js';
+
+// Clean up persistent sessions on process exit
+let cleanupRegistered = false;
+function registerCleanup(): void {
+  if (cleanupRegistered) return;
+  cleanupRegistered = true;
+  const cleanup = () => { try { killAllCliSessions(); } catch {} };
+  process.on('exit', cleanup);
+  process.on('SIGTERM', cleanup);
+  process.on('SIGINT', cleanup);
+}
+
+/**
+ * Adapter: wraps a persistent CliSession as an AgentProvider.
+ * The agent loop sends full message history each iteration;
+ * we only forward the latest user/tool messages since the session
+ * maintains its own conversation state.
+ */
+class CliSessionProvider implements AgentProvider {
+  private sentCount = 0;
+
+  constructor(
+    private session: { ready: boolean; spawn: () => Promise<void>; send: (msg: string, systemPrompt?: string) => AsyncGenerator<StreamEvent> },
+  ) {}
+
+  async *stream(
+    messages: AgentMessage[],
+    _tools: ToolDefinition[],
+    options?: StreamOptions,
+  ): AsyncGenerator<StreamEvent> {
+    if (!this.session.ready) await this.session.spawn();
+
+    // Only send new messages (session has history of previous ones)
+    const newMessages = messages.slice(this.sentCount);
+    this.sentCount = messages.length;
+
+    // Format new messages into a prompt string
+    const prompt = newMessages
+      .map((m) => {
+        if (m.role === 'user') return typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+        if (m.role === 'tool') return `Tool result (${m.toolCallId}): ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`;
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+
+    if (!prompt) return;
+
+    // Only pass system prompt on the first call
+    const systemPrompt = this.sentCount <= messages.length ? options?.systemPrompt : undefined;
+    yield* this.session.send(prompt, systemPrompt);
+  }
+
+  /** Reset for a new task (new conversation context) */
+  resetForNewTask(): void {
+    this.sentCount = 0;
+  }
+}
 
 // Re-use StepLogEntry shape from the bot types
 type LocalStepLogEntry = { step: string; status: string; detail: string };
@@ -69,7 +134,7 @@ export async function weaverAgentExecute(
 
   try {
     // Create provider based on config
-    const provider = createProvider(pInfo);
+    const provider = createProvider(pInfo, projectDir);
     const executor = createWeaverExecutor(projectDir);
 
     // Track files modified and step log via callbacks
@@ -99,18 +164,37 @@ export async function weaverAgentExecute(
       }
     };
 
-    const result = await runAgentLoop(
-      provider,
-      WEAVER_TOOLS,
-      executor,
-      [{ role: 'user', content: taskPrompt }],
-      { systemPrompt, maxIterations: 15, onToolEvent },
+    const result = await withRetry(
+      () => runAgentLoop(
+        provider,
+        WEAVER_TOOLS,
+        executor,
+        [{ role: 'user', content: taskPrompt }],
+        { systemPrompt, maxIterations: 15, onToolEvent },
+      ),
+      {
+        maxRetries: 3,
+        baseDelayMs: 5_000,
+        onRetry: (attempt, delay, err) => {
+          console.log(`\x1b[33m→ Transient error, retrying in ${delay / 1000}s (attempt ${attempt}/3): ${err.message.slice(0, 80)}\x1b[0m`);
+        },
+      },
     );
+
+    // Cost display (#4)
+    const usage = result.usage;
+    const model = pInfo.model ?? 'claude-sonnet-4-6';
+    const estimatedCost = CostTracker.estimateCost(model, {
+      inputTokens: usage.promptTokens,
+      outputTokens: usage.completionTokens,
+    });
+    const costStr = estimatedCost > 0 ? ` (~$${estimatedCost.toFixed(3)})` : '';
 
     context.resultJson = JSON.stringify({
       success: result.success,
       summary: result.summary,
       toolCallCount: result.toolCallCount,
+      usage: { inputTokens: usage.promptTokens, outputTokens: usage.completionTokens, estimatedCost },
     });
     context.filesModified = JSON.stringify([...new Set(filesModified)]);
     context.stepLogJson = JSON.stringify(stepLog);
@@ -120,9 +204,14 @@ export async function weaverAgentExecute(
       success: result.success,
       toolCalls: result.toolCallCount,
       filesModified: filesModified.length,
+      tokens: { in: usage.promptTokens, out: usage.completionTokens },
+      estimatedCost,
     });
 
     console.log(`\x1b[${result.success ? '32' : '31'}m→ Agent: ${result.summary.slice(0, 100)} (${result.toolCallCount} tool calls)\x1b[0m`);
+    if (usage.promptTokens > 0 || usage.completionTokens > 0) {
+      console.log(`\x1b[36m→ Tokens: ${usage.promptTokens.toLocaleString()} in / ${usage.completionTokens.toLocaleString()} out${costStr}\x1b[0m`);
+    }
 
     return { onSuccess: result.success, onFailure: !result.success, ctx: JSON.stringify(context) };
   } catch (err: unknown) {
@@ -141,7 +230,10 @@ export async function weaverAgentExecute(
 /**
  * Create an AgentProvider from pack-weaver's ProviderInfo.
  */
-function createProvider(pInfo: { type: string; apiKey?: string; model?: string; maxTokens?: number }): AgentProvider {
+function createProvider(
+  pInfo: { type: string; apiKey?: string; model?: string; maxTokens?: number },
+  projectDir?: string,
+): AgentProvider {
   const type = pInfo.type ?? 'auto';
 
   // Explicit Anthropic API
@@ -153,9 +245,9 @@ function createProvider(pInfo: { type: string; apiKey?: string; model?: string; 
     });
   }
 
-  // Explicit Claude CLI
+  // Claude CLI — use persistent session for warm start
   if (type === 'claude-cli') {
-    return createClaudeCliProvider({ model: pInfo.model });
+    return createSessionProvider(pInfo.model, projectDir);
   }
 
   // Auto mode: try Anthropic API key from env, then fall back to Claude CLI
@@ -167,11 +259,22 @@ function createProvider(pInfo: { type: string; apiKey?: string; model?: string; 
         maxTokens: pInfo.maxTokens,
       });
     }
-    // No API key — use Claude CLI (works with Claude Code subscription)
-    return createClaudeCliProvider({ model: pInfo.model });
+    // No API key — use Claude CLI with persistent session
+    return createSessionProvider(pInfo.model, projectDir);
   }
 
   throw new Error(
     `Unsupported provider type: ${type}. Use 'anthropic', 'claude-cli', or 'auto'.`,
   );
+}
+
+function createSessionProvider(model?: string, projectDir?: string): CliSessionProvider {
+  registerCleanup();
+  const key = projectDir ?? process.cwd();
+  const session = getOrCreateCliSession(key, {
+    binPath: 'claude',
+    cwd: key,
+    model: model ?? 'claude-sonnet-4-6',
+  });
+  return new CliSessionProvider(session);
 }
