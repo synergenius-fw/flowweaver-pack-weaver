@@ -72,8 +72,17 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
     throw new Error(`Unknown CLI provider: ${provider}`);
   }
 
-  // Use --output-format stream-json for real-time feedback + --json-schema for structured output.
-  const args = ['-p', '--verbose', '--output-format', 'stream-json', '--include-partial-messages', '--json-schema', PLAN_JSON_SCHEMA];
+  // Flags matching the platform's proven CLI integration:
+  // --verbose + --output-format stream-json + --include-partial-messages for incremental streaming
+  // --json-schema for structured JSON output enforcement
+  // --dangerously-skip-permissions to prevent permission prompt hangs
+  const args = [
+    '-p', '--verbose',
+    '--output-format', 'stream-json',
+    '--include-partial-messages',
+    '--json-schema', PLAN_JSON_SCHEMA,
+    '--dangerously-skip-permissions',
+  ];
   if (model) args.push('--model', model);
   if (systemPrompt) args.push('--system-prompt', systemPrompt);
 
@@ -83,20 +92,17 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
   });
   trackChild(child);
 
-  // Stream stderr to console for real-time feedback (thinking, progress)
-  child.stderr.on('data', (data: Buffer) => {
-    const msg = data.toString().trim();
-    if (msg) process.stderr.write(`\x1b[90m  ${msg}\x1b[0m\n`);
-  });
-
   child.stdin.write(prompt);
   child.stdin.end();
 
   const timeout = setTimeout(() => child.kill('SIGTERM'), 300_000);
 
-  // Collect stream-json lines, print partial text messages for feedback
+  // Stream parsing — matches platform's proven approach from cli-providers/claude.ts.
+  // ONLY content_block_delta is reliable for incremental text.
+  // result event contains structured_output for --json-schema responses.
   let resultJson = '';
   let buffer = '';
+  let hasStreamedText = false;
 
   try {
     for await (const data of child.stdout) {
@@ -107,25 +113,34 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
       for (const line of lines) {
         if (!line.trim()) continue;
         try {
-          const event = JSON.parse(line);
-          // Print thinking/text content as it streams for user feedback
-          if (event.type === 'assistant' && event.message?.content) {
-            for (const block of event.message.content) {
-              if (block.type === 'thinking' && block.thinking) {
-                // Show truncated thinking
-                const preview = block.thinking.slice(0, 120).replace(/\n/g, ' ');
-                process.stderr.write(`\x1b[90m  💭 ${preview}${block.thinking.length > 120 ? '...' : ''}\x1b[0m\n`);
-              } else if (block.type === 'text' && block.text) {
-                process.stderr.write(`\x1b[36m  → ${block.text.slice(0, 200)}\x1b[0m\n`);
-              }
-            }
+          let event = JSON.parse(line);
+
+          // Unwrap stream_event wrapper (--include-partial-messages wraps API events)
+          if (event.type === 'stream_event' && event.event) {
+            event = event.event;
           }
-          // Capture the final result event
-          if (event.type === 'result') {
+
+          // Incremental thinking — stream to stderr
+          if (event.type === 'content_block_delta' && event.delta?.type === 'thinking_delta' && event.delta?.thinking) {
+            process.stderr.write(`\x1b[90m💭 ${event.delta.thinking}\x1b[0m`);
+          }
+          // Incremental text — stream to stderr (this is the chatbot-like output)
+          else if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta?.text) {
+            hasStreamedText = true;
+            process.stderr.write(`\x1b[36m${event.delta.text}\x1b[0m`);
+          }
+          // Thinking block boundary — newline after thinking ends
+          else if (event.type === 'content_block_stop') {
+            process.stderr.write('\n');
+          }
+          // Result event — contains structured_output with --json-schema
+          else if (event.type === 'result') {
             resultJson = line;
+            // Newline after streamed text
+            if (hasStreamedText) process.stderr.write('\n');
           }
         } catch {
-          // Not JSON — ignore partial lines
+          // Non-JSON line — ignore
         }
       }
     }
