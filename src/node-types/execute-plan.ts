@@ -56,10 +56,27 @@ export async function weaverExecutePlan(
     };
   }
 
-  for (const step of plan.steps) {
+  for (let i = 0; i < plan.steps.length; i++) {
+    const step = plan.steps[i];
+    // Defensive: ensure step has required fields
+    if (!step || typeof step !== 'object') {
+      errors.push(`step-${i + 1}: Malformed step (not an object)`);
+      continue;
+    }
+    const stepId = step.id ?? `step-${i + 1}`;
+    const stepDesc = step.description ?? step.operation ?? 'unknown';
+    if (!step.operation) {
+      errors.push(`${stepId}: Missing "operation" field`);
+      console.error(`\x1b[31m  x ${stepId}: Missing operation\x1b[0m`);
+      continue;
+    }
+    if (!step.args) {
+      step.args = {};
+    }
+
     const steering = checkSteering();
     if (steering === 'cancel') {
-      output.push(`Cancelled at step ${step.id}`);
+      output.push(`Cancelled at ${stepId}`);
       break;
     }
     if (steering === 'pause') {
@@ -70,9 +87,9 @@ export async function weaverExecutePlan(
     try {
       const result = await executeStep(step, projectDir);
       if (result.blocked) {
-        errors.push(`${step.id}: BLOCKED - ${result.blockReason}`);
-        output.push(`${step.id}: BLOCKED - ${result.blockReason}`);
-        console.error(`\x1b[33m  ⚠ ${step.id}: ${result.blockReason}\x1b[0m`);
+        errors.push(`${stepId}: BLOCKED - ${result.blockReason}`);
+        output.push(`${stepId}: BLOCKED - ${result.blockReason}`);
+        console.error(`\x1b[33m  ⚠ ${stepId}: ${result.blockReason}\x1b[0m`);
         continue;
       }
       if (result.file) {
@@ -80,13 +97,13 @@ export async function weaverExecutePlan(
         else filesModified.push(result.file);
       }
       completed++;
-      output.push(`${step.id}: ${step.description} - done`);
-      console.log(`\x1b[32m  + ${step.id}: ${step.description}\x1b[0m`);
+      output.push(`${stepId}: ${stepDesc} - done`);
+      console.log(`\x1b[32m  + ${stepId}: ${stepDesc}\x1b[0m`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      errors.push(`${step.id}: ${msg}`);
-      output.push(`${step.id}: FAILED - ${msg}`);
-      console.error(`\x1b[31m  x ${step.id}: ${msg}\x1b[0m`);
+      errors.push(`${stepId}: ${msg}`);
+      output.push(`${stepId}: FAILED - ${msg}`);
+      console.error(`\x1b[31m  x ${stepId}: ${msg}\x1b[0m`);
     }
   }
 
