@@ -1275,6 +1275,20 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
     }
   }
 
+  // Clean stale fw-exec-* cache files — these are temp compiled workflows
+  // that persist across dev:install and can contain outdated generated code.
+  try {
+    const { execSync: execSyncClean } = await import('node:child_process');
+    const staleOutput = execSyncClean(`find "${projectDir}" -name "fw-exec-*" -type f`, { encoding: 'utf-8', timeout: 5000 }).trim();
+    if (staleOutput) {
+      const staleFiles = staleOutput.split('\n').filter(Boolean);
+      for (const f of staleFiles) { try { fs.unlinkSync(f); } catch { /* ignore */ } }
+      if (!opts.quiet) console.log(`[weaver] Cleaned ${staleFiles.length} stale cache file(s).`);
+    }
+  } catch {
+    // cleanup failed — non-fatal
+  }
+
   if (!opts.quiet) {
     console.log('[weaver] Starting bot session (Ctrl+C to stop)');
     if (continuous) console.log('[weaver] Continuous mode — polling queue for tasks');
