@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { WeaverEnv } from '../bot/types.js';
-import { executeStep } from '../bot/step-executor.js';
+import { executeStep, resetPlanFileCounter } from '../bot/step-executor.js';
 
 /**
  * Executes plan steps via the flow-weaver CLI. Checks steering
@@ -39,6 +39,7 @@ export async function weaverExecutePlan(
   }
 
   const { projectDir } = env;
+  resetPlanFileCounter(); // Reset per-plan write counter for safety guards
   const plan = JSON.parse(planJson) as { steps: Array<{ id: string; operation: string; description: string; args: Record<string, unknown> }> };
   const filesModified: string[] = [];
   const filesCreated: string[] = [];
@@ -68,6 +69,12 @@ export async function weaverExecutePlan(
 
     try {
       const result = await executeStep(step, projectDir);
+      if (result.blocked) {
+        errors.push(`${step.id}: BLOCKED - ${result.blockReason}`);
+        output.push(`${step.id}: BLOCKED - ${result.blockReason}`);
+        console.error(`\x1b[33m  ⚠ ${step.id}: ${result.blockReason}\x1b[0m`);
+        continue;
+      }
       if (result.file) {
         if (result.created) filesCreated.push(result.file);
         else filesModified.push(result.file);
