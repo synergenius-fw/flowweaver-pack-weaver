@@ -73,7 +73,7 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
   }
 
   // Use --output-format stream-json for real-time feedback + --json-schema for structured output.
-  const args = ['-p', '--output-format', 'stream-json', '--include-partial-messages', '--json-schema', PLAN_JSON_SCHEMA];
+  const args = ['-p', '--verbose', '--output-format', 'stream-json', '--include-partial-messages', '--json-schema', PLAN_JSON_SCHEMA];
   if (model) args.push('--model', model);
   if (systemPrompt) args.push('--system-prompt', systemPrompt);
 
