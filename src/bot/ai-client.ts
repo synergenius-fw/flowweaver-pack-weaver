@@ -1,27 +1,40 @@
-import { execSync, execFileSync, spawn } from 'node:child_process';
-import { parseStreamLine, extractTextFromChunks } from './cli-stream-parser.js';
+import { execSync, spawn } from 'node:child_process';
 import { trackChild } from './child-process-tracker.js';
-import type { ProviderInfo, StreamChunk } from './types.js';
+import type { ProviderInfo } from './types.js';
 
 // Strip CLAUDECODE from child env so nested claude CLI invocations work.
 const childEnv = { ...process.env };
 delete childEnv.CLAUDECODE;
 
+/** JSON schema for Weaver plan responses — enforced via --json-schema. */
+const PLAN_JSON_SCHEMA = JSON.stringify({
+  type: 'object',
+  properties: {
+    steps: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          operation: { type: 'string' },
+          description: { type: 'string' },
+          args: { type: 'object' },
+        },
+        required: ['id', 'operation', 'description', 'args'],
+      },
+    },
+    summary: { type: 'string' },
+  },
+  required: ['steps', 'summary'],
+});
+
 export function callCli(provider: string, prompt: string, model?: string, systemPrompt?: string): string {
-  if (provider === 'claude-cli') {
-    const args = ['-p', '--output-format', 'text'];
-    if (model) args.push('--model', model);
-    if (systemPrompt) args.push('--system-prompt', systemPrompt);
-    return execFileSync('claude', args, {
-      input: prompt, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 300_000, env: childEnv,
-    }).trim();
-  }
   if (provider === 'copilot-cli') {
     return execSync('copilot -p --silent --allow-all-tools', {
       input: prompt, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 300_000, env: childEnv,
     }).trim();
   }
-  throw new Error(`Unknown CLI provider: ${provider}`);
+  throw new Error(`callCli only supports copilot-cli. Use callCliAsync for claude-cli.`);
 }
 
 export async function callCliAsync(provider: string, prompt: string, model?: string, systemPrompt?: string): Promise<string> {
@@ -32,7 +45,10 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
     throw new Error(`Unknown CLI provider: ${provider}`);
   }
 
-  const args = ['-p', '--output-format', 'stream-json'];
+  // Use --output-format json + --json-schema to enforce structured JSON output.
+  // This eliminates hallucination (permission requests, markdown, explanations)
+  // because the CLI validates the response against the schema before returning.
+  const args = ['-p', '--output-format', 'json', '--json-schema', PLAN_JSON_SCHEMA];
   if (model) args.push('--model', model);
   if (systemPrompt) args.push('--system-prompt', systemPrompt);
 
@@ -47,24 +63,13 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
 
   const timeout = setTimeout(() => child.kill('SIGTERM'), 300_000);
 
-  const chunks: StreamChunk[] = [];
-  let buffer = '';
+  // With --output-format json, stdout is a single JSON object (not stream-json).
+  // Collect all stdout data.
+  let output = '';
 
   try {
     for await (const data of child.stdout) {
-      buffer += data.toString();
-      const lines = buffer.split('\n');
-      buffer = lines.pop()!;
-
-      for (const line of lines) {
-        const chunk = parseStreamLine(line);
-        if (chunk) chunks.push(chunk);
-      }
-    }
-
-    if (buffer.trim()) {
-      const chunk = parseStreamLine(buffer);
-      if (chunk) chunks.push(chunk);
+      output += data.toString();
     }
   } finally {
     clearTimeout(timeout);
@@ -78,7 +83,15 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
     child.on('error', reject);
   });
 
-  return extractTextFromChunks(chunks);
+  // --output-format json returns the result JSON object with a `result` field
+  // containing the actual model output as a string.
+  const parsed = JSON.parse(output.trim());
+  // The CLI wraps the result: { result: "..." } — extract the inner string.
+  // If it's already a plain string (direct output), return as-is.
+  if (typeof parsed === 'object' && parsed !== null && 'result' in parsed) {
+    return typeof parsed.result === 'string' ? parsed.result : JSON.stringify(parsed.result);
+  }
+  return typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
 }
 
 export async function callApi(
@@ -143,33 +156,10 @@ export async function callAI(
       userPrompt,
     );
   }
-  // Pass system prompt separately via --system-prompt flag so Claude CLI
-  // treats it as a proper system prompt instead of burying it in user text.
-  // This is the root cause fix for "permission hallucination" — when system
-  // and user prompts were concatenated, the JSON-only instruction got lost
-  // in 60k+ chars of context.
-  let result: string;
-  try {
-    result = callCli(pInfo.type, userPrompt, pInfo.model, systemPrompt);
-  } catch (err: unknown) {
-    // CLI exit code 1 can happen with large prompts — try async as fallback
-    try {
-      result = await callCliAsync(pInfo.type, userPrompt, pInfo.model, systemPrompt);
-    } catch {
-      throw err; // re-throw original error
-    }
-  }
-
-  // Safety net: if CLI still returned non-JSON, retry once with reinforced prompt
-  const trimmed = result.trim();
-  if (trimmed && !trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-    console.error('\x1b[33m→ AI returned non-JSON, retrying with reinforced prompt...\x1b[0m');
-    const retryPrompt = userPrompt +
-      '\n\nIMPORTANT: Your previous response was NOT valid JSON. Return ONLY a JSON object. Do not ask for permission or explain — just output the JSON.';
-    return callCli(pInfo.type, retryPrompt, pInfo.model, systemPrompt);
-  }
-
-  return result;
+  // Async-only path: uses spawn() so Ctrl+C can kill child processes.
+  // Also uses --output-format json + --json-schema to enforce JSON output
+  // (eliminates hallucination entirely — no retry needed).
+  return callCliAsync(pInfo.type, userPrompt, pInfo.model, systemPrompt);
 }
 
 export function parseJsonResponse(text: string): Record<string, unknown> {

@@ -183,7 +183,19 @@ You are generating a JSON execution plan. You do NOT execute anything — the ex
 
 NEVER ask for permission, approval, or tool access. NEVER say "I need to run" or "Could you approve". Just output the JSON plan.
 
-Return ONLY valid JSON. No markdown, no code fences, no explanation outside the JSON structure. Your response must parse with JSON.parse() directly.`;
+Return ONLY valid JSON. No markdown, no code fences, no explanation outside the JSON structure. Your response must parse with JSON.parse() directly.
+
+## Step Planning Rules
+
+Every step MUST have concrete file paths and arguments. Steps execute independently — a step CANNOT read the output of a previous step.
+
+NEVER use placeholder values like "DETERMINED_BY_STEP_1", "TBD", or "see above". If you don't know a file path, use a read-file or run-shell step FIRST to discover it, then use patch-file with the ACTUAL path.
+
+Pattern for fixing validation errors:
+1. run-shell: \`npx flow-weaver validate <file> --json\` — get actual errors
+2. read-file: read the file that needs fixing
+3. patch-file: apply specific fixes with real find/replace strings
+4. run-shell: re-validate to confirm fixes`;
 }
 
 export async function buildSystemPrompt(): Promise<string> {
