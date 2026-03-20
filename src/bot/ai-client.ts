@@ -103,6 +103,7 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
   let resultJson = '';
   let buffer = '';
   let hasStreamedText = false;
+  let inThinkingBlock = false;
 
   try {
     for await (const data of child.stdout) {
@@ -120,18 +121,33 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
             event = event.event;
           }
 
-          // Incremental thinking — stream to stderr
-          if (event.type === 'content_block_delta' && event.delta?.type === 'thinking_delta' && event.delta?.thinking) {
-            process.stderr.write(`\x1b[90m💭 ${event.delta.thinking}\x1b[0m`);
+          // Thinking block start — print indicator once
+          if (event.type === 'content_block_start' && event.content_block?.type === 'thinking') {
+            inThinkingBlock = true;
+            process.stderr.write('\x1b[90m  thinking...\x1b[0m');
           }
-          // Incremental text — stream to stderr (this is the chatbot-like output)
+          // Incremental thinking — dim text, no emoji per token
+          else if (event.type === 'content_block_delta' && event.delta?.type === 'thinking_delta' && event.delta?.thinking) {
+            // Don't stream every thinking token — just show we're thinking
+          }
+          // Text block start
+          else if (event.type === 'content_block_start' && event.content_block?.type === 'text') {
+            if (inThinkingBlock) {
+              process.stderr.write('\n');
+              inThinkingBlock = false;
+            }
+          }
+          // Incremental text — stream to stderr (chatbot-like output)
           else if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta?.text) {
             hasStreamedText = true;
             process.stderr.write(`\x1b[36m${event.delta.text}\x1b[0m`);
           }
-          // Thinking block boundary — newline after thinking ends
+          // Block boundary — newline
           else if (event.type === 'content_block_stop') {
-            process.stderr.write('\n');
+            if (inThinkingBlock) {
+              process.stderr.write('\n');
+              inThinkingBlock = false;
+            }
           }
           // Result event — contains structured_output with --json-schema
           else if (event.type === 'result') {
