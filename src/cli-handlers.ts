@@ -473,11 +473,19 @@ export async function handleCosts(opts: ParsedArgs): Promise<void> {
   const summary = store.summarize({ since: sinceTs, model: opts.costsModel });
 
   if (summary.totalRuns === 0) {
-    console.log('No cost data found.');
+    if (opts.historyJson) {
+      console.log(JSON.stringify(summary, null, 2));
+    } else {
+      console.log('No cost data found.');
+    }
     return;
   }
 
-  console.log(formatCostTable(summary));
+  if (opts.historyJson) {
+    console.log(JSON.stringify(summary, null, 2));
+  } else {
+    console.log(formatCostTable(summary));
+  }
 }
 
 export async function handleWatch(opts: ParsedArgs): Promise<void> {
@@ -1394,12 +1402,14 @@ export async function handleQueue(opts: ParsedArgs): Promise<void> {
     }
     case 'list': {
       const tasks = await queue.list();
-      if (tasks.length === 0) {
+      if (opts.historyJson) {
+        console.log(JSON.stringify(tasks, null, 2));
+      } else if (tasks.length === 0) {
         console.log('No tasks in queue.');
       } else {
-        console.log('ID'.padEnd(10) + 'STATUS'.padEnd(12) + 'INSTRUCTION');
+        console.log('ID'.padEnd(10) + 'STATUS'.padEnd(12) + 'PRIORITY'.padEnd(10) + 'INSTRUCTION');
         for (const t of tasks) {
-          console.log(t.id.padEnd(10) + t.status.padEnd(12) + t.instruction.slice(0, 60));
+          console.log(t.id.padEnd(10) + t.status.padEnd(12) + String(t.priority).padEnd(10) + t.instruction.slice(0, 60));
         }
       }
       break;

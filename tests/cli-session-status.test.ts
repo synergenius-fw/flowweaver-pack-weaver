@@ -54,3 +54,37 @@ describe('parseArgs — status command', () => {
     expect(opts.historyJson).toBe(true);
   });
 });
+
+describe('parseArgs — --json flag on all commands', () => {
+  it('queue list with --json', () => {
+    const opts = parseArgs(['node', 'weaver', 'queue', 'list', '--json']);
+    expect(opts.command).toBe('queue');
+    expect(opts.historyJson).toBe(true);
+  });
+
+  it('costs with --json', () => {
+    const opts = parseArgs(['node', 'weaver', 'costs', '--json']);
+    expect(opts.command).toBe('costs');
+    expect(opts.historyJson).toBe(true);
+  });
+
+  it('history with --json', () => {
+    const opts = parseArgs(['node', 'weaver', 'history', '--json']);
+    expect(opts.command).toBe('history');
+    expect(opts.historyJson).toBe(true);
+  });
+
+  it('queue retry parses action and id', () => {
+    const opts = parseArgs(['node', 'weaver', 'queue', 'retry', 'abc123']);
+    expect(opts.command).toBe('queue');
+    expect(opts.botTask).toBe('retry');
+    expect(opts.botFile).toBe('abc123');
+  });
+
+  it('queue retry without id', () => {
+    const opts = parseArgs(['node', 'weaver', 'queue', 'retry']);
+    expect(opts.command).toBe('queue');
+    expect(opts.botTask).toBe('retry');
+    expect(opts.botFile).toBeUndefined();
+  });
+});
