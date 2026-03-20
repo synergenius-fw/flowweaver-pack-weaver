@@ -1247,18 +1247,9 @@ export async function handleBot(opts: ParsedArgs): Promise<void> {
 export async function handleSession(opts: ParsedArgs): Promise<void> {
   const projectDir = opts.file ?? process.cwd();
   const config = await loadConfig(opts.configPath);
-  // Agent mode requires Anthropic API key. Fall back to CLI-based bot otherwise.
-  const providerCfg = config?.provider;
-  const hasApiKey = (typeof providerCfg === 'object' && providerCfg !== null && 'apiKey' in providerCfg && (providerCfg as Record<string, unknown>).apiKey) || process.env.ANTHROPIC_API_KEY;
-  const workflowKey = hasApiKey ? 'agent' : 'bot';
-  if (!opts.quiet) {
-    if (hasApiKey) {
-      console.log('[weaver] Using agent mode (Anthropic API with tool-use)');
-    } else {
-      console.log('[weaver] Using CLI mode (no API key — set ANTHROPIC_API_KEY for agent mode)');
-    }
-  }
-  const workflowPath = resolveWorkflowPath(workflowKey, projectDir);
+  // Always use the agent workflow — it supports both Anthropic API and Claude CLI
+  const workflowPath = resolveWorkflowPath('agent', projectDir);
+  if (!opts.quiet) console.log('[weaver] Using agent mode (tool-use)');
 
   // Parse --until HH:MM into a deadline timestamp
   let deadline: number | undefined;
