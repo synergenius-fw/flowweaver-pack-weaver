@@ -300,7 +300,7 @@ export async function weaverBot(
         receive_success = false;
 
         try {
-          const receive_execute = await ctx.getVariable({ id: 'detect', portName: 'onSuccess', executionIndex: detectIdx! }) as boolean;
+          const receive_execute = detectIdx !== undefined ? await ctx.getVariable({ id: 'detect', portName: 'onSuccess', executionIndex: detectIdx }) as boolean : false;
           await ctx.setVariable({ id: 'receive', portName: 'execute', executionIndex: receiveIdx, nodeTypeName: 'weaverReceiveTask' }, receive_execute);
           const receive_env = await ctx.getVariable({ id: 'detect', portName: 'env', executionIndex: detectIdx! }) as Parameters<typeof weaverReceiveTask>[1];
           await ctx.setVariable({ id: 'receive', portName: 'env', executionIndex: receiveIdx, nodeTypeName: 'weaverReceiveTask' }, receive_env);
@@ -556,7 +556,7 @@ export async function weaverBot(
             plan_success = false;
 
             try {
-              const plan_execute = await ctx.getVariable({ id: 'context', portName: 'onSuccess', executionIndex: contextIdx! }) as boolean;
+              const plan_execute = contextIdx !== undefined ? await ctx.getVariable({ id: 'context', portName: 'onSuccess', executionIndex: contextIdx }) as boolean : false;
               await ctx.setVariable({ id: 'plan', portName: 'execute', executionIndex: planIdx, nodeTypeName: 'weaverPlanTask' }, plan_execute);
               const plan_ctx = await ctx.getVariable({ id: 'context', portName: 'ctx', executionIndex: contextIdx! }) as string;
               await ctx.setVariable({ id: 'plan', portName: 'ctx', executionIndex: planIdx, nodeTypeName: 'weaverPlanTask' }, plan_ctx);
@@ -625,7 +625,7 @@ export async function weaverBot(
               approve_success = false;
 
               try {
-                const approve_execute = await ctx.getVariable({ id: 'plan', portName: 'onSuccess', executionIndex: planIdx! }) as boolean;
+                const approve_execute = planIdx !== undefined ? await ctx.getVariable({ id: 'plan', portName: 'onSuccess', executionIndex: planIdx }) as boolean : false;
                 await ctx.setVariable({ id: 'approve', portName: 'execute', executionIndex: approveIdx, nodeTypeName: 'weaverApprovalGate' }, approve_execute);
                 const approve_ctx = await ctx.getVariable({ id: 'plan', portName: 'ctx', executionIndex: planIdx! }) as string;
                 await ctx.setVariable({ id: 'approve', portName: 'ctx', executionIndex: approveIdx, nodeTypeName: 'weaverApprovalGate' }, approve_ctx);
@@ -712,7 +712,7 @@ export async function weaverBot(
                 execRetry_success = false;
 
                 try {
-                  const execRetry_execute = await ctx.getVariable({ id: 'approve', portName: 'onSuccess', executionIndex: approveIdx! }) as boolean;
+                  const execRetry_execute = approveIdx !== undefined ? await ctx.getVariable({ id: 'approve', portName: 'onSuccess', executionIndex: approveIdx }) as boolean : false;
                   await ctx.setVariable({ id: 'execRetry', portName: 'execute', executionIndex: execRetryIdx, nodeTypeName: 'weaverExecValidateRetry' }, execRetry_execute);
                   const execRetry_ctx = await ctx.getVariable({ id: 'approve', portName: 'ctx', executionIndex: approveIdx! }) as string;
                   await ctx.setVariable({ id: 'execRetry', portName: 'ctx', executionIndex: execRetryIdx, nodeTypeName: 'weaverExecValidateRetry' }, execRetry_ctx);
@@ -1092,7 +1092,7 @@ export async function weaverBot(
       });
 
       try {
-        const report_execute = await ctx.getVariable({ id: 'readWf', portName: 'onSuccess', executionIndex: readWfIdx! }) as boolean;
+        const report_execute = (readWfIdx !== undefined ? await ctx.getVariable({ id: 'readWf', portName: 'onSuccess', executionIndex: readWfIdx }) as boolean : false) || (abortIdx !== undefined ? await ctx.getVariable({ id: 'abort', portName: 'onSuccess', executionIndex: abortIdx }) as boolean : false) || (notifyIdx !== undefined ? await ctx.getVariable({ id: 'notify', portName: 'onSuccess', executionIndex: notifyIdx }) as boolean : false) || (gitOpsIdx !== undefined ? await ctx.getVariable({ id: 'gitOps', portName: 'onSuccess', executionIndex: gitOpsIdx }) as boolean : false);
         await ctx.setVariable({ id: 'report', portName: 'execute', executionIndex: reportIdx, nodeTypeName: 'weaverBotReport' }, report_execute);
         const report_mainCtx = gitOpsIdx !== undefined ? await ctx.getVariable({ id: 'gitOps', portName: 'ctx', executionIndex: gitOpsIdx }) as string : undefined;
         await ctx.setVariable({ id: 'report', portName: 'mainCtx', executionIndex: reportIdx, nodeTypeName: 'weaverBotReport' }, report_mainCtx);
