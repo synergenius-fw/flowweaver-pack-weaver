@@ -24,12 +24,12 @@ export async function weaverBotReport(
   mainCtx?: string,
   readCtx?: string,
   abortCtx?: string,
-): Promise<{ summary: string; reportJson: string }> {
+): Promise<{ onSuccess: boolean; onFailure: boolean; summary: string; reportJson: string }> {
   const ctxStr = mainCtx ?? readCtx ?? abortCtx;
 
   if (!execute || !ctxStr) {
     const report = { task: {}, path: 'unknown', result: null, filesModified: [], gitResult: null, timestamp: Date.now() };
-    return { summary: '', reportJson: JSON.stringify(report) };
+    return { onSuccess: true, onFailure: false, summary: '', reportJson: JSON.stringify(report) };
   }
 
   const context = JSON.parse(ctxStr) as WeaverContext;
@@ -92,7 +92,7 @@ export async function weaverBotReport(
 
   console.log(`\n\x1b[1m${success ? '\x1b[32m' : '\x1b[31m'}Bot Report: ${summary}\x1b[0m\n`);
 
-  return { summary, reportJson: JSON.stringify(report) };
+  return { onSuccess: success, onFailure: !success, summary, reportJson: JSON.stringify(report) };
 }
 
 async function markQueueTask(id: string, status: 'completed' | 'failed'): Promise<void> {

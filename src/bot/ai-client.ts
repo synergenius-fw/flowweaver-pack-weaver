@@ -1,5 +1,6 @@
 import { execSync, execFileSync, spawn } from 'node:child_process';
 import { parseStreamLine, extractTextFromChunks } from './cli-stream-parser.js';
+import { trackChild } from './child-process-tracker.js';
 import type { ProviderInfo, StreamChunk } from './types.js';
 
 // Strip CLAUDECODE from child env so nested claude CLI invocations work.
@@ -39,6 +40,7 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
     stdio: ['pipe', 'pipe', 'pipe'],
     env: childEnv,
   });
+  trackChild(child);
 
   child.stdin.write(prompt);
   child.stdin.end();

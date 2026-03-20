@@ -2,6 +2,7 @@ import { execSync, spawn } from 'node:child_process';
 import type { BotAgentProvider, OnUsageCallback, StreamChunk, ToolDefinition, ToolUseResult } from './types.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import { parseStreamLine, extractTextFromChunks } from './cli-stream-parser.js';
+import { trackChild } from './child-process-tracker.js';
 
 // Strip CLAUDECODE from child env so nested claude CLI invocations work.
 const childEnv = { ...process.env };
@@ -98,6 +99,7 @@ export class CliAgentProvider implements BotAgentProvider {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: childEnv,
     });
+    trackChild(child);
 
     child.stdin.write(userPrompt);
     child.stdin.end();
