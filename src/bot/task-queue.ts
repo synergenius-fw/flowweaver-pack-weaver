@@ -82,6 +82,50 @@ export class TaskQueue {
     await this.updateStatus(id, 'failed');
   }
 
+  /** Reset a failed or running task back to pending. */
+  async retry(id: string): Promise<boolean> {
+    return withFileLock(this.filePath, () => {
+      const tasks = this.readAll();
+      const task = tasks.find(t => t.id === id && (t.status === 'failed' || t.status === 'running'));
+      if (!task) return false;
+      task.status = 'pending';
+      this.writeAll(tasks);
+      return true;
+    });
+  }
+
+  /** Reset ALL failed tasks back to pending. Returns count reset. */
+  async retryAll(): Promise<number> {
+    return withFileLock(this.filePath, () => {
+      const tasks = this.readAll();
+      let count = 0;
+      for (const t of tasks) {
+        if (t.status === 'failed') {
+          t.status = 'pending';
+          count++;
+        }
+      }
+      if (count > 0) this.writeAll(tasks);
+      return count;
+    });
+  }
+
+  /** Reset orphaned "running" tasks to pending (crash recovery). */
+  async recoverOrphans(): Promise<number> {
+    return withFileLock(this.filePath, () => {
+      const tasks = this.readAll();
+      let count = 0;
+      for (const t of tasks) {
+        if (t.status === 'running') {
+          t.status = 'pending';
+          count++;
+        }
+      }
+      if (count > 0) this.writeAll(tasks);
+      return count;
+    });
+  }
+
   private async updateStatus(id: string, status: QueuedTask['status']): Promise<void> {
     return withFileLock(this.filePath, () => {
       const tasks = this.readAll();

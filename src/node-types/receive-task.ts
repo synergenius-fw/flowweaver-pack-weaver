@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { WeaverEnv, WeaverContext } from '../bot/types.js';
+import { withFileLock } from '../bot/file-lock.js';
 
 interface QueuedTask {
   id: string;
@@ -54,36 +55,40 @@ export async function weaverReceiveTask(
     } catch { /* fall through to queue check */ }
   }
 
-  // Check task queue
+  // Check task queue (with file locking to prevent race conditions)
   const queuePath = path.join(os.homedir(), '.weaver', 'task-queue.ndjson');
   try {
-    if (fs.existsSync(queuePath)) {
+    const claimed = await withFileLock(queuePath, () => {
+      if (!fs.existsSync(queuePath)) return null;
       const content = fs.readFileSync(queuePath, 'utf-8').trim();
-      if (content) {
-        const tasks: QueuedTask[] = content.split('\n').map(l => JSON.parse(l));
-        const pending = tasks
-          .filter(t => t.status === 'pending')
-          .sort((a, b) => b.priority - a.priority || a.addedAt - b.addedAt);
+      if (!content) return null;
 
-        if (pending.length > 0) {
-          const task = pending[0]!;
-          // Mark as running
-          const updated = tasks.map(t => t.id === task.id ? { ...t, status: 'running' } : t);
-          fs.writeFileSync(queuePath, updated.map(t => JSON.stringify(t)).join('\n') + '\n', 'utf-8');
+      const tasks: QueuedTask[] = content.split('\n').filter(Boolean).map(l => JSON.parse(l));
+      const pending = tasks
+        .filter(t => t.status === 'pending')
+        .sort((a, b) => b.priority - a.priority || a.addedAt - b.addedAt);
 
-          const botTask = {
-            instruction: task.instruction,
-            mode: task.mode ?? 'create',
-            targets: task.targets,
-            options: task.options,
-            queueId: task.id,
-          };
-          console.log(`\x1b[36m→ Task from queue [${task.id}]: ${task.instruction.slice(0, 80)}\x1b[0m`);
-          context.taskJson = JSON.stringify(botTask);
-          context.hasTask = true;
-          return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
-        }
-      }
+      if (pending.length === 0) return null;
+
+      const task = pending[0]!;
+      // Atomically mark as running inside the lock
+      const updated = tasks.map(t => t.id === task.id ? { ...t, status: 'running' } : t);
+      fs.writeFileSync(queuePath, updated.map(t => JSON.stringify(t)).join('\n') + '\n', 'utf-8');
+      return task;
+    });
+
+    if (claimed) {
+      const botTask = {
+        instruction: claimed.instruction,
+        mode: claimed.mode ?? 'create',
+        targets: claimed.targets,
+        options: claimed.options,
+        queueId: claimed.id,
+      };
+      console.log(`\x1b[36m→ Task from queue [${claimed.id}]: ${claimed.instruction.slice(0, 80)}\x1b[0m`);
+      context.taskJson = JSON.stringify(botTask);
+      context.hasTask = true;
+      return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
     }
   } catch { /* ignore queue errors */ }
 

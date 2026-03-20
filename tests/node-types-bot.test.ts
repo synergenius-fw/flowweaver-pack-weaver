@@ -100,52 +100,52 @@ describe('weaverAbortTask', () => {
 });
 
 describe('weaverBotReport', () => {
-  it('reports from read path', () => {
+  it('reports from read path', async () => {
     const readCtx = makeWeaverCtx({ resultJson: JSON.stringify({ success: true, outcome: 'read', summary: 'Workflow has 5 nodes' }) });
-    const result = weaverBotReport(undefined, readCtx);
+    const result = await weaverBotReport(true, undefined, readCtx);
     const report = JSON.parse(result.reportJson);
     expect(report.path).toBe('read');
     expect(result.summary).toContain('read');
   });
 
-  it('reports from main path', () => {
+  it('reports from main path', async () => {
     const mainCtx = makeWeaverCtx({ resultJson: JSON.stringify({ success: true, outcome: 'completed', summary: 'Created workflow' }) });
-    const result = weaverBotReport(mainCtx);
+    const result = await weaverBotReport(true, mainCtx);
     const report = JSON.parse(result.reportJson);
     expect(report.path).toBe('main');
     expect(result.summary).toContain('completed');
   });
 
-  it('reports from abort path', () => {
+  it('reports from abort path', async () => {
     const abortCtx = makeWeaverCtx({ resultJson: JSON.stringify({ success: false, outcome: 'aborted', summary: 'Task aborted' }) });
-    const result = weaverBotReport(undefined, undefined, abortCtx);
+    const result = await weaverBotReport(true, undefined, undefined, abortCtx);
     const report = JSON.parse(result.reportJson);
     expect(report.path).toBe('abort');
     expect(result.summary).toContain('aborted');
   });
 
-  it('read path takes priority over main and abort', () => {
+  it('read path takes priority over main and abort', async () => {
     const readCtx = makeWeaverCtx({ resultJson: JSON.stringify({ success: true, outcome: 'read' }) });
     const mainCtx = makeWeaverCtx({ resultJson: JSON.stringify({ success: true, outcome: 'completed' }) });
     const abortCtx = makeWeaverCtx({ resultJson: JSON.stringify({ success: false, outcome: 'aborted' }) });
-    const result = weaverBotReport(mainCtx, readCtx, abortCtx);
+    const result = await weaverBotReport(true, mainCtx, readCtx, abortCtx);
     const report = JSON.parse(result.reportJson);
     expect(report.path).toBe('read');
   });
 
-  it('includes file count and git info in summary', () => {
+  it('includes file count and git info in summary', async () => {
     const mainCtx = makeWeaverCtx({
       resultJson: JSON.stringify({ success: true, outcome: 'completed' }),
       filesModified: JSON.stringify(['a.ts', 'b.ts']),
       gitResultJson: JSON.stringify({ skipped: false, results: ['Committed'] }),
     });
-    const result = weaverBotReport(mainCtx);
+    const result = await weaverBotReport(true, mainCtx);
     expect(result.summary).toContain('2 modified');
     expect(result.summary).toContain('Git: committed');
   });
 
-  it('handles no inputs gracefully', () => {
-    const result = weaverBotReport();
+  it('handles no inputs gracefully', async () => {
+    const result = await weaverBotReport(true);
     const report = JSON.parse(result.reportJson);
     expect(report.path).toBe('unknown');
   });

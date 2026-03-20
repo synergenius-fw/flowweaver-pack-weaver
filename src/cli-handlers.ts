@@ -1257,6 +1257,16 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
   const maxTasks = opts.sessionMaxTasks ?? Infinity;
   const continuous = opts.sessionContinuous || !!opts.sessionUntil || maxTasks < Infinity;
 
+  // Crash recovery: reset orphaned "running" tasks on session start
+  if (continuous) {
+    const { TaskQueue } = await import('./bot/task-queue.js');
+    const recoveryQueue = new TaskQueue();
+    const recovered = await recoveryQueue.recoverOrphans();
+    if (recovered > 0 && !opts.quiet) {
+      console.log(`[weaver] Recovered ${recovered} orphaned task(s) from previous crash.`);
+    }
+  }
+
   if (!opts.quiet) {
     console.log('[weaver] Starting bot session (Ctrl+C to stop)');
     if (continuous) console.log('[weaver] Continuous mode — polling queue for tasks');
@@ -1366,8 +1376,8 @@ export async function handleQueue(opts: ParsedArgs): Promise<void> {
   const queue = new TaskQueue();
 
   const action = opts.botTask;
-  if (!action || !['add', 'list', 'clear', 'remove'].includes(action)) {
-    console.error('[weaver] Usage: flow-weaver weaver queue <add|list|clear|remove> [task|id]');
+  if (!action || !['add', 'list', 'clear', 'remove', 'retry'].includes(action)) {
+    console.error('[weaver] Usage: flow-weaver weaver queue <add|list|clear|remove|retry> [task|id]');
     process.exit(1);
   }
 
@@ -1407,6 +1417,19 @@ export async function handleQueue(opts: ParsedArgs): Promise<void> {
       }
       const removed = await queue.remove(id);
       console.log(removed ? `Removed task ${id}.` : `No task found with id "${id}".`);
+      break;
+    }
+    case 'retry': {
+      const id = opts.botFile;
+      if (id) {
+        // Retry a specific task
+        const retried = await queue.retry(id);
+        console.log(retried ? `Task ${id} reset to pending.` : `No failed/running task found with id "${id}".`);
+      } else {
+        // Retry all failed tasks
+        const count = await queue.retryAll();
+        console.log(`Reset ${count} failed task(s) to pending.`);
+      }
       break;
     }
   }
