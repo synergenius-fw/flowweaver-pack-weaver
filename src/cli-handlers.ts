@@ -1245,13 +1245,19 @@ export async function handleBot(opts: ParsedArgs): Promise<void> {
 }
 
 export async function handleSession(opts: ParsedArgs): Promise<void> {
-  // Use agent workflow (tool-use loop) when Anthropic API key is available
   const projectDir = opts.file ?? process.cwd();
   const config = await loadConfig(opts.configPath);
+  // Agent mode requires Anthropic API key. Fall back to CLI-based bot otherwise.
   const providerCfg = config?.provider;
   const hasApiKey = (typeof providerCfg === 'object' && providerCfg !== null && 'apiKey' in providerCfg && (providerCfg as Record<string, unknown>).apiKey) || process.env.ANTHROPIC_API_KEY;
   const workflowKey = hasApiKey ? 'agent' : 'bot';
-  if (!opts.quiet && hasApiKey) console.log('[weaver] Using agent mode (Anthropic API with tool-use)');
+  if (!opts.quiet) {
+    if (hasApiKey) {
+      console.log('[weaver] Using agent mode (Anthropic API with tool-use)');
+    } else {
+      console.log('[weaver] Using CLI mode (no API key — set ANTHROPIC_API_KEY for agent mode)');
+    }
+  }
   const workflowPath = resolveWorkflowPath(workflowKey, projectDir);
 
   // Parse --until HH:MM into a deadline timestamp
@@ -1328,6 +1334,8 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
   const queue = new TaskQueue();
   let taskCount = 0;
   let interrupted = false;
+  let consecutiveErrors = 0;
+  const MAX_CONSECUTIVE_ERRORS = 3;
 
   process.on('SIGINT', () => { interrupted = true; });
   process.on('SIGTERM', () => { interrupted = true; });
@@ -1359,8 +1367,10 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
 
       if (result.success) {
         await queue.markComplete(task.id);
+        consecutiveErrors = 0;
       } else {
         await queue.markFailed(task.id);
+        consecutiveErrors++;
       }
 
       if (!opts.quiet) {
@@ -1371,6 +1381,13 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`\x1b[31m[weaver] Task ${task.id.slice(0, 8)} error: ${msg}\x1b[0m`);
       await queue.markFailed(task.id);
+      consecutiveErrors++;
+    }
+
+    // Stop if too many consecutive errors (likely a systemic issue like bad API key)
+    if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+      console.error(`\x1b[31m[weaver] ${MAX_CONSECUTIVE_ERRORS} consecutive errors — stopping session. Check your API key or provider config.\x1b[0m`);
+      break;
     }
   }
 
