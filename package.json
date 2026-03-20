@@ -63,8 +63,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "release": "tsx scripts/release.ts",
-    "dev:build": "npm run build && echo '✓ Pack built. Ready to test in target project.'",
-    "dev:ai-ops": "npm run build && npm pack --pack-destination /tmp && cd ../flow-weaver-pack-ai-ops && npm install /tmp/synergenius-flow-weaver-pack-weaver-$(node -p 'require(\"../flow-weaver-pack-weaver/package.json\").version').tgz && echo '✓ ai-ops updated with local tarball'"
+    "dev": "npm run build && npm pack --pack-destination /tmp && echo '✓ Tarball ready at /tmp/synergenius-flow-weaver-pack-weaver-'$(node -p 'require(\"./package.json\").version')'.tgz'",
+    "dev:install": "npm run dev && node -e \"const p=process.argv[1]; if(!p){console.error('Usage: npm run dev:install -- /path/to/project');process.exit(1)} require('child_process').execSync('npm install /tmp/synergenius-flow-weaver-pack-weaver-'+require('./package.json').version+'.tgz',{cwd:p,stdio:'inherit'}); console.log('✓ Installed in '+p)\" --"
   },
   "devDependencies": {
     "@types/node": "^25.3.5",
