@@ -205,14 +205,25 @@ export async function buildSystemPrompt(): Promise<string> {
 
 function formatBotOperations(cliCommands: CliCommandDoc[]): string {
   const packOps = [
+    '## File Operations',
     '- create-workflow: Create a new workflow file. args: { file, content }',
     '- implement-node: Write a node type implementation. args: { file, content }',
-    '- modify-source: Direct source file modification. args: { file, content }',
-    '- read-file: Read a file and return its content. args: { file }. ALWAYS use this before modifying an existing file.',
-    '- write-file: Write a file. args: { file, content }. IMPORTANT: content must be the COMPLETE file. Writing truncated content will be BLOCKED by safety guards. Always read-file first, then write the full modified content back.',
+    '- write-file: Write a file. args: { file, content }. Content must be the COMPLETE file.',
+    '- read-file: Read a file and return its content. args: { file }',
+    '- patch-file: Surgical find-and-replace edits. args: { file, patches: [{ find: "old text", replace: "new text" }] }. PREFERRED for modifying existing files — no need to rewrite the entire file.',
+    '- list-files: List files in a directory. args: { directory, pattern? } (pattern is regex)',
     '',
-    'SAFETY: Writes that shrink a file by >50% or write empty content are automatically blocked.',
-    'PATTERN: For modifying existing files, always: 1) read-file → 2) modify content → 3) write-file with COMPLETE content.',
+    '## Shell Commands',
+    '- run-shell: Execute a shell command and return output. args: { command }. Use for: npx vitest, git status, grep, find, etc.',
+    '  Examples: { "command": "npx vitest run --reporter verbose" }, { "command": "npx flow-weaver validate src/workflow.ts --json" }',
+    '  Blocked: rm -rf, git push, npm publish, sudo, curl|sh (safety policy).',
+    '',
+    '## Best Practices',
+    'PREFER patch-file over write-file for modifying existing files (surgical edits, no truncation risk).',
+    'Use run-shell for running tests (npx vitest), validation (flow-weaver validate), and inspecting output.',
+    'Use read-file to understand a file before modifying it.',
+    'Use list-files to discover project structure.',
+    'Writes that shrink a file by >50% or write empty content are automatically BLOCKED.',
   ];
 
   const fwOps = cliCommands
