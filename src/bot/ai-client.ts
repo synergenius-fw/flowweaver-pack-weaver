@@ -9,7 +9,7 @@ delete childEnv.CLAUDECODE;
 export function callCli(provider: string, prompt: string, model?: string): string {
   if (provider === 'claude-cli') {
     const modelFlag = model ? ` --model ${model}` : '';
-    return execSync(`claude -p --output-format text --permission-mode plan${modelFlag}`, {
+    return execSync(`claude -p --output-format text${modelFlag}`, {
       input: prompt, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 300_000, env: childEnv,
     }).trim();
   }
@@ -29,7 +29,7 @@ export async function callCliAsync(provider: string, prompt: string, model?: str
     throw new Error(`Unknown CLI provider: ${provider}`);
   }
 
-  const args = ['-p', '--output-format', 'stream-json', '--permission-mode', 'plan'];
+  const args = ['-p', '--output-format', 'stream-json'];
   if (model) args.push('--model', model);
 
   const child = spawn('claude', args, {

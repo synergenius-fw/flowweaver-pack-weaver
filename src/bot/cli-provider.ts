@@ -86,7 +86,7 @@ export class CliAgentProvider implements BotAgentProvider {
   }
 
   private async *streamRaw(fullPrompt: string): AsyncGenerator<StreamChunk> {
-    const args = ['-p', '--output-format', 'stream-json', '--include-partial-messages', '--permission-mode', 'plan'];
+    const args = ['-p', '--output-format', 'stream-json', '--include-partial-messages'];
     if (this.model) {
       args.push('--model', this.model);
     }
