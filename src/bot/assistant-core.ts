@@ -58,11 +58,14 @@ CRITICAL: You are running in a terminal. Do NOT use markdown formatting.
 - For key-value pairs, use: key: value (one per line)
 - Keep output scannable and clean
 
-IMPORTANT: Tool results are displayed DIRECTLY to the user in the terminal.
-When a tool returns output (diagrams, validation results, test results, logs, file contents),
-the user ALREADY SEES the full output. Do NOT repeat, summarize, or reformat tool output.
-Just add a brief one-line comment if needed (e.g. "4 workflows validated, 0 errors").
-Never re-type ASCII art, diagrams, or large text blocks that the tool already printed.`;
+IMPORTANT: Some tool results are displayed DIRECTLY to the user in the terminal.
+These tools show FULL output — the user already sees everything:
+  fw_diagram, fw_describe, fw_docs, fw_diagram_mermaid, bot_logs, run_tests, tsc_check
+For these: do NOT repeat, summarize, or reformat the output. Just add a brief comment if needed.
+Never re-type ASCII art, diagrams, or large text blocks that were already printed.
+
+Other tools (bot_list, queue_add, read_file, etc.) show only a short preview.
+For those: you may summarize or explain the result as needed.`;
 
 // ANSI helpers
 const c = {
