@@ -56,7 +56,13 @@ CRITICAL: You are running in a terminal. Do NOT use markdown formatting.
 - Use UPPERCASE or quotes for emphasis instead of markdown
 - For lists, use simple dashes: - item
 - For key-value pairs, use: key: value (one per line)
-- Keep output scannable and clean`;
+- Keep output scannable and clean
+
+IMPORTANT: Tool results are displayed DIRECTLY to the user in the terminal.
+When a tool returns output (diagrams, validation results, test results, logs, file contents),
+the user ALREADY SEES the full output. Do NOT repeat, summarize, or reformat tool output.
+Just add a brief one-line comment if needed (e.g. "4 workflows validated, 0 errors").
+Never re-type ASCII art, diagrams, or large text blocks that the tool already printed.`;
 
 // ANSI helpers
 const c = {
