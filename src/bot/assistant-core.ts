@@ -42,8 +42,17 @@ When the user asks to "start a bot", call bot_spawn.
 When they ask for status, call bot_list or bot_status.
 When they ask to add tasks, call queue_add or queue_add_batch.
 
-Be concise. Show results, not explanations. Use tables and formatting for multi-item results.
-The user is a senior engineer — don't over-explain.`;
+Be concise. Show results, not explanations.
+The user is a senior engineer — don't over-explain.
+
+CRITICAL: You are running in a terminal. Do NOT use markdown formatting.
+- No **bold**, no _italic_, no \`backticks\`, no tables with |pipes|
+- No emoji (✅, 🔴, etc.)
+- Use plain text with indentation for structure
+- Use UPPERCASE or quotes for emphasis instead of markdown
+- For lists, use simple dashes: - item
+- For key-value pairs, use: key: value (one per line)
+- Keep output scannable and clean`;
 
 // ANSI helpers
 const c = {
