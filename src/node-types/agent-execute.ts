@@ -164,13 +164,32 @@ export async function weaverAgentExecute(
       }
     };
 
+    // Stream thinking and text to stderr for real-time feedback
+    let thinkingLine = '';
+    const onStreamEvent = (event: StreamEvent) => {
+      if (event.type === 'thinking_delta') {
+        // Accumulate thinking into a single line, flush on newline
+        thinkingLine += event.text;
+        if (thinkingLine.includes('\n')) {
+          const lines = thinkingLine.split('\n');
+          for (let i = 0; i < lines.length - 1; i++) {
+            if (lines[i].trim()) process.stderr.write(`\x1b[2m  ${lines[i].trim()}\x1b[0m\n`);
+          }
+          thinkingLine = lines[lines.length - 1];
+        }
+      }
+      if (event.type === 'text_delta') {
+        process.stderr.write(event.text);
+      }
+    };
+
     const result = await withRetry(
       () => runAgentLoop(
         provider,
         WEAVER_TOOLS,
         executor,
         [{ role: 'user', content: taskPrompt }],
-        { systemPrompt, maxIterations: 15, onToolEvent },
+        { systemPrompt, maxIterations: 15, onToolEvent, onStreamEvent },
       ),
       {
         maxRetries: 3,
