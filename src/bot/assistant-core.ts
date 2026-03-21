@@ -140,20 +140,13 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
 
       // Add assistant response to history for continuity
       if (result.messages.length > history.length) {
-        // runAgentLoop returns all messages including our input + its responses
-        // Append only the new messages (assistant + tool results)
         for (let i = history.length; i < result.messages.length; i++) {
           history.push(result.messages[i]);
         }
       }
 
-      // Cap history to prevent unbounded growth (keep last 50 messages)
-      if (history.length > 50) {
-        // Keep first message (gives context) + last 48
-        const first = history[0];
-        history.splice(0, history.length - 48);
-        history.unshift(first);
-      }
+      // Token-aware compression: estimate tokens and compress when over budget
+      compressHistory(history);
 
       if (!result.success && result.summary) {
         out(`\n  ${c.red(result.summary)}\n`);
@@ -178,4 +171,69 @@ function toolPreview(name: string, args: Record<string, unknown>): string {
   if (args.instruction) return String(args.instruction).slice(0, 40);
   if (args.command) return String(args.command).slice(0, 40);
   return '';
+}
+
+// --- Token-aware history compression ---
+
+// Rough token estimate: ~4 chars per token for English text
+const CHARS_PER_TOKEN = 4;
+// Budget: leave room for system prompt (~2k) + tools (~3k) + response (~4k)
+const MAX_HISTORY_TOKENS = 80_000;
+// When compressing, truncate tool results to this size
+const COMPRESSED_TOOL_RESULT_SIZE = 200;
+
+function estimateTokens(msg: AgentMessage): number {
+  const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+  return Math.ceil(content.length / CHARS_PER_TOKEN);
+}
+
+function totalTokens(history: AgentMessage[]): number {
+  return history.reduce((sum, m) => sum + estimateTokens(m), 0);
+}
+
+/**
+ * Compress conversation history to stay within token budget.
+ * Strategy (progressive, stops as soon as under budget):
+ * 1. Truncate long tool results to 200 chars (keep tool call structure)
+ * 2. Summarize old tool results to just "[tool_name: ok/error]"
+ * 3. Drop oldest turns (keep most recent 10 turns)
+ */
+function compressHistory(history: AgentMessage[]): void {
+  if (totalTokens(history) <= MAX_HISTORY_TOKENS) return;
+
+  // Phase 1: Truncate tool results older than last 6 messages
+  const cutoff = Math.max(0, history.length - 6);
+  for (let i = 0; i < cutoff; i++) {
+    const msg = history[i];
+    if (msg.role === 'tool' && typeof msg.content === 'string' && msg.content.length > COMPRESSED_TOOL_RESULT_SIZE) {
+      msg.content = msg.content.slice(0, COMPRESSED_TOOL_RESULT_SIZE) + '... (truncated)';
+    }
+  }
+  if (totalTokens(history) <= MAX_HISTORY_TOKENS) return;
+
+  // Phase 2: Summarize all tool results older than last 10 messages
+  const summaryCutoff = Math.max(0, history.length - 10);
+  for (let i = 0; i < summaryCutoff; i++) {
+    const msg = history[i];
+    if (msg.role === 'tool' && typeof msg.content === 'string') {
+      const isError = msg.content.toLowerCase().includes('error') || msg.content.toLowerCase().includes('not found');
+      msg.content = isError ? '(error — details truncated)' : '(ok — details truncated)';
+    }
+    // Also truncate long assistant messages
+    if (msg.role === 'assistant' && typeof msg.content === 'string' && msg.content.length > 500) {
+      msg.content = msg.content.slice(0, 500) + '... (truncated)';
+    }
+  }
+  if (totalTokens(history) <= MAX_HISTORY_TOKENS) return;
+
+  // Phase 3: Drop oldest turns, keep last 10 messages
+  const keep = 10;
+  if (history.length > keep) {
+    // Insert a summary of what was dropped
+    const dropped = history.length - keep;
+    history.splice(0, dropped, {
+      role: 'user',
+      content: `(${dropped} earlier messages compressed. Key context: this is an ongoing assistant session managing bots and workflows.)`,
+    });
+  }
 }
