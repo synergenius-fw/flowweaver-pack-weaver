@@ -81,6 +81,21 @@ export function weaverValidateGate(ctx: string): {
     }
   }
 
+  // Also run tsc --noEmit if any .ts files were modified (catches type errors FW validate misses)
+  if (allValid && toValidate.length > 0) {
+    try {
+      execFileSync('npx', ['tsc', '--noEmit', '--pretty'], {
+        cwd: projectDir, encoding: 'utf-8', timeout: 60_000, stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    } catch (err: unknown) {
+      const tscOutput = (err as { stdout?: string }).stdout ?? (err instanceof Error ? err.message : '');
+      if (tscOutput.includes('error TS')) {
+        allValid = false;
+        errors.push({ file: '(tsc)', errorCount: 1, errors: [tscOutput.slice(0, 500)] });
+      }
+    }
+  }
+
   context.validationResultJson = JSON.stringify({ errors, allValid });
   context.allValid = allValid;
 

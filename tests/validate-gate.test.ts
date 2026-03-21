@@ -112,7 +112,8 @@ describe('weaverValidateGate', () => {
       mockExecFileSync.mockReturnValue(JSON.stringify({ errorCount: 0 }));
 
       weaverValidateGate(makeCtx({ filesModified: JSON.stringify(['wf.ts', 'notes.md']) }));
-      expect(mockExecFileSync).toHaveBeenCalledTimes(1);
+      // 1 call for flow-weaver validate + 1 call for tsc --noEmit
+      expect(mockExecFileSync).toHaveBeenCalledTimes(2);
     });
   });
 

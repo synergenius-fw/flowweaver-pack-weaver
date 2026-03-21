@@ -1968,25 +1968,29 @@ export async function handleInit(opts: ParsedArgs): Promise<void> {
     return;
   }
 
-  // Detect best available provider
+  // Detect best available provider (priority: Anthropic API > OpenAI API > Claude CLI > Copilot CLI)
   let provider: string = 'auto';
+  const detected: string[] = [];
   try {
     if (process.env.ANTHROPIC_API_KEY) {
       provider = 'anthropic';
-    } else {
-      const { execFileSync } = await import('node:child_process');
-      try {
-        execFileSync('claude', ['--version'], { stdio: 'pipe' });
-        provider = 'claude-cli';
-      } catch {
-        try {
-          execFileSync('copilot', ['--version'], { stdio: 'pipe' });
-          provider = 'copilot-cli';
-        } catch {
-          // Stay with auto
-        }
-      }
+      detected.push('Anthropic API (ANTHROPIC_API_KEY)');
     }
+    if (process.env.OPENAI_API_KEY) {
+      if (provider === 'auto') provider = 'openai';
+      detected.push('OpenAI API (OPENAI_API_KEY)');
+    }
+    const { execFileSync } = await import('node:child_process');
+    try {
+      execFileSync('claude', ['--version'], { stdio: 'pipe' });
+      if (provider === 'auto') provider = 'claude-cli';
+      detected.push('Claude CLI');
+    } catch { /* not found */ }
+    try {
+      execFileSync('copilot', ['--version'], { stdio: 'pipe' });
+      if (provider === 'auto') provider = 'copilot-cli';
+      detected.push('Copilot CLI');
+    } catch { /* not found */ }
   } catch {
     // Stay with auto
   }
@@ -2002,7 +2006,12 @@ export async function handleInit(opts: ParsedArgs): Promise<void> {
   console.log('  \x1b[1mWelcome to Weaver\x1b[0m — your AI workflow companion.');
   console.log('');
   console.log('  \x1b[2mDetecting providers...\x1b[0m');
-  console.log(`    ${provider === 'claude-cli' ? '\x1b[32m✓\x1b[0m Claude CLI: found' : provider === 'anthropic' ? '\x1b[32m✓\x1b[0m Anthropic API: configured' : '\x1b[33m⚠\x1b[0m No provider detected (set ANTHROPIC_API_KEY or install Claude CLI)'}`);
+  if (detected.length > 0) {
+    for (const d of detected) console.log(`    \x1b[32m✓\x1b[0m ${d}`);
+  } else {
+    console.log('    \x1b[33m⚠\x1b[0m No provider detected');
+    console.log('      Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or install Claude CLI');
+  }
   console.log('');
 
   // Test connection if possible
