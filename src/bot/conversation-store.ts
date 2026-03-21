@@ -49,8 +49,8 @@ export class ConversationStore {
     fs.mkdirSync(this.baseDir, { recursive: true });
   }
 
-  create(projectDir: string): ConversationRecord {
-    const id = crypto.randomUUID().slice(0, 8);
+  async create(projectDir: string): Promise<ConversationRecord> {
+    const id = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
     const now = Date.now();
     const record: ConversationRecord = {
       id,
@@ -67,10 +67,12 @@ export class ConversationStore {
     const convDir = path.join(this.baseDir, id);
     fs.mkdirSync(convDir, { recursive: true });
 
-    // Add to index (sync write — no lock needed for create, index is new or we're the only writer)
-    const index = this.readIndex();
-    index.unshift(record);
-    this.writeIndexUnsafe(index);
+    // Add to index under file lock for concurrent safety
+    await withFileLock(this.indexPath, () => {
+      const index = this.readIndex();
+      index.unshift(record);
+      this.writeIndexAtomic(index);
+    });
 
     return record;
   }
@@ -89,11 +91,13 @@ export class ConversationStore {
     return index.length > 0 ? index[0] : null;
   }
 
-  delete(id: string): void {
-    // Remove from index (sync — delete doesn't need lock)
-    const index = this.readIndex();
-    const filtered = index.filter(c => c.id !== id);
-    this.writeIndexUnsafe(filtered);
+  async delete(id: string): Promise<void> {
+    // Remove from index under file lock for concurrent safety
+    await withFileLock(this.indexPath, () => {
+      const index = this.readIndex();
+      const filtered = index.filter(c => c.id !== id);
+      this.writeIndexAtomic(filtered);
+    });
 
     // Remove files
     const convDir = path.join(this.baseDir, id);
@@ -177,7 +181,7 @@ export class ConversationStore {
         index.splice(MAX_INDEX_SIZE);
       }
 
-      this.writeIndexUnsafe(index);
+      this.writeIndexAtomic(index);
     });
   }
 
@@ -219,7 +223,7 @@ export class ConversationStore {
       const record = index.find(c => c.id === id);
       if (record) {
         record.title = title.slice(0, 80).replace(/\n/g, ' ').trim();
-        this.writeIndexUnsafe(index);
+        this.writeIndexAtomic(index);
       }
     });
   }
@@ -230,7 +234,7 @@ export class ConversationStore {
       const record = index.find(c => c.id === id);
       if (record && !record.botIds.includes(botId)) {
         record.botIds.push(botId);
-        this.writeIndexUnsafe(index);
+        this.writeIndexAtomic(index);
       }
     });
   }
@@ -243,17 +247,43 @@ export class ConversationStore {
       return JSON.parse(fs.readFileSync(this.indexPath, 'utf-8'));
     } catch (err) {
       if (process.env.WEAVER_VERBOSE) process.stderr.write(`[weaver] conversation index parse failed: ${err}\n`);
+      // Try backup
+      return this.readBackupIndex();
+    }
+  }
+
+  private readBackupIndex(): ConversationRecord[] {
+    const backupPath = this.indexPath + '.bak';
+    if (!fs.existsSync(backupPath)) return [];
+    try {
+      const data = JSON.parse(fs.readFileSync(backupPath, 'utf-8'));
+      // Restore backup to main index
+      try { this.writeIndexAtomic(data); } catch { /* best effort */ }
+      return data;
+    } catch (err) {
+      if (process.env.WEAVER_VERBOSE) process.stderr.write(`[weaver] conversation backup parse failed: ${err}\n`);
       return [];
     }
   }
 
-  private async writeIndex(index: ConversationRecord[]): Promise<void> {
-    await withFileLock(this.indexPath, () => {
-      this.writeIndexUnsafe(index);
-    });
-  }
+  /** Atomic write: serialize to temp file, backup existing, rename into place. */
+  private writeIndexAtomic(index: ConversationRecord[]): void {
+    const tmpPath = this.indexPath + `.tmp.${process.pid}`;
+    const backupPath = this.indexPath + '.bak';
+    const content = JSON.stringify(index, null, 2);
 
-  private writeIndexUnsafe(index: ConversationRecord[]): void {
-    fs.writeFileSync(this.indexPath, JSON.stringify(index, null, 2));
+    // Write to temp file first
+    fs.writeFileSync(tmpPath, content);
+
+    // Backup current index if it exists
+    if (fs.existsSync(this.indexPath)) {
+      try { fs.copyFileSync(this.indexPath, backupPath); } catch { /* best effort */ }
+    }
+
+    // Atomic rename
+    fs.renameSync(tmpPath, this.indexPath);
+
+    // Always update backup after successful write
+    try { fs.copyFileSync(this.indexPath, backupPath); } catch { /* best effort */ }
   }
 }

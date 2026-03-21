@@ -1628,7 +1628,7 @@ export async function handleAssistant(opts: ParsedArgs): Promise<void> {
   if (opts.assistantDelete) {
     const { ConversationStore } = await import('./bot/conversation-store.js');
     const store = new ConversationStore();
-    store.delete(opts.assistantDelete);
+    await store.delete(opts.assistantDelete);
     console.log(`  Deleted conversation ${opts.assistantDelete}`);
     return;
   }

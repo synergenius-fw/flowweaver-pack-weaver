@@ -261,7 +261,7 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
           const cStore = new ConversationStore();
           const existing = cStore.get(String(args.id));
           if (!existing) return { result: `Conversation "${args.id}" not found.`, isError: true };
-          cStore.delete(String(args.id));
+          await cStore.delete(String(args.id));
           return { result: `Deleted conversation "${args.id}" (${existing.title || 'untitled'}).`, isError: false };
         }
         case 'conversation_summary': {

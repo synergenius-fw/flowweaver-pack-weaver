@@ -206,7 +206,7 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     history.push(...store.loadMessages(existing.id));
     compressHistory(history);
   } else if (opts.newConversation) {
-    conversation = store.create(projectDir);
+    conversation = await store.create(projectDir);
   } else {
     // Auto-resume most recent if within 1 hour, else create new
     const recent = store.getMostRecent();
@@ -215,7 +215,7 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       history.push(...store.loadMessages(recent.id));
       compressHistory(history);
     } else {
-      conversation = store.create(projectDir);
+      conversation = await store.create(projectDir);
     }
   }
 
@@ -378,7 +378,7 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     conversationId: conversation.id,
     onClear: () => { history.length = 0; },
     onExit: () => { shouldExit = true; },
-    onNew: () => { history.length = 0; conversation = store.create(projectDir); },
+    onNew: async () => { history.length = 0; conversation = await store.create(projectDir); },
     onVerbose: () => { out(`  ${c.dim('Verbose toggling not yet wired to streaming.')}\n`); },
   };
 
