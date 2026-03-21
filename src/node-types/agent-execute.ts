@@ -121,7 +121,7 @@ export async function weaverAgentExecute(
       const docMeta = await import('@synergenius/flow-weaver/doc-metadata');
       cliCommands = docMeta.CLI_COMMANDS ?? [];
     } catch { /* older fw version */ }
-    const botPrompt = mod.buildBotSystemPrompt(context.contextBundle, cliCommands);
+    const botPrompt = mod.buildBotSystemPrompt(context.contextBundle, cliCommands, projectDir);
     systemPrompt = basePrompt + '\n\n' + botPrompt;
   } catch {
     systemPrompt = 'You are Weaver, an AI workflow bot. Use the provided tools to complete tasks.';

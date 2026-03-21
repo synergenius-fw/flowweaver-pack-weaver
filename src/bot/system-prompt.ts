@@ -258,7 +258,7 @@ function formatBotOperations(cliCommands: CliCommandDoc[]): string {
   return [...packOps, ...fwOps].join('\n');
 }
 
-export function buildBotSystemPrompt(contextBundle?: string, _cliCommands?: CliCommandDoc[]): string {
+export function buildBotSystemPrompt(contextBundle?: string, _cliCommands?: CliCommandDoc[], projectDir?: string): string {
   let prompt = `## Safety Policy
 
 Writes that shrink a file by >50% or write empty content are automatically BLOCKED.
@@ -267,6 +267,19 @@ Always validate BEFORE and AFTER patching.
 Always read a file before patching it (you need exact strings for find/replace).
 Use patch_file for modifications, write_file only for new files.
 Be concise in your text responses — let tool results speak.`;
+
+  // Load project plan file if it exists — this is the vision spec that guides all work
+  if (projectDir) {
+    try {
+      const fs = require('node:fs');
+      const path = require('node:path');
+      const planPath = path.resolve(projectDir, '.weaver-plan.md');
+      if (fs.existsSync(planPath)) {
+        const plan = fs.readFileSync(planPath, 'utf-8').trim();
+        prompt += '\n\n## Project Plan & Vision\n\nIMPORTANT: All work MUST align with this plan. If a task contradicts the plan, skip it and explain why.\n\n' + plan;
+      }
+    } catch { /* plan file not available */ }
+  }
 
   if (contextBundle) {
     prompt += '\n\n## Project Context\n\n' + contextBundle;

@@ -69,7 +69,18 @@ const c = {
 
 export async function runAssistant(opts: AssistantOptions): Promise<void> {
   const { provider, tools, executor, projectDir } = opts;
-  const systemPrompt = opts.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
+
+  // Build system prompt — include project plan if it exists
+  let systemPrompt = opts.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
+  try {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const planPath = path.resolve(projectDir, '.weaver-plan.md');
+    if (fs.existsSync(planPath)) {
+      const plan = fs.readFileSync(planPath, 'utf-8').trim();
+      systemPrompt += '\n\n## Project Plan & Vision\n\nAll bots you spawn and tasks you queue MUST align with this plan.\n\n' + plan;
+    }
+  } catch { /* plan not available */ }
 
   const out = (s: string) => process.stderr.write(s);
 
