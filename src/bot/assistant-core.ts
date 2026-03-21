@@ -156,8 +156,15 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     }
     if (event.type === 'tool_call_result') {
       const icon = event.isError ? c.red('✗') : c.dim('→');
-      const result = (event.result ?? '').replace(/\n/g, ' ').slice(0, 150);
-      out(`  ${icon} ${result}\n`);
+      const raw = event.result ?? '';
+      // Show full output for diagram/describe/docs tools; truncate others
+      const isVerboseTool = ['fw_diagram', 'fw_describe', 'fw_docs', 'fw_diagram_mermaid', 'bot_logs'].includes(event.name);
+      if (isVerboseTool && raw.length > 150) {
+        out(`  ${icon}\n${raw}\n`);
+      } else {
+        const result = raw.replace(/\n/g, ' ').slice(0, 200);
+        out(`  ${icon} ${result}\n`);
+      }
     }
   };
 
