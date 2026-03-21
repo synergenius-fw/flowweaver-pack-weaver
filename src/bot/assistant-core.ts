@@ -26,6 +26,10 @@ export interface AssistantOptions {
   systemPrompt?: string;
   /** Override for testing — provide messages instead of reading stdin */
   inputMessages?: string[];
+  /** Resume a specific conversation by ID */
+  resumeId?: string;
+  /** Always start a fresh conversation */
+  newConversation?: boolean;
 }
 
 const DEFAULT_SYSTEM_PROMPT = `You are Weaver Assistant — a director-level AI that manages bot workers and the flow-weaver ecosystem.
@@ -69,9 +73,45 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
 
   const out = (s: string) => process.stderr.write(s);
 
+  // Persistent conversation store
+  const { ConversationStore } = await import('./conversation-store.js');
+  const store = new ConversationStore();
+
+  // Resolve conversation: resume, new, or auto
+  let conversation: { id: string; title: string; messageCount: number };
+  const history: AgentMessage[] = [];
+
+  if (opts.resumeId) {
+    const existing = store.get(opts.resumeId);
+    if (!existing) {
+      out(`  ${c.red('Conversation not found:')} ${opts.resumeId}\n`);
+      return;
+    }
+    conversation = existing;
+    history.push(...store.loadMessages(existing.id));
+    compressHistory(history);
+  } else if (opts.newConversation) {
+    conversation = store.create(projectDir);
+  } else {
+    // Auto-resume most recent if within 1 hour, else create new
+    const recent = store.getMostRecent();
+    if (recent && Date.now() - recent.lastMessageAt < 3600_000) {
+      conversation = recent;
+      history.push(...store.loadMessages(recent.id));
+      compressHistory(history);
+    } else {
+      conversation = store.create(projectDir);
+    }
+  }
+
   // Welcome
   out(`\n  ${c.bold('weaver assistant')}\n`);
   out(`  ${c.dim(`Project: ${projectDir}`)}\n`);
+  if (conversation.title) {
+    out(`  ${c.dim(`Resuming: "${conversation.title}" (${conversation.messageCount} messages)`)}\n`);
+  } else {
+    out(`  ${c.dim(`Conversation: ${conversation.id}`)}\n`);
+  }
   out(`  ${c.dim('Type your request. Ctrl+C to exit.')}\n\n`);
 
   // Input source
@@ -89,9 +129,6 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
         rl!.once('line', (line) => resolve(line.trim() || null));
         rl!.once('close', () => resolve(null));
       });
-
-  // Conversation history — persists across turns
-  const history: AgentMessage[] = [];
 
   const onStreamEvent = (event: StreamEvent) => {
     if (event.type === 'text_delta') {
@@ -138,14 +175,33 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
         },
       );
 
-      // Add assistant response to history for continuity
+      // Collect new messages from the agent loop
+      const newMessages: AgentMessage[] = [];
       if (result.messages.length > history.length) {
         for (let i = history.length; i < result.messages.length; i++) {
           history.push(result.messages[i]);
+          newMessages.push(result.messages[i]);
         }
       }
 
-      // Token-aware compression: estimate tokens and compress when over budget
+      // Persist to disk
+      const tokensUsed = result.usage.promptTokens + result.usage.completionTokens;
+      store.appendMessages(conversation.id, [{ role: 'user', content: input }, ...newMessages]);
+      store.updateAfterTurn(conversation.id, [{ role: 'user', content: input }, ...newMessages], tokensUsed);
+
+      // Auto-title from first assistant response
+      if (!conversation.title) {
+        const firstAssistant = newMessages.find(m => m.role === 'assistant');
+        if (firstAssistant && typeof firstAssistant.content === 'string') {
+          const title = firstAssistant.content.split('\n')[0].slice(0, 80).trim();
+          if (title) {
+            conversation.title = title;
+            store.setTitle(conversation.id, title);
+          }
+        }
+      }
+
+      // Token-aware compression
       compressHistory(history);
 
       if (!result.success && result.summary) {

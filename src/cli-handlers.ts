@@ -62,6 +62,11 @@ export interface ParsedArgs {
   sessionUntil?: string;
   sessionMaxTasks?: number;
   sessionParallel?: number;
+  // assistant
+  assistantNew?: boolean;
+  assistantResume?: string;
+  assistantList?: boolean;
+  assistantDelete?: string;
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -252,6 +257,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.genesisInit = true;
     } else if (arg === '--watch') {
       result.genesisWatch = true;
+    } else if (arg === '--new') {
+      result.assistantNew = true;
+    } else if (arg === '--resume' && i + 1 < args.length) {
+      i++;
+      result.assistantResume = args[i];
+    } else if (arg === '--list') {
+      result.assistantList = true;
+    } else if (arg === '--delete' && i + 1 < args.length) {
+      i++;
+      result.assistantDelete = args[i];
     } else if (arg === '--continuous') {
       result.sessionContinuous = true;
     } else if (arg === '--until' && i + 1 < args.length) {
@@ -1457,9 +1472,37 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
 
 export async function handleAssistant(opts: ParsedArgs): Promise<void> {
   const projectDir = opts.file ?? process.cwd();
+
+  // Handle --list and --delete before creating provider
+  if (opts.assistantList) {
+    const { ConversationStore } = await import('./bot/conversation-store.js');
+    const { formatTokens, formatElapsed } = await import('./bot/terminal-renderer.js');
+    const store = new ConversationStore();
+    const convos = store.list();
+    if (convos.length === 0) {
+      console.log('  No conversations yet.');
+      return;
+    }
+    console.log(`  Conversations (${convos.length}):\n`);
+    for (const c of convos) {
+      const ago = formatElapsed(Date.now() - c.lastMessageAt) + ' ago';
+      const title = c.title ? `"${c.title}"` : '(untitled)';
+      console.log(`    ${c.id}  ${title.padEnd(45)}  ${String(c.messageCount).padStart(3)} msgs  ${formatTokens(c.totalTokens).padStart(5)} tokens  ${ago}`);
+    }
+    return;
+  }
+
+  if (opts.assistantDelete) {
+    const { ConversationStore } = await import('./bot/conversation-store.js');
+    const store = new ConversationStore();
+    store.delete(opts.assistantDelete);
+    console.log(`  Deleted conversation ${opts.assistantDelete}`);
+    return;
+  }
+
   const config = await loadConfig(opts.configPath);
 
-  // Create provider — reuse the same logic as agent-execute
+  // Create provider
   const { createAnthropicProvider, createClaudeCliProvider } = await import('@synergenius/flow-weaver/agent');
   const providerSetting = config?.provider ?? 'auto';
   const providerType = typeof providerSetting === 'object' ? providerSetting.name : String(providerSetting);
@@ -1477,7 +1520,14 @@ export async function handleAssistant(opts: ParsedArgs): Promise<void> {
   const { runAssistant } = await import('./bot/assistant-core.js');
   const executor = createAssistantExecutor(projectDir);
 
-  await runAssistant({ provider, tools: ASSISTANT_TOOLS, executor, projectDir });
+  await runAssistant({
+    provider,
+    tools: ASSISTANT_TOOLS,
+    executor,
+    projectDir,
+    resumeId: opts.assistantResume,
+    newConversation: opts.assistantNew,
+  });
 }
 
 export async function handleSteer(opts: ParsedArgs): Promise<void> {
