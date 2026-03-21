@@ -1347,8 +1347,7 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
 
   // Continuous mode: loop until deadline/maxTasks/interrupt
   const { TaskQueue } = await import('./bot/task-queue.js');
-  const { isTransientError } = await import('./bot/retry-utils.js');
-  const { getErrorGuidance } = await import('./bot/error-guide.js');
+  const { isTransientError, getErrorGuidance } = await import('./bot/error-classifier.js');
   const queue = new TaskQueue();
   let taskCount = 0;
   let interrupted = false;

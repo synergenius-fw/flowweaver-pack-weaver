@@ -17,6 +17,10 @@ import {
   type ToolExecutor,
   type StreamEvent,
 } from '@synergenius/flow-weaver/agent';
+import { c } from './ansi.js';
+import { VERBOSE_TOOL_NAMES } from './tool-registry.js';
+import { generateToolPromptSection, generateVerboseToolList } from './tool-registry.js';
+import { CHARS_PER_TOKEN } from './safety.js';
 
 export interface AssistantOptions {
   provider: AgentProvider;
@@ -34,13 +38,9 @@ export interface AssistantOptions {
 
 const DEFAULT_SYSTEM_PROMPT = `You are Weaver Assistant — a director-level AI that manages bot workers and the flow-weaver ecosystem.
 
-You help users:
-1. Spawn and manage multiple bot sessions (bot_spawn, bot_list, bot_status, bot_pause, bot_resume, bot_stop, bot_logs)
-2. Queue tasks for bots (queue_add, queue_add_batch, queue_list, queue_retry)
-3. Inspect workflows (fw_validate, fw_diagram, fw_describe)
-4. Read and analyze project files (read_file, list_files, run_shell)
-5. Generate reports on bot progress and costs
+You help users with the following tools (grouped by category):
 
+${generateToolPromptSection()}
 USE TOOLS to fulfill requests. Don't describe what you'd do — actually do it.
 When the user asks to "start a bot", call bot_spawn.
 When they ask for status, call bot_list or bot_status.
@@ -60,21 +60,13 @@ CRITICAL: You are running in a terminal. Do NOT use markdown formatting.
 
 IMPORTANT: Some tool results are displayed DIRECTLY to the user in the terminal.
 These tools show FULL output — the user already sees everything:
-  fw_diagram, fw_describe, fw_docs, fw_diagram_mermaid, bot_logs, run_tests, tsc_check
+  ${generateVerboseToolList()}
 For these: do NOT repeat, summarize, or reformat the output. Just add a brief comment if needed.
 Never re-type ASCII art, diagrams, or large text blocks that were already printed.
 
-Other tools (bot_list, queue_add, read_file, etc.) show only a short preview.
+Other tools show only a short preview.
 For those: you may summarize or explain the result as needed.`;
 
-// ANSI helpers
-const c = {
-  cyan: (s: string) => `\x1b[36m${s}\x1b[0m`,
-  dim: (s: string) => `\x1b[2m${s}\x1b[0m`,
-  bold: (s: string) => `\x1b[1m${s}\x1b[0m`,
-  green: (s: string) => `\x1b[32m${s}\x1b[0m`,
-  red: (s: string) => `\x1b[31m${s}\x1b[0m`,
-};
 
 export async function runAssistant(opts: AssistantOptions): Promise<void> {
   const { provider, tools, executor, projectDir } = opts;
@@ -167,7 +159,7 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       const icon = event.isError ? c.red('✗') : c.dim('→');
       const raw = event.result ?? '';
       // Show full output for diagram/describe/docs tools; truncate others
-      const isVerboseTool = ['fw_diagram', 'fw_describe', 'fw_docs', 'fw_diagram_mermaid', 'bot_logs'].includes(event.name);
+      const isVerboseTool = VERBOSE_TOOL_NAMES.has(event.name);
       if (isVerboseTool && raw.length > 150) {
         out(`  ${icon}\n${raw}\n`);
       } else {
@@ -258,8 +250,6 @@ function toolPreview(name: string, args: Record<string, unknown>): string {
 
 // --- Token-aware history compression ---
 
-// Rough token estimate: ~4 chars per token for English text
-const CHARS_PER_TOKEN = 4;
 // Budget: leave room for system prompt (~2k) + tools (~3k) + response (~4k)
 const MAX_HISTORY_TOKENS = 80_000;
 // When compressing, truncate tool results to this size

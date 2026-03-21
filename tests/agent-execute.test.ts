@@ -23,9 +23,12 @@ vi.mock('../src/bot/audit-logger.js', () => ({
   auditEmit: vi.fn(),
 }));
 
-vi.mock('../src/bot/retry-utils.js', () => ({
+vi.mock('../src/bot/error-classifier.js', () => ({
   // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   withRetry: vi.fn(function (fn: Function) { return fn(); }),
+  getErrorGuidance: vi.fn().mockReturnValue(null),
+  isTransientError: vi.fn().mockReturnValue(false),
+  classifyError: vi.fn().mockReturnValue({ isTransient: false, guidance: null, category: 'unknown' }),
 }));
 
 vi.mock('../src/bot/cost-tracker.js', () => ({
@@ -61,7 +64,7 @@ vi.mock('@synergenius/flow-weaver/doc-metadata', () => ({
 // ── Imports after mocks ───────────────────────────────────────────────────────
 
 import { runAgentLoop, createAnthropicProvider, getOrCreateCliSession } from '@synergenius/flow-weaver/agent';
-import { withRetry } from '../src/bot/retry-utils.js';
+import { withRetry } from '../src/bot/error-classifier.js';
 import { weaverValidateGate } from '../src/node-types/validate-gate.js';
 import { weaverAgentExecute, CliSessionProvider } from '../src/node-types/agent-execute.js';
 

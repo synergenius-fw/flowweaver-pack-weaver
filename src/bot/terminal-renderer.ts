@@ -7,18 +7,8 @@
  */
 
 import type { StreamEvent, ToolEvent } from '@synergenius/flow-weaver/agent';
-
-// ANSI helpers
-const isTTY = process.stderr.isTTY ?? false;
-const c = {
-  green: (s: string) => `\x1b[32m${s}\x1b[0m`,
-  red: (s: string) => `\x1b[31m${s}\x1b[0m`,
-  yellow: (s: string) => `\x1b[33m${s}\x1b[0m`,
-  cyan: (s: string) => `\x1b[36m${s}\x1b[0m`,
-  dim: (s: string) => `\x1b[2m${s}\x1b[0m`,
-  bold: (s: string) => `\x1b[1m${s}\x1b[0m`,
-  redBold: (s: string) => `\x1b[1;31m${s}\x1b[0m`,
-};
+import { c } from './ansi.js';
+import { VERBOSE_TOOL_NAMES } from './tool-registry.js';
 
 export interface RendererOptions {
   verbose?: boolean;
@@ -183,7 +173,7 @@ export class TerminalRenderer {
       const raw = event.result ?? '';
       const icon = event.isError ? c.red('✗') : c.dim('→');
       // Show full multiline output for verbose tools; one-line summary for others
-      const isVerboseTool = ['fw_diagram', 'fw_describe', 'fw_docs', 'fw_diagram_mermaid', 'bot_logs', 'run_tests', 'tsc_check'].includes(event.name);
+      const isVerboseTool = VERBOSE_TOOL_NAMES.has(event.name);
       if (isVerboseTool && raw.includes('\n') && raw.length > 120) {
         this.out(`  ${icon} ${c.dim(formatElapsed(elapsed))}\n${raw}\n`);
       } else {

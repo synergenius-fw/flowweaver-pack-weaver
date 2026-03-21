@@ -1,9 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import { withFileLock } from './file-lock.js';
 import { parseNdjson } from './safe-json.js';
+import { resolveWeaverDir } from './paths.js';
 
 export interface QueuedTask {
   id: string;
@@ -28,25 +28,11 @@ const MAX_PENDING = 200;
 /** Don't re-queue tasks completed within this window (ms). */
 const CYCLE_DEDUP_WINDOW = 3600_000; // 1 hour
 
-/**
- * Hash a project directory path into a short filesystem-safe string.
- * Used for per-project queue isolation.
- */
-function hashDir(dir: string): string {
-  return crypto.createHash('sha256').update(dir).digest('hex').slice(0, 8);
-}
-
 export class TaskQueue {
   readonly filePath: string;
 
   constructor(dir?: string) {
-    // Priority: explicit dir > env var > project-scoped > global fallback
-    const projectDir = process.env.WEAVER_PROJECT_DIR;
-    const base = dir
-      ?? process.env.WEAVER_QUEUE_DIR
-      ?? (projectDir
-        ? path.join(os.homedir(), '.weaver', 'projects', hashDir(projectDir))
-        : path.join(os.homedir(), '.weaver'));
+    const base = dir ?? resolveWeaverDir();
     this.filePath = path.join(base, 'task-queue.ndjson');
   }
 
