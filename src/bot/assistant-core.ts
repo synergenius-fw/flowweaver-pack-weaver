@@ -90,7 +90,30 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
         rl!.once('close', () => resolve(null));
       });
 
-  // Main conversation loop — each user message triggers a full agent loop
+  // Conversation history — persists across turns
+  const history: AgentMessage[] = [];
+
+  const onStreamEvent = (event: StreamEvent) => {
+    if (event.type === 'text_delta') {
+      out(event.text);
+    } else if (event.type === 'thinking_delta') {
+      out(c.dim(event.text));
+    }
+  };
+
+  const onToolEvent = (event: { type: string; name: string; args?: Record<string, unknown>; result?: string; isError?: boolean }) => {
+    if (event.type === 'tool_call_start') {
+      const preview = toolPreview(event.name, event.args ?? {});
+      out(`\n  ${c.cyan('◆')} ${event.name}${preview ? c.dim(`(${preview})`) : ''}\n`);
+    }
+    if (event.type === 'tool_call_result') {
+      const icon = event.isError ? c.red('✗') : c.dim('→');
+      const result = (event.result ?? '').replace(/\n/g, ' ').slice(0, 150);
+      out(`  ${icon} ${result}\n`);
+    }
+  };
+
+  // Main conversation loop
   while (true) {
     const input = await getNextInput();
     if (input === null) break;
@@ -98,34 +121,15 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
 
     out('\n');
 
-    // Use runAgentLoop which handles both CLI (MCP bridge) and API (manual tool execution)
-    // This is the same battle-tested loop that bot tasks use
-    const onStreamEvent = (event: StreamEvent) => {
-      if (event.type === 'text_delta') {
-        out(event.text);
-      } else if (event.type === 'thinking_delta') {
-        out(c.dim(event.text));
-      }
-    };
-
-    const onToolEvent = (event: { type: string; name: string; args?: Record<string, unknown>; result?: string; isError?: boolean }) => {
-      if (event.type === 'tool_call_start') {
-        const preview = toolPreview(event.name, event.args ?? {});
-        out(`\n  ${c.cyan('◆')} ${event.name}${preview ? c.dim(`(${preview})`) : ''}\n`);
-      }
-      if (event.type === 'tool_call_result') {
-        const icon = event.isError ? c.red('✗') : c.dim('→');
-        const result = (event.result ?? '').replace(/\n/g, ' ').slice(0, 150);
-        out(`  ${icon} ${result}\n`);
-      }
-    };
+    // Add user message to history
+    history.push({ role: 'user', content: input });
 
     try {
       const result = await runAgentLoop(
         provider,
         tools,
         executor,
-        [{ role: 'user', content: input }],
+        history, // full conversation history
         {
           systemPrompt,
           maxIterations: 20,
@@ -133,6 +137,23 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
           onToolEvent,
         },
       );
+
+      // Add assistant response to history for continuity
+      if (result.messages.length > history.length) {
+        // runAgentLoop returns all messages including our input + its responses
+        // Append only the new messages (assistant + tool results)
+        for (let i = history.length; i < result.messages.length; i++) {
+          history.push(result.messages[i]);
+        }
+      }
+
+      // Cap history to prevent unbounded growth (keep last 50 messages)
+      if (history.length > 50) {
+        // Keep first message (gives context) + last 48
+        const first = history[0];
+        history.splice(0, history.length - 48);
+        history.unshift(first);
+      }
 
       if (!result.success && result.summary) {
         out(`\n  ${c.red(result.summary)}\n`);
