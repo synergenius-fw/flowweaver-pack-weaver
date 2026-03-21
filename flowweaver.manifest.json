@@ -933,6 +933,18 @@
     {
       "name": "init",
       "description": "Create .weaver.json config with auto-detected provider"
+    },
+    {
+      "name": "assistant",
+      "description": "AI-powered assistant for managing bots and workflows"
+    },
+    {
+      "name": "status",
+      "description": "Get bot session status"
+    },
+    {
+      "name": "audit",
+      "description": "Show audit log for a run"
     }
   ],
   "mcpEntrypoint": "dist/mcp-tools.js",
