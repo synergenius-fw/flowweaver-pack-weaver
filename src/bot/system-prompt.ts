@@ -258,48 +258,15 @@ function formatBotOperations(cliCommands: CliCommandDoc[]): string {
   return [...packOps, ...fwOps].join('\n');
 }
 
-export function buildBotSystemPrompt(contextBundle?: string, cliCommands?: CliCommandDoc[]): string {
-  const operationsList = formatBotOperations(cliCommands ?? []);
+export function buildBotSystemPrompt(contextBundle?: string, _cliCommands?: CliCommandDoc[]): string {
+  let prompt = `## Safety Policy
 
-  const planSchema = `## Bot Plan Schema
-
-When asked to plan a task, return a JSON object with this structure:
-{
-  "steps": [
-    {
-      "id": "step-1",
-      "operation": "<operation>",
-      "description": "What this step does",
-      "args": { ... operation-specific arguments ... }
-    }
-  ],
-  "summary": "Brief description of the overall plan"
-}
-
-Available operations:
-${operationsList}`;
-
-  const botInstructions = `## Bot Mode Instructions
-
-You are operating in autonomous bot mode. Your job is to plan and execute workflow creation or modification tasks.
-
-When planning:
-1. Break the task into concrete, ordered steps using the plan schema above
-2. For new workflows, plan: scaffold/create -> implement nodes -> compile -> validate
-3. For modifications, plan: read current state -> modify -> compile -> validate
-4. Each step is executed via the flow-weaver programmatic API
-5. Use templates when they match the task
-6. Prefer @expression nodes for deterministic operations
-7. Use proper JSDoc annotations on all node types and workflows
-8. Include visualization metadata (colors, icons, positions) on workflow nodes
-
-When fixing validation errors:
-1. Read the error messages carefully
-2. Map each error to a specific fix operation
-3. Common fixes: add missing connections, fix port names, resolve type mismatches
-4. Return a new plan with only the fix steps`;
-
-  let prompt = planSchema + '\n\n' + botInstructions;
+Writes that shrink a file by >50% or write empty content are automatically BLOCKED.
+Blocked shell commands: rm -rf, git push, npm publish, sudo, curl|sh.
+Always validate BEFORE and AFTER patching.
+Always read a file before patching it (you need exact strings for find/replace).
+Use patch_file for modifications, write_file only for new files.
+Be concise in your text responses — let tool results speak.`;
 
   if (contextBundle) {
     prompt += '\n\n## Project Context\n\n' + contextBundle;
