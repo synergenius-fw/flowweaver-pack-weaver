@@ -13,7 +13,7 @@ import type { ExecutionEvent, WeaverConfig, RunRecord, RunOutcome, RunCostSummar
 import { AuditStore } from './bot/audit-store.js';
 
 export interface ParsedArgs {
-  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'status' | 'genesis' | 'audit' | 'init';
+  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'status' | 'genesis' | 'audit' | 'init' | 'assistant';
   file?: string;
   verbose: boolean;
   dryRun: boolean;
@@ -198,6 +198,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       }
     } else if (arg === 'session') {
       result.command = 'session';
+    } else if (arg === 'assistant') {
+      result.command = 'assistant';
     } else if (arg === 'status') {
       result.command = 'status';
     } else if (arg === 'steer') {
@@ -1451,6 +1453,31 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
     totalCost: 0,
     elapsed: Date.now() - sessionStartTime,
   });
+}
+
+export async function handleAssistant(opts: ParsedArgs): Promise<void> {
+  const projectDir = opts.file ?? process.cwd();
+  const config = await loadConfig(opts.configPath);
+
+  // Create provider — reuse the same logic as agent-execute
+  const { createAnthropicProvider, createClaudeCliProvider } = await import('@synergenius/flow-weaver/agent');
+  const providerSetting = config?.provider ?? 'auto';
+  const providerType = typeof providerSetting === 'object' ? providerSetting.name : String(providerSetting);
+
+  let provider;
+  if (providerType === 'anthropic' || (providerType === 'auto' && process.env.ANTHROPIC_API_KEY)) {
+    const apiKey = process.env.ANTHROPIC_API_KEY ?? (typeof providerSetting === 'object' ? (providerSetting as { apiKey?: string }).apiKey : undefined);
+    if (!apiKey) { console.error('ANTHROPIC_API_KEY required for anthropic provider'); process.exit(1); }
+    provider = createAnthropicProvider({ apiKey, model: typeof providerSetting === 'object' ? providerSetting.model : undefined });
+  } else {
+    provider = createClaudeCliProvider({ model: typeof providerSetting === 'object' ? providerSetting.model : undefined });
+  }
+
+  const { ASSISTANT_TOOLS, createAssistantExecutor } = await import('./bot/assistant-tools.js');
+  const { runAssistant } = await import('./bot/assistant-core.js');
+  const executor = createAssistantExecutor(projectDir);
+
+  await runAssistant({ provider, tools: ASSISTANT_TOOLS, executor, projectDir });
 }
 
 export async function handleSteer(opts: ParsedArgs): Promise<void> {
