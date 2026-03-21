@@ -232,12 +232,15 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       })()
     : (): Promise<string | null> => richInput!.getInput();
 
+  let lastStreamType = '';
   const onStreamEvent = (event: StreamEvent) => {
     if (event.type === 'text_delta') {
+      if (lastStreamType === 'thinking_delta') out('\n\n');
       out(event.text);
     } else if (event.type === 'thinking_delta') {
       out(c.dim(event.text));
     }
+    lastStreamType = event.type;
   };
 
   const onToolEvent = (event: { type: string; name: string; args?: Record<string, unknown>; result?: string; isError?: boolean }) => {
