@@ -28,7 +28,7 @@ const mockExecFileSync = vi.mocked(childProcess.execFileSync);
 // ── Shared mock objects (const — same reference throughout all tests) ──────
 
 const mockQueue = {
-  add: vi.fn<[], Promise<string>>(),
+  add: vi.fn<[], Promise<{ id: string; duplicate: boolean }>>(),
   list: vi.fn<[], Promise<unknown[]>>(),
   retryAll: vi.fn<[], Promise<number>>(),
 };
@@ -65,7 +65,7 @@ beforeEach(() => {
   vi.resetAllMocks();
 
   // Default queue behaviour
-  mockQueue.add.mockResolvedValue('task-abc');
+  mockQueue.add.mockResolvedValue({ id: 'task-abc', duplicate: false });
   mockQueue.list.mockResolvedValue([]);
   mockQueue.retryAll.mockResolvedValue(0);
 
@@ -258,7 +258,7 @@ describe('bot_logs', () => {
 
 describe('queue_add', () => {
   it('adds a task and includes the task id in the result', async () => {
-    mockQueue.add.mockResolvedValue('abc123');
+    mockQueue.add.mockResolvedValue({ id: 'abc123', duplicate: false });
 
     const result = await executor('queue_add', { bot: 'my-bot', instruction: 'Fix the bug' });
 
@@ -282,7 +282,7 @@ describe('queue_add', () => {
 
 describe('queue_add_batch', () => {
   it('adds multiple tasks and reports the count', async () => {
-    mockQueue.add.mockResolvedValueOnce('id1').mockResolvedValueOnce('id2');
+    mockQueue.add.mockResolvedValueOnce({ id: 'id1', duplicate: false }).mockResolvedValueOnce({ id: 'id2', duplicate: false });
 
     const result = await executor('queue_add_batch', {
       bot: 'my-bot',

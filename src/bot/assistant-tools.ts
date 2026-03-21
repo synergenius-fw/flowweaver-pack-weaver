@@ -295,22 +295,24 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
         // Queue management
         case 'queue_add': {
           const queue = mgr.getQueue(String(args.bot));
-          const id = await queue.add({
+          const { id, duplicate } = await queue.add({
             instruction: String(args.instruction),
             targets: args.targets as string[] | undefined,
             priority: 0,
           });
+          if (duplicate) return { result: `Task already queued (${id}).`, isError: false };
           return { result: `Added task ${id} to "${args.bot}" queue.`, isError: false };
         }
         case 'queue_add_batch': {
           const queue = mgr.getQueue(String(args.bot));
           const tasks = args.tasks as Array<{ instruction: string; targets?: string[] }>;
-          const ids: string[] = [];
+          let added = 0, skipped = 0;
           for (const t of tasks) {
-            const id = await queue.add({ instruction: t.instruction, targets: t.targets, priority: 0 });
-            ids.push(id);
+            const { duplicate } = await queue.add({ instruction: t.instruction, targets: t.targets, priority: 0 });
+            if (duplicate) skipped++; else added++;
           }
-          return { result: `Added ${ids.length} tasks to "${args.bot}" queue.`, isError: false };
+          const msg = skipped > 0 ? `Added ${added} tasks, ${skipped} duplicates skipped.` : `Added ${added} tasks to "${args.bot}" queue.`;
+          return { result: msg, isError: false };
         }
         case 'queue_list': {
           const queue = mgr.getQueue(String(args.bot));

@@ -125,13 +125,36 @@ export class BotManager {
   }
 
   list(): ManagedBot[] {
-    // Also load any bots from disk that we didn't spawn (e.g., from a previous assistant)
     this.discoverExistingBots();
+    // Health check: update status of bots that died
+    for (const [, bot] of this.bots) {
+      if (bot.meta.status === 'running' && !this.isAlive(bot.meta)) {
+        bot.meta.status = 'stopped';
+        try {
+          fs.writeFileSync(path.join(bot.meta.botDir, 'meta.json'), JSON.stringify(bot.meta, null, 2));
+        } catch { /* non-fatal */ }
+      }
+    }
     return [...this.bots.values()].map(b => b.meta);
   }
 
   get(name: string): ManagedBot | null {
-    return this.bots.get(name)?.meta ?? null;
+    const bot = this.bots.get(name);
+    if (!bot) return null;
+    // Health check on access
+    if (bot.meta.status === 'running' && !this.isAlive(bot.meta)) {
+      bot.meta.status = 'stopped';
+      try {
+        fs.writeFileSync(path.join(bot.meta.botDir, 'meta.json'), JSON.stringify(bot.meta, null, 2));
+      } catch { /* non-fatal */ }
+    }
+    return bot.meta;
+  }
+
+  /** Check if a bot process is still alive. */
+  private isAlive(bot: ManagedBot): boolean {
+    if (!bot.pid || bot.pid === 0) return false;
+    try { process.kill(bot.pid, 0); return true; } catch { return false; }
   }
 
   getQueue(name: string): TaskQueue {

@@ -18,7 +18,7 @@ describe('TaskQueue lifecycle', () => {
   });
 
   it('adds a task as pending', async () => {
-    const id = await queue.add({ instruction: 'test task', priority: 0 });
+    const { id } = await queue.add({ instruction: 'test task', priority: 0 });
     const tasks = await queue.list();
     expect(tasks).toHaveLength(1);
     expect(tasks[0].id).toBe(id);
@@ -26,14 +26,14 @@ describe('TaskQueue lifecycle', () => {
   });
 
   it('marks task as running', async () => {
-    const id = await queue.add({ instruction: 'test', priority: 0 });
+    const { id } = await queue.add({ instruction: 'test', priority: 0 });
     await queue.markRunning(id);
     const tasks = await queue.list();
     expect(tasks[0].status).toBe('running');
   });
 
   it('marks task as completed', async () => {
-    const id = await queue.add({ instruction: 'test', priority: 0 });
+    const { id } = await queue.add({ instruction: 'test', priority: 0 });
     await queue.markRunning(id);
     await queue.markComplete(id);
     const tasks = await queue.list();
@@ -41,7 +41,7 @@ describe('TaskQueue lifecycle', () => {
   });
 
   it('marks task as failed', async () => {
-    const id = await queue.add({ instruction: 'test', priority: 0 });
+    const { id } = await queue.add({ instruction: 'test', priority: 0 });
     await queue.markRunning(id);
     await queue.markFailed(id);
     const tasks = await queue.list();
@@ -49,7 +49,7 @@ describe('TaskQueue lifecycle', () => {
   });
 
   it('full lifecycle: pending → running → completed', async () => {
-    const id = await queue.add({ instruction: 'full lifecycle', priority: 0 });
+    const { id } = await queue.add({ instruction: 'full lifecycle', priority: 0 });
     expect((await queue.list())[0].status).toBe('pending');
 
     await queue.markRunning(id);
@@ -60,7 +60,7 @@ describe('TaskQueue lifecycle', () => {
   });
 
   it('full lifecycle: pending → running → failed', async () => {
-    const id = await queue.add({ instruction: 'fail lifecycle', priority: 0 });
+    const { id } = await queue.add({ instruction: 'fail lifecycle', priority: 0 });
     await queue.markRunning(id);
     await queue.markFailed(id);
     expect((await queue.list())[0].status).toBe('failed');
@@ -81,7 +81,7 @@ describe('TaskQueue retry', () => {
   });
 
   it('retries a failed task (resets to pending)', async () => {
-    const id = await queue.add({ instruction: 'retry me', priority: 0 });
+    const { id } = await queue.add({ instruction: 'retry me', priority: 0 });
     await queue.markRunning(id);
     await queue.markFailed(id);
     expect((await queue.list())[0].status).toBe('failed');
@@ -92,7 +92,7 @@ describe('TaskQueue retry', () => {
   });
 
   it('retries a stuck running task', async () => {
-    const id = await queue.add({ instruction: 'stuck', priority: 0 });
+    const { id } = await queue.add({ instruction: 'stuck', priority: 0 });
     await queue.markRunning(id);
 
     const retried = await queue.retry(id);
@@ -101,7 +101,7 @@ describe('TaskQueue retry', () => {
   });
 
   it('does not retry completed tasks', async () => {
-    const id = await queue.add({ instruction: 'done', priority: 0 });
+    const { id } = await queue.add({ instruction: 'done', priority: 0 });
     await queue.markComplete(id);
 
     const retried = await queue.retry(id);
@@ -110,7 +110,7 @@ describe('TaskQueue retry', () => {
   });
 
   it('does not retry pending tasks', async () => {
-    const id = await queue.add({ instruction: 'waiting', priority: 0 });
+    const { id } = await queue.add({ instruction: 'waiting', priority: 0 });
 
     const retried = await queue.retry(id);
     expect(retried).toBe(false);
@@ -123,9 +123,9 @@ describe('TaskQueue retry', () => {
   });
 
   it('retryAll resets all failed tasks', async () => {
-    const id1 = await queue.add({ instruction: 'fail 1', priority: 0 });
-    const id2 = await queue.add({ instruction: 'fail 2', priority: 0 });
-    const id3 = await queue.add({ instruction: 'success', priority: 0 });
+    const { id: id1 } = await queue.add({ instruction: 'fail 1', priority: 0 });
+    const { id: id2 } = await queue.add({ instruction: 'fail 2', priority: 0 });
+    const { id: id3 } = await queue.add({ instruction: 'success', priority: 0 });
 
     await queue.markFailed(id1);
     await queue.markFailed(id2);
@@ -161,9 +161,9 @@ describe('TaskQueue crash recovery', () => {
   });
 
   it('recoverOrphans resets running tasks to pending', async () => {
-    const id1 = await queue.add({ instruction: 'orphan 1', priority: 0 });
-    const id2 = await queue.add({ instruction: 'orphan 2', priority: 0 });
-    const id3 = await queue.add({ instruction: 'pending', priority: 0 });
+    const { id: id1 } = await queue.add({ instruction: 'orphan 1', priority: 0 });
+    const { id: id2 } = await queue.add({ instruction: 'orphan 2', priority: 0 });
+    await queue.add({ instruction: 'pending recovery', priority: 0 });
 
     await queue.markRunning(id1);
     await queue.markRunning(id2);
@@ -177,8 +177,8 @@ describe('TaskQueue crash recovery', () => {
   });
 
   it('recoverOrphans does not touch failed/completed tasks', async () => {
-    const id1 = await queue.add({ instruction: 'failed', priority: 0 });
-    const id2 = await queue.add({ instruction: 'completed', priority: 0 });
+    const { id: id1 } = await queue.add({ instruction: 'failed recovery', priority: 0 });
+    const { id: id2 } = await queue.add({ instruction: 'completed recovery', priority: 0 });
 
     await queue.markFailed(id1);
     await queue.markComplete(id2);
@@ -230,19 +230,19 @@ describe('TaskQueue priority and ordering', () => {
   });
 
   it('next() skips running/completed/failed tasks', async () => {
-    const id1 = await queue.add({ instruction: 'running', priority: 10 });
-    const id2 = await queue.add({ instruction: 'failed', priority: 5 });
-    await queue.add({ instruction: 'pending', priority: 0 });
+    const { id: id1 } = await queue.add({ instruction: 'running skip', priority: 10 });
+    const { id: id2 } = await queue.add({ instruction: 'failed skip', priority: 5 });
+    await queue.add({ instruction: 'pending skip', priority: 0 });
 
     await queue.markRunning(id1);
     await queue.markFailed(id2);
 
     const next = await queue.next();
-    expect(next!.instruction).toBe('pending');
+    expect(next!.instruction).toBe('pending skip');
   });
 
   it('next() returns null when no pending tasks', async () => {
-    const id = await queue.add({ instruction: 'done', priority: 0 });
+    const { id } = await queue.add({ instruction: 'done', priority: 0 });
     await queue.markComplete(id);
 
     const next = await queue.next();

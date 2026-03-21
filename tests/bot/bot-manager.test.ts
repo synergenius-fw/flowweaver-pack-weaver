@@ -276,7 +276,7 @@ describe('per-bot steering isolation', () => {
   });
 
   it('steer(resume) sets bot status back to running', async () => {
-    const proc = makeFakeProcess(7005);
+    const proc = makeFakeProcess(process.pid);
     mockSpawn.mockReturnValue(proc);
 
     const mgr = new BotManager();

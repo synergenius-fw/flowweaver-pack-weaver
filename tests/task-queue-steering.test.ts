@@ -25,7 +25,7 @@ describe('TaskQueue', () => {
   // -- add / list ----------------------------------------------------------
 
   it('add() returns a string ID and task appears in list()', async () => {
-    const id = await queue.add({ instruction: 'do stuff', priority: 1 });
+    const { id } = await queue.add({ instruction: 'do stuff', priority: 1 });
     expect(typeof id).toBe('string');
     expect(id.length).toBeGreaterThan(0);
 
@@ -39,7 +39,7 @@ describe('TaskQueue', () => {
   });
 
   it('add() preserves optional fields (mode, targets, options)', async () => {
-    const id = await queue.add({
+    const { id } = await queue.add({
       instruction: 'batch job',
       mode: 'batch',
       targets: ['a.ts', 'b.ts'],
@@ -55,8 +55,8 @@ describe('TaskQueue', () => {
   });
 
   it('add() creates multiple tasks with unique IDs', async () => {
-    const id1 = await queue.add({ instruction: 'first', priority: 1 });
-    const id2 = await queue.add({ instruction: 'second', priority: 1 });
+    const { id: id1 } = await queue.add({ instruction: 'first', priority: 1 });
+    const { id: id2 } = await queue.add({ instruction: 'second', priority: 1 });
     expect(id1).not.toBe(id2);
 
     const tasks = await queue.list();
@@ -91,7 +91,7 @@ describe('TaskQueue', () => {
   });
 
   it('next() skips non-pending tasks', async () => {
-    const id = await queue.add({ instruction: 'running one', priority: 10 });
+    const { id } = await queue.add({ instruction: 'running one', priority: 10 });
     await queue.markRunning(id);
     await queue.add({ instruction: 'pending one', priority: 1 });
 
@@ -102,7 +102,7 @@ describe('TaskQueue', () => {
   // -- status transitions --------------------------------------------------
 
   it('markRunning() changes status to running', async () => {
-    const id = await queue.add({ instruction: 'task', priority: 1 });
+    const { id } = await queue.add({ instruction: 'mark-running task', priority: 1 });
     await queue.markRunning(id);
 
     const tasks = await queue.list();
@@ -110,7 +110,7 @@ describe('TaskQueue', () => {
   });
 
   it('markComplete() changes status to completed', async () => {
-    const id = await queue.add({ instruction: 'task', priority: 1 });
+    const { id } = await queue.add({ instruction: 'mark-complete task', priority: 1 });
     await queue.markRunning(id);
     await queue.markComplete(id);
 
@@ -119,7 +119,7 @@ describe('TaskQueue', () => {
   });
 
   it('markFailed() changes status to failed', async () => {
-    const id = await queue.add({ instruction: 'task', priority: 1 });
+    const { id } = await queue.add({ instruction: 'mark-failed task', priority: 1 });
     await queue.markRunning(id);
     await queue.markFailed(id);
 
@@ -128,8 +128,8 @@ describe('TaskQueue', () => {
   });
 
   it('status transitions are independent per task', async () => {
-    const id1 = await queue.add({ instruction: 'a', priority: 1 });
-    const id2 = await queue.add({ instruction: 'b', priority: 1 });
+    const { id: id1 } = await queue.add({ instruction: 'transition-a', priority: 1 });
+    const { id: id2 } = await queue.add({ instruction: 'transition-b', priority: 1 });
 
     await queue.markRunning(id1);
     await queue.markComplete(id1);
@@ -147,7 +147,7 @@ describe('TaskQueue', () => {
   // -- remove --------------------------------------------------------------
 
   it('remove() returns true and removes the task', async () => {
-    const id = await queue.add({ instruction: 'doomed', priority: 1 });
+    const { id } = await queue.add({ instruction: 'doomed', priority: 1 });
     expect(await queue.remove(id)).toBe(true);
 
     const tasks = await queue.list();
@@ -159,8 +159,8 @@ describe('TaskQueue', () => {
   });
 
   it('remove() only removes the targeted task', async () => {
-    const id1 = await queue.add({ instruction: 'keep', priority: 1 });
-    const id2 = await queue.add({ instruction: 'remove', priority: 1 });
+    const { id: id1 } = await queue.add({ instruction: 'keep', priority: 1 });
+    const { id: id2 } = await queue.add({ instruction: 'remove me', priority: 1 });
 
     await queue.remove(id2);
 
@@ -227,7 +227,7 @@ describe('TaskQueue', () => {
     // Pre-create the parent so the file-lock mechanism can create its .lock dir
     fs.mkdirSync(nestedDir, { recursive: true });
     const q = new TaskQueue(nestedDir);
-    const id = await q.add({ instruction: 'nested', priority: 1 });
+    const { id } = await q.add({ instruction: 'nested', priority: 1 });
     expect(typeof id).toBe('string');
     const tasks = await q.list();
     expect(tasks).toHaveLength(1);

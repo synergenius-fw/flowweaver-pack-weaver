@@ -160,7 +160,7 @@ describe('TaskQueue', () => {
   it('add returns a non-empty string ID', async () => {
     const { TaskQueue } = await import('../src/bot/task-queue.js');
     const q = new TaskQueue(queueDir);
-    const id = await q.add({ instruction: 'do thing', priority: 0 });
+    const { id } = await q.add({ instruction: 'do thing', priority: 0 });
     expect(typeof id).toBe('string');
     expect(id.length).toBeGreaterThan(0);
   });
@@ -168,8 +168,8 @@ describe('TaskQueue', () => {
   it('two tasks added to the same queue have different IDs', async () => {
     const { TaskQueue } = await import('../src/bot/task-queue.js');
     const q = new TaskQueue(queueDir);
-    const id1 = await q.add({ instruction: 'task 1', priority: 0 });
-    const id2 = await q.add({ instruction: 'task 2', priority: 0 });
+    const { id: id1 } = await q.add({ instruction: 'task 1', priority: 0 });
+    const { id: id2 } = await q.add({ instruction: 'task 2', priority: 0 });
     expect(id1).not.toBe(id2);
   });
 
@@ -198,7 +198,7 @@ describe('TaskQueue', () => {
   it('remove by ID returns true and removes the task', async () => {
     const { TaskQueue } = await import('../src/bot/task-queue.js');
     const q = new TaskQueue(queueDir);
-    const id = await q.add({ instruction: 'to remove', priority: 0 });
+    const { id } = await q.add({ instruction: 'to remove', priority: 0 });
     const removed = await q.remove(id);
     expect(removed).toBe(true);
     const list = await q.list();
@@ -224,7 +224,7 @@ describe('TaskQueue', () => {
   it('markComplete changes task status to completed', async () => {
     const { TaskQueue } = await import('../src/bot/task-queue.js');
     const q = new TaskQueue(queueDir);
-    const id = await q.add({ instruction: 'finish me', priority: 0 });
+    const { id } = await q.add({ instruction: 'finish me', priority: 0 });
     await q.markComplete(id);
     const [task] = await q.list();
     expect(task.status).toBe('completed');
@@ -233,7 +233,7 @@ describe('TaskQueue', () => {
   it('retry resets a failed task back to pending', async () => {
     const { TaskQueue } = await import('../src/bot/task-queue.js');
     const q = new TaskQueue(queueDir);
-    const id = await q.add({ instruction: 'will fail', priority: 0 });
+    const { id } = await q.add({ instruction: 'will fail', priority: 0 });
     await q.markFailed(id);
     const retried = await q.retry(id);
     expect(retried).toBe(true);

@@ -1267,6 +1267,8 @@ export async function handleBot(opts: ParsedArgs): Promise<void> {
 
 export async function handleSession(opts: ParsedArgs): Promise<void> {
   const projectDir = opts.file ?? process.cwd();
+  // Set project dir for per-project queue isolation
+  process.env.WEAVER_PROJECT_DIR = projectDir;
   const config = await loadConfig(opts.configPath);
   const workflowPath = resolveWorkflowPath('agent', projectDir);
 
@@ -1342,11 +1344,18 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
   // Continuous mode: loop until deadline/maxTasks/interrupt
   const { TaskQueue } = await import('./bot/task-queue.js');
   const { isTransientError } = await import('./bot/retry-utils.js');
+  const { getErrorGuidance } = await import('./bot/error-guide.js');
   const queue = new TaskQueue();
   let taskCount = 0;
   let interrupted = false;
   let consecutiveErrors = 0;
+  let consecutiveNoOps = 0;
   const MAX_CONSECUTIVE_ERRORS = 3;
+  const MAX_CONSECUTIVE_NO_OPS = 5;
+
+  // Session stats
+  let sessionCompleted = 0, sessionFailed = 0, sessionNoOp = 0;
+  let sessionInputTokens = 0, sessionOutputTokens = 0, sessionCost = 0;
 
   process.on('SIGINT', () => { interrupted = true; });
   process.on('SIGTERM', () => { interrupted = true; });
@@ -1364,23 +1373,50 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
         config,
       });
 
-      if (result.success) {
-        await queue.markComplete(task.id);
+      // Classify outcome: the summary contains "no changes" or "0 files" for no-ops
+      const isNoOp = result.success && (
+        result.summary.includes('no changes') ||
+        result.summary.includes('0 file') ||
+        result.summary.includes("doesn't exist") ||
+        result.summary.includes('does not exist') ||
+        result.summary.includes('nothing to') ||
+        result.outcome === 'no-op'
+      );
+
+      if (isNoOp) {
+        await queue.markNoOp(task.id);
+        sessionNoOp++;
+        consecutiveNoOps++;
         consecutiveErrors = 0;
+      } else if (result.success) {
+        await queue.markComplete(task.id);
+        sessionCompleted++;
+        consecutiveErrors = 0;
+        consecutiveNoOps = 0;
       } else {
-        await queue.markFailed(task.id);
+        await queue.markFailed(task.id, result.summary || result.outcome || 'unknown error');
+        sessionFailed++;
         consecutiveErrors++;
+        consecutiveNoOps = 0;
+      }
+
+      // Track cost from workflow result
+      if (result.cost) {
+        sessionInputTokens += result.cost.totalInputTokens ?? 0;
+        sessionOutputTokens += result.cost.totalOutputTokens ?? 0;
+        sessionCost += result.cost.totalCost ?? 0;
       }
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      renderer.error(`Task ${task.id.slice(0, 8)} error`, msg);
-      await queue.markFailed(task.id);
+      const guidance = getErrorGuidance(msg);
+      renderer.error(`Task ${task.id.slice(0, 8)} error`, guidance ? `${msg}\n  Hint: ${guidance}` : msg);
+      await queue.markFailed(task.id, msg);
+      sessionFailed++;
       if (!isTransientError(err)) {
         consecutiveErrors++;
       }
     } finally {
-      // Release files
       for (const f of task.targets ?? []) filesInUse.delete(f);
       running.delete(task.id);
     }
@@ -1395,6 +1431,13 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
     if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
       renderer.error('Session stopped', `${MAX_CONSECUTIVE_ERRORS} consecutive errors — check your API key or provider config.`);
       break;
+    }
+
+    // Pause on consecutive no-ops (bot is spinning without doing anything)
+    if (consecutiveNoOps >= MAX_CONSECUTIVE_NO_OPS) {
+      renderer.warn(`${MAX_CONSECUTIVE_NO_OPS} consecutive no-op tasks — pausing 60s`);
+      await new Promise(r => setTimeout(r, 60_000));
+      consecutiveNoOps = 0;
     }
 
     // Wait if at capacity
@@ -1421,8 +1464,10 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
     if (decomposed && subtasks.length > 1) {
       // Replace the broad task with per-file tasks
       await queue.markComplete(task.id);
+      let decomposedCount = 0;
       for (const st of subtasks) {
-        await queue.add({ instruction: st.instruction, mode: st.mode as 'modify', targets: st.targets, priority: st.priority ?? 0 });
+        const { duplicate } = await queue.add({ instruction: st.instruction, mode: st.mode as 'modify', targets: st.targets, priority: st.priority ?? 0 });
+        if (!duplicate) decomposedCount++;
       }
       renderer.info(`Decomposed into ${subtasks.length} per-file tasks`);
       continue;
@@ -1459,15 +1504,25 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
     await Promise.allSettled(running.values());
   }
 
+  const elapsed = Date.now() - sessionStartTime;
   renderer.sessionEnd({
     tasks: taskCount,
-    completed: taskCount - consecutiveErrors, // approximate
-    failed: consecutiveErrors,
-    totalInputTokens: 0, // TODO: accumulate across tasks
-    totalOutputTokens: 0,
-    totalCost: 0,
-    elapsed: Date.now() - sessionStartTime,
+    completed: sessionCompleted,
+    failed: sessionFailed,
+    totalInputTokens: sessionInputTokens,
+    totalOutputTokens: sessionOutputTokens,
+    totalCost: sessionCost,
+    elapsed,
   });
+
+  // macOS desktop notification on session end
+  if (process.platform === 'darwin' && taskCount > 0) {
+    try {
+      const { execFileSync: execNotify } = await import('node:child_process');
+      const msg = `${sessionCompleted} done, ${sessionFailed} failed, ${sessionNoOp} no-op`;
+      execNotify('osascript', ['-e', `display notification "${msg}" with title "Weaver Session Complete"`], { stdio: 'ignore' });
+    } catch { /* non-fatal */ }
+  }
 }
 
 export async function handleAssistant(opts: ParsedArgs): Promise<void> {
@@ -1567,8 +1622,12 @@ export async function handleQueue(opts: ParsedArgs): Promise<void> {
         console.error('[weaver] Usage: flow-weaver weaver queue add "task instruction"');
         process.exit(1);
       }
-      const id = await queue.add({ instruction, priority: 0 });
-      console.log(`[weaver] Task added: ${id}`);
+      const { id, duplicate } = await queue.add({ instruction, priority: 0 });
+      if (duplicate) {
+        console.log(`[weaver] Task already queued (${id}).`);
+      } else {
+        console.log(`[weaver] Task added: ${id}`);
+      }
       break;
     }
     case 'list': {

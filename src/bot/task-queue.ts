@@ -13,27 +13,65 @@ export interface QueuedTask {
   options?: Record<string, unknown>;
   priority: number;
   addedAt: number;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'running' | 'completed' | 'no-op' | 'failed' | 'cancelled';
+  /** Error reason (set on failure) */
+  failureReason?: string;
+}
+
+export interface AddResult {
+  id: string;
+  duplicate: boolean;
+}
+
+/** Max pending tasks before queue rejects new additions. */
+const MAX_PENDING = 200;
+/** Don't re-queue tasks completed within this window (ms). */
+const CYCLE_DEDUP_WINDOW = 3600_000; // 1 hour
+
+/**
+ * Hash a project directory path into a short filesystem-safe string.
+ * Used for per-project queue isolation.
+ */
+function hashDir(dir: string): string {
+  return crypto.createHash('sha256').update(dir).digest('hex').slice(0, 8);
 }
 
 export class TaskQueue {
-  private filePath: string;
+  readonly filePath: string;
 
   constructor(dir?: string) {
-    const base = dir ?? process.env.WEAVER_QUEUE_DIR ?? path.join(os.homedir(), '.weaver');
+    // Priority: explicit dir > env var > project-scoped > global fallback
+    const projectDir = process.env.WEAVER_PROJECT_DIR;
+    const base = dir
+      ?? process.env.WEAVER_QUEUE_DIR
+      ?? (projectDir
+        ? path.join(os.homedir(), '.weaver', 'projects', hashDir(projectDir))
+        : path.join(os.homedir(), '.weaver'));
     this.filePath = path.join(base, 'task-queue.ndjson');
   }
 
-  async add(task: Omit<QueuedTask, 'id' | 'addedAt' | 'status'>): Promise<string> {
+  async add(task: Omit<QueuedTask, 'id' | 'addedAt' | 'status'>): Promise<AddResult> {
     return withFileLock(this.filePath, () => {
-      // Dedup: skip if a pending task with the same instruction already exists
       const existing = this.readAll();
-      const isDuplicate = existing.some(
+
+      // Dedup: skip if a pending task with the same instruction exists
+      const pendingDup = existing.find(
         t => t.status === 'pending' && t.instruction === task.instruction,
       );
-      if (isDuplicate) {
-        const dup = existing.find(t => t.status === 'pending' && t.instruction === task.instruction)!;
-        return dup.id; // Return existing task ID instead of creating duplicate
+      if (pendingDup) return { id: pendingDup.id, duplicate: true };
+
+      // Cycle-aware dedup: skip if same instruction was completed recently
+      const recentDup = existing.find(
+        t => (t.status === 'completed' || t.status === 'no-op')
+          && t.instruction === task.instruction
+          && Date.now() - t.addedAt < CYCLE_DEDUP_WINDOW,
+      );
+      if (recentDup) return { id: recentDup.id, duplicate: true };
+
+      // Queue size cap
+      const pendingCount = existing.filter(t => t.status === 'pending').length;
+      if (pendingCount >= MAX_PENDING) {
+        throw new Error(`Queue full (${MAX_PENDING} pending tasks). Clear or process existing tasks first.`);
       }
 
       const entry: QueuedTask = {
@@ -45,7 +83,7 @@ export class TaskQueue {
       const dir = path.dirname(this.filePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.appendFileSync(this.filePath, JSON.stringify(entry) + '\n', 'utf-8');
-      return entry.id;
+      return { id: entry.id, duplicate: false };
     });
   }
 
@@ -88,8 +126,20 @@ export class TaskQueue {
     await this.updateStatus(id, 'completed');
   }
 
-  async markFailed(id: string): Promise<void> {
-    await this.updateStatus(id, 'failed');
+  async markNoOp(id: string): Promise<void> {
+    await this.updateStatus(id, 'no-op');
+  }
+
+  async markFailed(id: string, reason?: string): Promise<void> {
+    return withFileLock(this.filePath, () => {
+      const tasks = this.readAll();
+      const task = tasks.find(t => t.id === id);
+      if (task) {
+        task.status = 'failed';
+        if (reason) task.failureReason = reason.slice(0, 500);
+        this.writeAll(tasks);
+      }
+    });
   }
 
   /** Reset a failed or running task back to pending. */
@@ -99,6 +149,7 @@ export class TaskQueue {
       const task = tasks.find(t => t.id === id && (t.status === 'failed' || t.status === 'running'));
       if (!task) return false;
       task.status = 'pending';
+      task.failureReason = undefined;
       this.writeAll(tasks);
       return true;
     });
@@ -112,6 +163,7 @@ export class TaskQueue {
       for (const t of tasks) {
         if (t.status === 'failed') {
           t.status = 'pending';
+          t.failureReason = undefined;
           count++;
         }
       }

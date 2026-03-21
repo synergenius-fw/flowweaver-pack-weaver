@@ -65,34 +65,31 @@ export function decomposeTask(
     return { decomposed: false, tasks: [task] };
   }
 
-  // List .ts files in the directory
+  // List .ts files in the directory — only files that actually exist
   let files: string[];
   try {
     files = fs.readdirSync(absDir)
       .filter(f => f.endsWith('.ts') && !f.startsWith('index'))
+      .filter(f => fs.existsSync(path.resolve(absDir, f))) // verify file exists
       .sort();
   } catch {
     return { decomposed: false, tasks: [task] };
   }
 
   if (files.length === 0 || files.length > 50) {
-    // Too few or too many — don't decompose
     return { decomposed: false, tasks: [task] };
   }
 
-  // Create per-file tasks, inheriting the original instruction
+  // Extract the verb from the original instruction for clean per-file instructions
+  const verb = instruction.match(/^(Fix|Validate|Add|Update|Review|Run|Check|Test|Improve)/i)?.[0] ?? 'Process';
+
+  // Create per-file tasks with clean, grammatical instructions
   const tasks: DecomposableTask[] = files.map((file, i) => {
     const filePath = path.join(targetDir!, file);
-    // Rewrite instruction to target specific file
-    const fileInstruction = instruction
-      .replace(/\b(all|every|each)\b/i, '')
-      .replace(/\bsrc\/(templates|node-types|workflows)\/?/i, filePath)
-      .trim()
-      .replace(/\s+/g, ' ');
 
     return {
       id: `${task.id}-${i + 1}`,
-      instruction: `${fileInstruction} Target: ${filePath}`,
+      instruction: `${verb} ${filePath}`,
       mode: task.mode ?? 'modify',
       targets: [filePath],
       priority: task.priority ?? 0,

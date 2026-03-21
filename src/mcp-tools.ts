@@ -206,8 +206,8 @@ export async function registerMcpTools(mcp: McpServer): Promise<void> {
       switch (args.action) {
         case 'add': {
           if (!args.task) return { content: [{ type: 'text', text: 'Error: task instruction required' }] };
-          const id = await queue.add({ instruction: args.task as string, priority: 0 });
-          return { content: [{ type: 'text', text: `Task added: ${id}` }] };
+          const { id, duplicate } = await queue.add({ instruction: args.task as string, priority: 0 });
+          return { content: [{ type: 'text', text: duplicate ? `Task already queued (${id})` : `Task added: ${id}` }] };
         }
         case 'list':
           return { content: [{ type: 'text', text: JSON.stringify(await queue.list(), null, 2) }] };
