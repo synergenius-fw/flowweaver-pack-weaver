@@ -8,6 +8,7 @@ import type { ToolDefinition, ToolExecutor } from '@synergenius/flow-weaver/agen
 import { BotManager } from './bot-manager.js';
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 
 // Shared bot manager instance
@@ -234,6 +235,77 @@ export const ASSISTANT_TOOLS: ToolDefinition[] = [
     description: 'Get a summary of the current conversation (message count, tokens, bots spawned).',
     inputSchema: { type: 'object', properties: {}, required: [] },
   },
+
+  // Web access
+  {
+    name: 'web_fetch',
+    description: 'Fetch HTTP content from a URL. Returns text body (max 10KB).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL to fetch' },
+        method: { type: 'string', description: 'HTTP method (default GET)', enum: ['GET', 'POST'] },
+      },
+      required: ['url'],
+    },
+  },
+
+  // CI/CD
+  {
+    name: 'github_status',
+    description: 'Check GitHub Actions status for a branch or PR. Requires gh CLI installed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branch: { type: 'string', description: 'Branch name (optional, defaults to current)' },
+        pr: { type: 'number', description: 'PR number (optional, checks PR status instead of branch)' },
+      },
+      required: [],
+    },
+  },
+
+  // Cross-repo
+  {
+    name: 'project_list',
+    description: 'List known project directories that have been used with weaver.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'project_context',
+    description: 'Read package.json and .weaver-plan.md from a project directory to understand its context.',
+    inputSchema: {
+      type: 'object',
+      properties: { directory: { type: 'string', description: 'Absolute path to project directory' } },
+      required: ['directory'],
+    },
+  },
+
+  // Diagrams
+  {
+    name: 'fw_diagram_mermaid',
+    description: 'Generate a Mermaid diagram of a workflow (can be rendered in any Mermaid viewer).',
+    inputSchema: {
+      type: 'object',
+      properties: { file: { type: 'string', description: 'Workflow file path' } },
+      required: ['file'],
+    },
+  },
+
+  // Knowledge
+  {
+    name: 'knowledge_list',
+    description: 'List all stored knowledge entries for the current project.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'knowledge_search',
+    description: 'Search stored knowledge by keyword.',
+    inputSchema: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'Search query' } },
+      required: ['query'],
+    },
+  },
 ];
 
 export function createAssistantExecutor(projectDir: string): ToolExecutor {
@@ -428,6 +500,98 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
             result: `Current conversation: ${recent.id}\n  Title: ${recent.title || '(untitled)'}\n  Messages: ${recent.messageCount}\n  Tokens: ${recent.totalTokens}\n  Bots: ${recent.botIds.length > 0 ? recent.botIds.join(', ') : 'none'}\n  Duration: ${elapsed}m`,
             isError: false,
           };
+        }
+
+        case 'web_fetch': {
+          const url = String(args.url);
+          if (/localhost|127\.0\.0\.1|0\.0\.0\.0|10\.\d|172\.(1[6-9]|2\d|3[01])\.|192\.168\./i.test(url)) {
+            return { result: 'Blocked: cannot fetch internal/localhost URLs.', isError: true };
+          }
+          const resp = await fetch(url, { method: (args.method as string) ?? 'GET', signal: AbortSignal.timeout(15_000) });
+          const text = await resp.text();
+          return { result: text.slice(0, 10_000), isError: !resp.ok };
+        }
+
+        case 'github_status': {
+          const ghArgs = args.pr
+            ? ['pr', 'checks', String(args.pr), '--json', 'name,state,conclusion']
+            : ['run', 'list', '--branch', String(args.branch ?? ''), '--json', 'status,conclusion,name,headBranch', '--limit', '5'];
+          try {
+            const output = execFileSync('gh', ghArgs, { encoding: 'utf-8', cwd: projectDir, timeout: 15_000, stdio: ['pipe', 'pipe', 'pipe'] });
+            return { result: output.trim(), isError: false };
+          } catch (err: any) {
+            return { result: `gh CLI error: ${(err.message ?? '').slice(0, 300)}`, isError: true };
+          }
+        }
+
+        case 'project_list': {
+          const projectsDir = path.join(os.homedir(), '.weaver', 'projects');
+          if (!fs.existsSync(projectsDir)) return { result: 'No projects found.', isError: false };
+          const dirs = fs.readdirSync(projectsDir);
+          // Each dir is a hash — try to find meta or queue files
+          const projects = dirs.map(d => {
+            const queuePath = path.join(projectsDir, d, 'task-queue.ndjson');
+            const exists = fs.existsSync(queuePath);
+            return `${d}: ${exists ? 'has queue' : 'empty'}`;
+          });
+          return { result: projects.join('\n') || 'No projects found.', isError: false };
+        }
+
+        case 'project_context': {
+          const dir = String(args.directory);
+          const parts: string[] = [];
+          const pkgPath = path.join(dir, 'package.json');
+          if (fs.existsSync(pkgPath)) {
+            try {
+              const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+              parts.push(`Package: ${pkg.name}@${pkg.version}`);
+              parts.push(`Description: ${pkg.description ?? 'none'}`);
+            } catch { parts.push('package.json: parse error'); }
+          }
+          const planPath = path.join(dir, '.weaver-plan.md');
+          if (fs.existsSync(planPath)) {
+            parts.push(`Plan:\n${fs.readFileSync(planPath, 'utf-8').slice(0, 2000)}`);
+          }
+          const configPath = path.join(dir, '.weaver.json');
+          if (fs.existsSync(configPath)) {
+            parts.push(`Weaver config: ${fs.readFileSync(configPath, 'utf-8').trim()}`);
+          }
+          return { result: parts.join('\n') || `No context found in ${dir}`, isError: false };
+        }
+
+        case 'fw_diagram_mermaid': {
+          try {
+            // Try mermaid format first, fall back to text
+            let output: string;
+            try {
+              output = execFileSync('npx', ['flow-weaver', 'diagram', String(args.file), '--format', 'mermaid'], {
+                encoding: 'utf-8', cwd: projectDir, timeout: 15_000, stdio: ['pipe', 'pipe', 'pipe'],
+              }).trim();
+            } catch {
+              output = execFileSync('npx', ['flow-weaver', 'diagram', String(args.file)], {
+                encoding: 'utf-8', cwd: projectDir, timeout: 15_000, stdio: ['pipe', 'pipe', 'pipe'],
+              }).trim();
+            }
+            return { result: output, isError: false };
+          } catch (err: any) {
+            return { result: (err.message ?? '').slice(0, 500), isError: true };
+          }
+        }
+
+        case 'knowledge_list': {
+          const { KnowledgeStore } = await import('./knowledge-store.js');
+          const kStore = new KnowledgeStore(projectDir);
+          const entries = kStore.list();
+          if (entries.length === 0) return { result: 'No stored knowledge.', isError: false };
+          return { result: entries.map(e => `${e.key}: ${e.value}`).join('\n'), isError: false };
+        }
+
+        case 'knowledge_search': {
+          const { KnowledgeStore } = await import('./knowledge-store.js');
+          const kStore = new KnowledgeStore(projectDir);
+          const entries = kStore.recall(String(args.query));
+          if (entries.length === 0) return { result: 'No matching knowledge found.', isError: false };
+          return { result: entries.map(e => `${e.key}: ${e.value}`).join('\n'), isError: false };
         }
 
         default:

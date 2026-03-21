@@ -196,6 +196,11 @@ Rules:
 - Use patch_file for modifications, write_file only for new files
 - Be concise in your text responses — let tool results speak
 
+Flow Weaver workflows are TypeScript. You can also help create supporting files in other formats (JSON configs, shell scripts, Markdown docs).
+
+Before starting a task on a file, call recall(filename) to check if there is stored knowledge about known issues or patterns for that file.
+After discovering something important (a pattern, a common fix, a gotcha), call learn(key, value) to store it for future tasks.
+
 ## Teaching
 
 When creating or modifying workflows, briefly explain your decisions:
