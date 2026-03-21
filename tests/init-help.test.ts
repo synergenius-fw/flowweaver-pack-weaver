@@ -113,7 +113,7 @@ describe('printHelp', () => {
   it('prints general help when called with no arguments', () => {
     printHelp();
     const output = capturedOutput();
-    expect(output).toContain('Commands:');
+    expect(output).toContain('Get started:');
     expect(output).toContain('Quick start:');
     expect(output).toContain('init');
   });
@@ -161,7 +161,7 @@ describe('printHelp', () => {
   it('falls back to general help for unknown command name', () => {
     printHelp('nonexistent');
     const output = capturedOutput();
-    expect(output).toContain('Commands:');
+    expect(output).toContain('Get started:');
   });
 });
 
