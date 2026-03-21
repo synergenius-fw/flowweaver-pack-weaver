@@ -8,7 +8,8 @@
  * - API provider: tools collected and executed manually (tool_use_start/end events)
  */
 
-import * as readline from 'node:readline';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import {
   runAgentLoop,
   type AgentProvider,
@@ -124,23 +125,28 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
   } else {
     out(`  ${c.dim(`Conversation: ${conversation.id}`)}\n`);
   }
-  out(`  ${c.dim('Type your request. Ctrl+C to exit.')}\n\n`);
+  out(`  ${c.dim('Type your request. Ctrl+C to exit. /help for commands.')}\n\n`);
 
-  // Input source
-  const rl = opts.inputMessages
-    ? null
-    : readline.createInterface({ input: process.stdin, output: process.stderr, prompt: `${c.cyan('❯')} ` });
+  // Rich input with history, arrows, tab completion, slash commands
+  const { RichInput } = await import('./rich-input.js');
+  const { getSlashCompletions, handleSlashCommand } = await import('./slash-commands.js');
+  const { formatResponse } = await import('./response-formatter.js');
+
+  const richInput = opts.inputMessages ? null : new RichInput({
+    historyFile: path.join(os.homedir(), '.weaver', 'input-history.txt'),
+    prompt: `${c.cyan('❯')} `,
+    completionProvider: (partial) => {
+      if (partial.startsWith('/')) return getSlashCompletions(partial);
+      return [];
+    },
+  });
 
   const getNextInput = opts.inputMessages
     ? (() => {
         let i = 0;
         return (): Promise<string | null> => Promise.resolve(opts.inputMessages![i++] ?? null);
       })()
-    : (): Promise<string | null> => new Promise<string | null>((resolve) => {
-        rl!.prompt();
-        rl!.once('line', (line) => resolve(line.trim() || null));
-        rl!.once('close', () => resolve(null));
-      });
+    : (): Promise<string | null> => richInput!.getInput();
 
   const onStreamEvent = (event: StreamEvent) => {
     if (event.type === 'text_delta') {
@@ -169,13 +175,38 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     }
   };
 
+  // Slash command context
+  let shouldExit = false;
+  const slashCtx = {
+    executor,
+    out,
+    projectDir,
+    conversationId: conversation.id,
+    onClear: () => { history.length = 0; },
+    onExit: () => { shouldExit = true; },
+    onNew: () => { history.length = 0; conversation = store.create(projectDir); },
+    onVerbose: () => { out(`  ${c.dim('Verbose toggling not yet wired to streaming.')}\n`); },
+  };
+
   // Main conversation loop
-  while (true) {
+  while (!shouldExit) {
     const input = await getNextInput();
     if (input === null) break;
     if (!input.trim()) continue;
 
+    // Handle slash commands
+    if (input.startsWith('/')) {
+      const handled = await handleSlashCommand(input, slashCtx);
+      if (handled) continue;
+      // Unknown slash command — tell user
+      out(`  ${c.dim('Unknown command. Type /help for available commands.')}\n\n`);
+      continue;
+    }
+
     out('\n');
+
+    // Reset Ctrl+C counter after successful input
+    richInput?.resetCtrlC();
 
     // Add user message to history
     history.push({ role: 'user', content: input });
@@ -234,7 +265,7 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     out('\n');
   }
 
-  rl?.close();
+  richInput?.destroy();
   out(`\n  ${c.dim('Goodbye.')}\n\n`);
 }
 
