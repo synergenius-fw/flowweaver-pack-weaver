@@ -310,6 +310,7 @@ export const ALL_TOOLS: WeaverTool[] = [
     name: 'tsc_check',
     description: 'Run TypeScript compiler check (no emit). Returns errors if any.',
     inputSchema: { type: 'object', properties: {}, required: [] },
+    verboseOutput: true,
     category: 'project',
     contexts: ['bot'],
   },
