@@ -68,6 +68,7 @@ export interface ParsedArgs {
   assistantResume?: string;
   assistantList?: boolean;
   assistantDelete?: string;
+  assistantWatch?: string;
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -262,6 +263,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.genesisInit = true;
     } else if (arg === '--watch') {
       result.genesisWatch = true;
+    } else if (arg === '--watch-dir' && i + 1 < args.length) {
+      i++;
+      result.assistantWatch = args[i];
     } else if (arg === '--new') {
       result.assistantNew = true;
     } else if (arg === '--resume' && i + 1 < args.length) {
@@ -1672,6 +1676,7 @@ export async function handleAssistant(opts: ParsedArgs): Promise<void> {
     projectDir,
     resumeId: opts.assistantResume,
     newConversation: opts.assistantNew,
+    watchDir: opts.assistantWatch,
   });
 }
 

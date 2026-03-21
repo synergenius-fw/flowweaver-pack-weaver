@@ -31,6 +31,8 @@ export interface AssistantOptions {
   systemPrompt?: string;
   /** Override for testing — provide messages instead of reading stdin */
   inputMessages?: string[];
+  /** Watch a directory for file changes and auto-suggest fixes */
+  watchDir?: string;
   /** Resume a specific conversation by ID */
   resumeId?: string;
   /** Always start a fresh conversation */
@@ -238,6 +240,31 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     onVerbose: () => { out(`  ${c.dim('Verbose toggling not yet wired to streaming.')}\n`); },
   };
 
+  // Watch mode: monitor directory for file changes, auto-validate
+  let watcher: import('node:fs').FSWatcher | null = null;
+  if (opts.watchDir) {
+    try {
+      const fsMod = await import('node:fs');
+      const { execFileSync } = await import('node:child_process');
+      watcher = fsMod.watch(opts.watchDir, { recursive: true }, (_event, filename) => {
+        if (!filename || !filename.endsWith('.ts')) return;
+        const filePath = `${opts.watchDir}/${filename}`;
+        try {
+          const result = execFileSync('npx', ['flow-weaver', 'validate', filePath, '--json'], {
+            encoding: 'utf-8', cwd: projectDir, timeout: 15_000, stdio: ['pipe', 'pipe', 'pipe'],
+          });
+          const parsed = JSON.parse(result);
+          const errorCount = parsed.errorCount ?? parsed.errors?.length ?? 0;
+          if (errorCount > 0) {
+            out(`\n  ${c.yellow('⚠')} ${filename} changed: ${errorCount} validation error(s)\n`);
+            out(`  ${c.dim('Type a message to fix, or ignore.')}\n`);
+          }
+        } catch { /* validation failed or not a workflow — ignore */ }
+      });
+      out(`  ${c.dim(`Watching: ${opts.watchDir}`)}\n\n`);
+    } catch { /* watch not available */ }
+  }
+
   // Main conversation loop
   while (!shouldExit) {
     const input = await getNextInput();
@@ -318,6 +345,7 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     out('\n');
   }
 
+  watcher?.close();
   richInput?.destroy();
   out(`\n  ${c.dim('Goodbye.')}\n\n`);
 }
