@@ -1,4 +1,4 @@
-name: Create Release
+name: Release & Publish
 
 on:
   pull_request:
@@ -6,11 +6,12 @@ on:
     branches: [main]
 
 jobs:
-  create-release:
+  release-and-publish:
     if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -29,3 +30,16 @@ jobs:
             --title "${{ steps.version.outputs.tag }}" \
             --generate-notes \
             --target main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - run: npm install
+      - run: npm run build
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
