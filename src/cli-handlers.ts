@@ -13,7 +13,7 @@ import type { ExecutionEvent, WeaverConfig, RunRecord, RunOutcome, RunCostSummar
 import { AuditStore } from './bot/audit-store.js';
 
 export interface ParsedArgs {
-  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'status' | 'genesis' | 'audit' | 'init' | 'assistant';
+  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'status' | 'genesis' | 'audit' | 'init' | 'assistant' | 'examples' | 'doctor';
   file?: string;
   verbose: boolean;
   dryRun: boolean;
@@ -205,6 +205,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.command = 'session';
     } else if (arg === 'assistant') {
       result.command = 'assistant';
+    } else if (arg === 'examples') {
+      result.command = 'examples';
+    } else if (arg === 'doctor') {
+      result.command = 'doctor';
     } else if (arg === 'status') {
       result.command = 'status';
     } else if (arg === 'steer') {
@@ -1994,10 +1998,170 @@ export async function handleInit(opts: ParsedArgs): Promise<void> {
 
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
 
-  console.log(`\x1b[32m✓\x1b[0m Created ${configPath}`);
-  console.log(`  Provider: ${provider}`);
   console.log('');
-  console.log('Next steps:');
-  console.log('  flow-weaver weaver providers              # verify provider detection');
-  console.log('  flow-weaver weaver bot "Create a ..."     # create your first workflow');
+  console.log('  \x1b[1mWelcome to Weaver\x1b[0m — your AI workflow companion.');
+  console.log('');
+  console.log('  \x1b[2mDetecting providers...\x1b[0m');
+  console.log(`    ${provider === 'claude-cli' ? '\x1b[32m✓\x1b[0m Claude CLI: found' : provider === 'anthropic' ? '\x1b[32m✓\x1b[0m Anthropic API: configured' : '\x1b[33m⚠\x1b[0m No provider detected (set ANTHROPIC_API_KEY or install Claude CLI)'}`);
+  console.log('');
+
+  // Test connection if possible
+  if (provider === 'claude-cli') {
+    try {
+      const { execFileSync: testExec } = await import('node:child_process');
+      testExec('claude', ['--version'], { stdio: 'pipe', timeout: 5000 });
+      console.log('  \x1b[2mTesting connection...\x1b[0m');
+      console.log('    \x1b[32m✓\x1b[0m Claude CLI: connected');
+    } catch {
+      console.log('  \x1b[33m⚠\x1b[0m Could not verify Claude CLI connection');
+    }
+  }
+
+  console.log('');
+  console.log(`  \x1b[32m✓\x1b[0m Config written to .weaver.json`);
+  console.log(`    provider: ${provider}`);
+  console.log('    approval: auto');
+  console.log('');
+  console.log('  Try it now:');
+  console.log('    \x1b[36mweaver bot "Create a hello world workflow"\x1b[0m');
+  console.log('    \x1b[36mweaver assistant\x1b[0m');
+  console.log('');
+  console.log('  Learn more:');
+  console.log('    weaver examples         \x1b[2m# see what weaver can do\x1b[0m');
+  console.log('    weaver doctor           \x1b[2m# validate your setup\x1b[0m');
+  console.log('');
+}
+
+export async function handleExamples(_opts: ParsedArgs): Promise<void> {
+  console.log('');
+  console.log('  \x1b[1mWeaver Examples\x1b[0m');
+  console.log('');
+  console.log('  \x1b[36mCreate workflows:\x1b[0m');
+  console.log('    weaver bot "Create a workflow that validates user input and sends email"');
+  console.log('    weaver bot "Create a data pipeline that reads CSV, transforms, and writes JSON"');
+  console.log('    weaver bot "Create an AI agent with retry and fallback providers"');
+  console.log('    weaver bot "Create a webhook handler that processes Stripe events"');
+  console.log('    weaver bot "Create a RAG pipeline with document chunking and embedding"');
+  console.log('');
+  console.log('  \x1b[36mModify existing workflows:\x1b[0m');
+  console.log('    weaver bot "Add error handling to my-workflow.ts" --file src/my-workflow.ts');
+  console.log('    weaver bot "Add a validation step before the API call" --file src/pipeline.ts');
+  console.log('    weaver bot "Make the retry node use exponential backoff" --file src/agent.ts');
+  console.log('');
+  console.log('  \x1b[36mInteractive assistant:\x1b[0m');
+  console.log('    weaver assistant                        \x1b[2m# AI assistant with tools\x1b[0m');
+  console.log('    weaver assistant --new                  \x1b[2m# fresh conversation\x1b[0m');
+  console.log('    weaver assistant --list                 \x1b[2m# saved conversations\x1b[0m');
+  console.log('');
+  console.log('  \x1b[36mAutonomous mode:\x1b[0m');
+  console.log('    weaver session --continuous             \x1b[2m# process task queue\x1b[0m');
+  console.log('    weaver queue add "Fix all validation errors"');
+  console.log('    weaver session --continuous --until 10:00 --parallel 3');
+  console.log('');
+  console.log('  \x1b[36mInspect and debug:\x1b[0m');
+  console.log('    flow-weaver validate src/*.ts           \x1b[2m# check all workflows\x1b[0m');
+  console.log('    flow-weaver diagram src/my-workflow.ts  \x1b[2m# visual diagram\x1b[0m');
+  console.log('    flow-weaver describe src/my-workflow.ts \x1b[2m# natural language description\x1b[0m');
+  console.log('');
+  console.log('  \x1b[36mCustomize the bot:\x1b[0m');
+  console.log('    weaver eject                            \x1b[2m# get editable bot workflow\x1b[0m');
+  console.log('    weaver eject --workflow bot              \x1b[2m# eject specific workflow\x1b[0m');
+  console.log('');
+}
+
+export async function handleDoctor(opts: ParsedArgs): Promise<void> {
+  const dir = opts.file ?? process.cwd();
+  const checks: Array<{ label: string; status: 'ok' | 'warn' | 'fail'; detail: string }> = [];
+
+  // Config check
+  const configPath = path.join(dir, '.weaver.json');
+  if (fs.existsSync(configPath)) {
+    checks.push({ label: 'Config', status: 'ok', detail: '.weaver.json found' });
+  } else {
+    checks.push({ label: 'Config', status: 'warn', detail: 'No .weaver.json — run "weaver init"' });
+  }
+
+  // Provider check
+  const config = await loadConfig(opts.configPath);
+  const providerSetting = config?.provider ?? 'auto';
+  const providerName = typeof providerSetting === 'object' ? providerSetting.name : String(providerSetting);
+  let providerDetail = providerName;
+
+  if (providerName === 'anthropic' || process.env.ANTHROPIC_API_KEY) {
+    providerDetail = 'anthropic (API key set)';
+    checks.push({ label: 'Provider', status: 'ok', detail: providerDetail });
+  } else {
+    try {
+      const { execFileSync: provCheck } = await import('node:child_process');
+      provCheck('claude', ['--version'], { stdio: 'pipe', timeout: 5000 });
+      providerDetail = 'claude-cli';
+      checks.push({ label: 'Provider', status: 'ok', detail: providerDetail });
+    } catch {
+      checks.push({ label: 'Provider', status: 'fail', detail: 'No provider found — set ANTHROPIC_API_KEY or install Claude CLI' });
+    }
+  }
+
+  // Connection test
+  if (providerName === 'claude-cli' || (!process.env.ANTHROPIC_API_KEY && providerName === 'auto')) {
+    try {
+      const { execFileSync: connCheck } = await import('node:child_process');
+      const start = Date.now();
+      connCheck('claude', ['-p', '--max-turns', '1', 'say ok'], { stdio: 'pipe', timeout: 15000 });
+      checks.push({ label: 'Connection', status: 'ok', detail: `OK (${((Date.now() - start) / 1000).toFixed(1)}s)` });
+    } catch {
+      checks.push({ label: 'Connection', status: 'warn', detail: 'Could not verify (Claude CLI may need auth)' });
+    }
+  } else if (process.env.ANTHROPIC_API_KEY) {
+    checks.push({ label: 'Connection', status: 'ok', detail: 'API key configured' });
+  } else {
+    checks.push({ label: 'Connection', status: 'warn', detail: 'Not tested' });
+  }
+
+  // Flow Weaver version
+  try {
+    const { execFileSync: fwCheck } = await import('node:child_process');
+    const version = fwCheck('npx', ['flow-weaver', '--version'], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000, cwd: dir }).trim();
+    checks.push({ label: 'Flow Weaver', status: 'ok', detail: version });
+  } catch {
+    checks.push({ label: 'Flow Weaver', status: 'fail', detail: 'Not installed — run "npm install @synergenius/flow-weaver"' });
+  }
+
+  // Queue status
+  try {
+    const { TaskQueue } = await import('./bot/task-queue.js');
+    process.env.WEAVER_PROJECT_DIR = dir;
+    const queue = new TaskQueue();
+    const tasks = await queue.list();
+    const pending = tasks.filter(t => t.status === 'pending').length;
+    const running = tasks.filter(t => t.status === 'running').length;
+    checks.push({ label: 'Queue', status: 'ok', detail: `${pending} pending, ${running} running` });
+  } catch {
+    checks.push({ label: 'Queue', status: 'ok', detail: 'Empty (no queue file)' });
+  }
+
+  // Plan file
+  const planPath = path.join(dir, '.weaver-plan.md');
+  if (fs.existsSync(planPath)) {
+    checks.push({ label: 'Plan', status: 'ok', detail: '.weaver-plan.md found' });
+  } else {
+    checks.push({ label: 'Plan', status: 'warn', detail: 'No .weaver-plan.md — optional, guides bot behavior' });
+  }
+
+  // Output
+  console.log('');
+  console.log('  \x1b[1mWeaver Doctor\x1b[0m');
+  console.log('');
+  const icons = { ok: '\x1b[32m✓\x1b[0m', warn: '\x1b[33m⚠\x1b[0m', fail: '\x1b[31m✗\x1b[0m' };
+  for (const check of checks) {
+    console.log(`  ${icons[check.status]} ${check.label.padEnd(14)} ${check.detail}`);
+  }
+  console.log('');
+
+  const failures = checks.filter(c => c.status === 'fail');
+  if (failures.length > 0) {
+    console.log(`  \x1b[31m${failures.length} issue(s) found.\x1b[0m`);
+  } else {
+    console.log('  \x1b[32mAll checks passed.\x1b[0m');
+  }
+  console.log('');
 }

@@ -939,6 +939,14 @@
       "description": "AI-powered assistant for managing bots and workflows"
     },
     {
+      "name": "examples",
+      "description": "Show example tasks and commands"
+    },
+    {
+      "name": "doctor",
+      "description": "Validate setup and check connectivity"
+    },
+    {
       "name": "status",
       "description": "Get bot session status"
     },

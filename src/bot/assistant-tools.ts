@@ -172,6 +172,15 @@ export const ASSISTANT_TOOLS: ToolDefinition[] = [
       required: ['file'],
     },
   },
+  {
+    name: 'fw_docs',
+    description: 'Look up Flow Weaver documentation by topic. Topics: concepts, jsdoc-grammar, advanced-annotations, built-in-nodes, scaffold, node-conversion, patterns, error-codes, debugging, export-interface.',
+    inputSchema: {
+      type: 'object',
+      properties: { topic: { type: 'string', description: 'Documentation topic slug' } },
+      required: ['topic'],
+    },
+  },
 
   // Project tools
   {
@@ -345,6 +354,12 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
             encoding: 'utf-8', cwd: projectDir, timeout: 15_000, stdio: ['pipe', 'pipe', 'pipe'],
           });
           return { result: output.trim(), isError: false };
+        }
+        case 'fw_docs': {
+          const output = execFileSync('npx', ['flow-weaver', 'docs', String(args.topic), '--compact'], {
+            encoding: 'utf-8', cwd: projectDir, timeout: 15_000, stdio: ['pipe', 'pipe', 'pipe'],
+          });
+          return { result: output.trim().slice(0, 5000), isError: false };
         }
 
         // Project tools

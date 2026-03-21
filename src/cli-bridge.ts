@@ -4,6 +4,7 @@ import {
   handleCron, handlePipeline, handleDashboard, handleProviders,
   handleEject, handleBot, handleSession, handleSteer, handleQueue,
   handleStatus, handleGenesis, handleAudit, handleInit, handleAssistant,
+  handleExamples, handleDoctor,
   printHelp,
 } from './cli-handlers.js';
 
@@ -26,6 +27,8 @@ const handlers: Record<string, (opts: ParsedArgs) => Promise<void>> = {
   audit: handleAudit,
   init: handleInit,
   assistant: handleAssistant,
+  examples: handleExamples,
+  doctor: handleDoctor,
 };
 
 export async function handleCommand(

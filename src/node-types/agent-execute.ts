@@ -236,7 +236,13 @@ export async function weaverAgentExecute(
     return { onSuccess: validationPassed, onFailure: !validationPassed, ctx: JSON.stringify(context) };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    renderer.error('Agent error', msg);
+    let errorDetail = msg;
+    try {
+      const { getErrorGuidance } = await import('../bot/error-guide.js');
+      const guidance = getErrorGuidance(msg);
+      if (guidance) errorDetail = `${msg}\n  Hint: ${guidance}`;
+    } catch { /* error guide not available */ }
+    renderer.error('Agent error', errorDetail);
 
     context.resultJson = JSON.stringify({ success: false, error: msg });
     context.filesModified = '[]';
