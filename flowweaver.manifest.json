@@ -3,7 +3,7 @@
   "name": "@synergenius/flow-weaver-pack-weaver",
   "version": "0.9.7",
   "description": "AI bot for Flow Weaver. Execute tasks, run workflows, evolve autonomously.",
-  "engineVersion": ">=0.19.4",
+  "engineVersion": ">=0.22.10",
   "categories": [
     "automation",
     "ai"
