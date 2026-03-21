@@ -4,7 +4,7 @@
  * and output log under ~/.weaver/bots/{name}/.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -25,6 +25,8 @@ export interface SpawnOpts {
   parallel?: number;
   deadline?: string;
   autoApprove?: boolean;
+  /** Git branch for commits (creates if needed). Keeps main clean for overnight runs. */
+  branch?: string;
 }
 
 const BOTS_DIR = path.join(os.homedir(), '.weaver', 'bots');
@@ -50,17 +52,31 @@ export class BotManager {
     const botDir = path.join(BOTS_DIR, name);
     fs.mkdirSync(botDir, { recursive: true });
 
+    // Create git branch if specified (keeps main clean for overnight runs)
+    if (opts.branch) {
+      try {
+        execFileSync('git', ['checkout', '-B', opts.branch], { cwd: opts.projectDir, encoding: 'utf-8', stdio: 'pipe' });
+      } catch { /* branch may already exist */ }
+    }
+
     const logPath = path.join(botDir, 'output.log');
     const logStream = fs.createWriteStream(logPath, { flags: 'a' });
 
-    const args = [
+    const sessionArgs = [
       'flow-weaver', 'weaver', 'session',
       '--continuous',
       '--project-dir', opts.projectDir,
     ];
-    if (opts.autoApprove !== false) args.push('--auto-approve');
-    if (opts.parallel && opts.parallel > 1) args.push('--parallel', String(opts.parallel));
-    if (opts.deadline) args.push('--until', opts.deadline);
+    if (opts.autoApprove !== false) sessionArgs.push('--auto-approve');
+    if (opts.parallel && opts.parallel > 1) sessionArgs.push('--parallel', String(opts.parallel));
+    if (opts.deadline) sessionArgs.push('--until', opts.deadline);
+
+    // On macOS, wrap with caffeinate to prevent sleep during long runs
+    const isMac = process.platform === 'darwin';
+    const cmd = isMac ? 'caffeinate' : 'npx';
+    const args = isMac
+      ? ['-i', '-s', 'npx', ...sessionArgs]  // -i: prevent idle sleep, -s: prevent system sleep
+      : sessionArgs;
 
     // Set queue/steering to bot-specific paths
     const env = {
@@ -69,7 +85,7 @@ export class BotManager {
       WEAVER_STEERING_DIR: botDir,
     };
 
-    const child = spawn('npx', args, {
+    const child = spawn(cmd, args, {
       cwd: opts.projectDir,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],

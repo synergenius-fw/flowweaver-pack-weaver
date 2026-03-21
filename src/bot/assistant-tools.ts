@@ -29,6 +29,7 @@ export const ASSISTANT_TOOLS: ToolDefinition[] = [
         project_dir: { type: 'string', description: 'Project directory for the bot to work in' },
         parallel: { type: 'number', description: 'Number of parallel tasks (1-5, default 1)' },
         deadline: { type: 'string', description: 'Stop time in HH:MM format (optional)' },
+        branch: { type: 'string', description: 'Git branch for commits (keeps main clean, good for overnight runs)' },
       },
       required: ['name'],
     },
@@ -240,6 +241,7 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
             projectDir: dir,
             parallel: args.parallel as number | undefined,
             deadline: args.deadline as string | undefined,
+            branch: args.branch as string | undefined,
           });
           return { result: JSON.stringify(bot), isError: false };
         }
