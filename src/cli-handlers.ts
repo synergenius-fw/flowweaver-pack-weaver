@@ -1398,17 +1398,28 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
       continue;
     }
 
+    // Auto-decompose broad tasks into per-file tasks
+    const { decomposeTask } = await import('./bot/task-decomposer.js');
+    const { decomposed, tasks: subtasks } = decomposeTask(task, projectDir);
+    if (decomposed && subtasks.length > 1) {
+      // Replace the broad task with per-file tasks
+      await queue.markComplete(task.id);
+      for (const st of subtasks) {
+        await queue.add({ instruction: st.instruction, mode: st.mode as 'modify', targets: st.targets, priority: st.priority ?? 0 });
+      }
+      renderer.info(`Decomposed into ${subtasks.length} per-file tasks`);
+      continue;
+    }
+
     // File conflict check: if task targets overlap with files in use, wait
     const taskTargets = task.targets ?? [];
     const hasConflict = taskTargets.some(f => filesInUse.has(f));
     if (hasConflict && running.size > 0) {
-      // Put task back by not marking it, wait for running tasks to free files
       await Promise.race(running.values());
       continue;
     }
 
     taskCount++;
-    // Set WEAVER_VERBOSE for node-types that check it
     if (opts.verbose) process.env.WEAVER_VERBOSE = '1';
     renderer.taskStart(taskCount, task.instruction ?? task.id);
 

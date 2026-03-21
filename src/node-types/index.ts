@@ -18,6 +18,7 @@ export { weaverFixErrors } from './fix-errors.js';
 export { weaverGitOps } from './git-ops.js';
 export { weaverBotReport } from './bot-report.js';
 export { weaverAgentExecute } from './agent-execute.js';
+export { weaverValidateGate } from './validate-gate.js';
 export { genesisLoadConfig } from './genesis-load-config.js';
 export { genesisObserve } from './genesis-observe.js';
 export { genesisDiffFingerprint } from './genesis-diff-fingerprint.js';

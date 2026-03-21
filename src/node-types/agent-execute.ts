@@ -185,34 +185,51 @@ export async function weaverAgentExecute(
       outputTokens: usage.completionTokens,
     });
 
+    // Post-agent validation gate: don't trust the AI's self-assessment
+    const uniqueFiles = [...new Set(filesModified)];
+    let validationPassed = result.success;
+    if (uniqueFiles.length > 0) {
+      try {
+        const { weaverValidateGate } = await import('./validate-gate.js');
+        const gateCtx: WeaverContext = { ...context, filesModified: JSON.stringify(uniqueFiles) };
+        const gateResult = weaverValidateGate(JSON.stringify(gateCtx));
+        const gateData = JSON.parse(gateResult.ctx) as WeaverContext;
+        if (!gateData.allValid) {
+          validationPassed = false;
+          renderer.warn('Post-agent validation found errors — task marked as failed');
+        }
+        context.validationResultJson = gateData.validationResultJson;
+      } catch { /* validate-gate not available — skip */ }
+    }
+
     context.resultJson = JSON.stringify({
-      success: result.success,
+      success: validationPassed,
       summary: result.summary,
       toolCallCount: result.toolCallCount,
       usage: { inputTokens: usage.promptTokens, outputTokens: usage.completionTokens, estimatedCost },
     });
-    context.filesModified = JSON.stringify([...new Set(filesModified)]);
+    context.filesModified = JSON.stringify(uniqueFiles);
     context.stepLogJson = JSON.stringify(stepLog);
-    context.allValid = result.success;
+    context.allValid = validationPassed;
 
     auditEmit('run-complete', {
-      success: result.success,
+      success: validationPassed,
       toolCalls: result.toolCallCount,
-      filesModified: filesModified.length,
+      filesModified: uniqueFiles.length,
       tokens: { in: usage.promptTokens, out: usage.completionTokens },
       estimatedCost,
     });
 
-    renderer.taskEnd(result.success, {
+    renderer.taskEnd(validationPassed, {
       toolCalls: result.toolCallCount,
       inputTokens: usage.promptTokens,
       outputTokens: usage.completionTokens,
       estimatedCost,
-      filesModified: [...new Set(filesModified)].length,
+      filesModified: uniqueFiles.length,
       elapsed: Date.now() - taskStart,
     });
 
-    return { onSuccess: result.success, onFailure: !result.success, ctx: JSON.stringify(context) };
+    return { onSuccess: validationPassed, onFailure: !validationPassed, ctx: JSON.stringify(context) };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     renderer.error('Agent error', msg);
