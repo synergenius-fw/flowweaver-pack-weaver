@@ -21,10 +21,20 @@ export interface SlashCommand {
 export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: '/help',
-    description: 'Show available commands',
+    description: 'Show available commands and capabilities',
     handler: async (ctx) => {
-      ctx.out('\n  Available commands:\n');
+      ctx.out(`\n  ${c.bold('Weaver Assistant')}\n`);
+      ctx.out(`  Tell me what to build, fix, or explore. I use tools to do the work.\n\n`);
+      ctx.out(`  ${c.bold('Capabilities:')}\n`);
+      ctx.out(`    Workflows    Validate, compile, diagram, describe, and modify\n`);
+      ctx.out(`    Bots         Spawn background workers that execute tasks autonomously\n`);
+      ctx.out(`    Code         Read, write, and patch files in your project\n`);
+      ctx.out(`    Shell        Run commands, check TypeScript, run tests\n`);
+      ctx.out(`    Knowledge    Store and recall project-specific notes\n`);
+      ctx.out(`    Cloud        Sync conversations, check CI status\n\n`);
+      ctx.out(`  ${c.bold('Commands:')}\n`);
       for (const cmd of SLASH_COMMANDS) {
+        if (cmd.name === '/help') continue;
         ctx.out(`    ${c.cyan(cmd.name.padEnd(12))} ${c.dim(cmd.description)}\n`);
       }
       ctx.out('\n');

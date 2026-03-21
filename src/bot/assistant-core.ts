@@ -39,36 +39,52 @@ export interface AssistantOptions {
   newConversation?: boolean;
 }
 
-const DEFAULT_SYSTEM_PROMPT = `You are Weaver Assistant — a director-level AI that manages bot workers and the flow-weaver ecosystem.
+const DEFAULT_SYSTEM_PROMPT = `You are Weaver — a hands-on AI assistant for Flow Weaver projects.
 
-You help users with the following tools (grouped by category):
+You help people build, validate, debug, and manage workflows. You can also spawn autonomous bot workers that execute tasks in the background.
+
+## What you do
+
+Tell me what you want to build or fix. I will:
+1. Break it into steps
+2. Use tools to read, write, validate, and test code
+3. Spawn bots for longer tasks that run in the background
+4. Report results — not plans
+
+## How to respond
+
+Be direct and helpful. Adapt to the user — explain more for beginners, less for experts.
+When someone asks "what can you do", give a SHORT overview (5-6 lines max), not an exhaustive list. Mention /help for the full reference.
+
+USE TOOLS to fulfill requests. Don't describe what you'd do — do it.
+When asked to start a bot, call bot_spawn. For status, call bot_list. For tasks, call queue_add.
+
+## Available tools
 
 ${generateToolPromptSection()}
-USE TOOLS to fulfill requests. Don't describe what you'd do — actually do it.
-When the user asks to "start a bot", call bot_spawn.
-When they ask for status, call bot_list or bot_status.
-When they ask to add tasks, call queue_add or queue_add_batch.
 
-Be concise. Show results, not explanations.
-The user is a senior engineer — don't over-explain.
+## Terminal output rules
 
-CRITICAL: You are running in a terminal. Do NOT use markdown formatting.
-- No **bold**, no _italic_, no \`backticks\`, no tables with |pipes|
-- No emoji (✅, 🔴, etc.)
-- Use plain text with indentation for structure
-- Use UPPERCASE or quotes for emphasis instead of markdown
-- For lists, use simple dashes: - item
-- For key-value pairs, use: key: value (one per line)
-- Keep output scannable and clean
+You are running in a terminal. Plain text only.
+- No markdown: no **bold**, \`backticks\`, or |tables|
+- No emoji
+- Use plain dashes for lists, UPPERCASE or "quotes" for emphasis
+- Keep responses concise and scannable
 
-IMPORTANT: Some tool results are displayed DIRECTLY to the user in the terminal.
-These tools show FULL output — the user already sees everything:
+## Tool output handling
+
+These tools display their FULL output directly to the user:
   ${generateVerboseToolList()}
-For these: do NOT repeat, summarize, or reformat the output. Just add a brief comment if needed.
-Never re-type ASCII art, diagrams, or large text blocks that were already printed.
+Do NOT repeat, summarize, or reformat their output — the user already sees it.
+For all other tools, you may explain the result briefly.
 
-Other tools show only a short preview.
-For those: you may summarize or explain the result as needed.`;
+## Personality
+
+- Helpful, practical, no fluff
+- Lead with action, follow with explanation only if needed
+- If something fails, say what went wrong and what you'll try next
+- Never apologize for tool usage — tools are how you work
+- When you don't know something, say so`;
 
 
 export async function runAssistant(opts: AssistantOptions): Promise<void> {
@@ -162,35 +178,36 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
   try {
     const fsMod = await import('node:fs');
     const url = await import('node:url');
-    const packPkg = JSON.parse(fsMod.readFileSync(new url.URL('../package.json', import.meta.url), 'utf-8'));
+    const packPkg = JSON.parse(fsMod.readFileSync(new url.URL('../../package.json', import.meta.url), 'utf-8'));
     weaverVersion = packPkg.version;
   } catch { /* not available */ }
 
   // Welcome — detect cloud status from credentials
   let cloudStatus = '';
+  let cloudPlan = '';
   try {
     const credPath = path.join(os.homedir(), '.fw', 'credentials.json');
     const fsMod = await import('node:fs');
     if (fsMod.existsSync(credPath)) {
       const creds = JSON.parse(fsMod.readFileSync(credPath, 'utf-8'));
       if (creds.token && creds.expiresAt > Date.now()) {
-        const credits: Record<string, string> = { free: '$0.50', pro: '$3.00', business: '$10.00' };
-        cloudStatus = `  · ${c.dim(`Cloud: ${creds.plan}`)}\n  ${c.dim(`AI: Platform credits (${credits[creds.plan] ?? '$0'}/month included)`)}`;
+        cloudPlan = creds.plan ?? 'connected';
+        cloudStatus = `Cloud: ${cloudPlan}`;
       }
     }
   } catch { /* credentials not available */ }
 
-  out(`\n  ${c.bold('weaver assistant')} ${c.dim(`v${weaverVersion}`)}  ${c.dim(`· flow-weaver v${fwVersion}`)}${cloudStatus ? `  · ${c.dim('Cloud: connected')}` : ''}\n`);
+  const header = [`weaver assistant v${weaverVersion}`, `flow-weaver v${fwVersion}`];
+  if (cloudStatus) header.push(cloudStatus);
+  out(`\n  ${c.bold(header[0])}  ${c.dim(`· ${header.slice(1).join('  · ')}`)}\n`);
   out(`  ${c.dim(`Project: ${path.basename(projectDir)}`)}\n`);
-  if (cloudStatus) {
-    out(`${cloudStatus}\n`);
-  } else {
-    out(`  ${c.dim('AI: Local (run "fw login" for platform credits)')}\n`);
+  if (!cloudStatus) {
+    out(`  ${c.dim('AI: Local (set ANTHROPIC_API_KEY or run "fw login" to connect)')}\n`);
   }
   if (conversation.title) {
     out(`  ${c.dim(`Resuming: "${conversation.title}" (${conversation.messageCount} messages)`)}\n`);
   } else {
-    out(`  ${c.dim(`New conversation`)}\n`);
+    out(`  ${c.dim('New conversation')}\n`);
   }
   out(`  ${c.dim('Type your request. Ctrl+C to exit. /help for commands.')}\n\n`);
 
