@@ -1251,56 +1251,54 @@ export async function handleBot(opts: ParsedArgs): Promise<void> {
 export async function handleSession(opts: ParsedArgs): Promise<void> {
   const projectDir = opts.file ?? process.cwd();
   const config = await loadConfig(opts.configPath);
-  // Always use the agent workflow — it supports both Anthropic API and Claude CLI
   const workflowPath = resolveWorkflowPath('agent', projectDir);
-  if (!opts.quiet) console.log('[weaver] Using agent mode (tool-use)');
+
+  // Create terminal renderer for all session output
+  const { TerminalRenderer } = await import('./bot/terminal-renderer.js');
+  const renderer = new TerminalRenderer({ verbose: opts.verbose, quiet: opts.quiet });
 
   // Parse --until HH:MM into a deadline timestamp
   let deadline: number | undefined;
+  let deadlineStr: string | undefined;
   if (opts.sessionUntil) {
     const match = opts.sessionUntil.match(/^(\d{1,2}):(\d{2})$/);
     if (match) {
       const now = new Date();
       const target = new Date(now);
       target.setHours(parseInt(match[1]!, 10), parseInt(match[2]!, 10), 0, 0);
-      if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1); // next day
+      if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
       deadline = target.getTime();
-      if (!opts.quiet) console.log(`[weaver] Session deadline: ${target.toLocaleTimeString()}`);
+      deadlineStr = target.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
   }
 
   const maxTasks = opts.sessionMaxTasks ?? Infinity;
   const continuous = opts.sessionContinuous || !!opts.sessionUntil || maxTasks < Infinity;
+  const parallelism = opts.sessionParallel ?? 1;
 
-  // Crash recovery: reset orphaned "running" tasks on session start
+  // Crash recovery
   if (continuous) {
     const { TaskQueue } = await import('./bot/task-queue.js');
     const recoveryQueue = new TaskQueue();
     const recovered = await recoveryQueue.recoverOrphans();
-    if (recovered > 0 && !opts.quiet) {
-      console.log(`[weaver] Recovered ${recovered} orphaned task(s) from previous crash.`);
-    }
+    if (recovered > 0) renderer.info(`Recovered ${recovered} orphaned task(s)`);
   }
 
-  // Clean stale fw-exec-* cache files — these are temp compiled workflows
-  // that persist across dev:install and can contain outdated generated code.
+  // Clean stale cache files
   try {
     const { execSync: execSyncClean } = await import('node:child_process');
     const staleOutput = execSyncClean(`find "${projectDir}" -name "fw-exec-*" -type f`, { encoding: 'utf-8', timeout: 5000 }).trim();
     if (staleOutput) {
       const staleFiles = staleOutput.split('\n').filter(Boolean);
-      for (const f of staleFiles) { try { fs.unlinkSync(f); } catch { /* ignore */ } }
-      if (!opts.quiet) console.log(`[weaver] Cleaned ${staleFiles.length} stale cache file(s).`);
+      for (const f of staleFiles) { try { fs.unlinkSync(f); } catch {} }
     }
-  } catch {
-    // cleanup failed — non-fatal
-  }
+  } catch { /* non-fatal */ }
 
-  if (!opts.quiet) {
-    console.log('[weaver] Starting bot session (Ctrl+C to stop)');
-    if (continuous) console.log('[weaver] Continuous mode — polling queue for tasks');
-    console.log('[weaver] Add tasks with: flow-weaver weaver queue add "task"');
-  }
+  // Detect provider label for session start
+  const providerType = config?.provider ?? 'auto';
+  const providerLabel = typeof providerType === 'object' ? providerType.name : String(providerType);
+  const sessionStartTime = Date.now();
+  renderer.sessionStart({ provider: providerLabel, parallel: parallelism, deadline: deadlineStr });
 
   // Single-run mode (backwards compatible)
   if (!continuous) {
@@ -1332,7 +1330,6 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
   let interrupted = false;
   let consecutiveErrors = 0;
   const MAX_CONSECUTIVE_ERRORS = 3;
-  const parallelism = opts.sessionParallel ?? 1;
 
   process.on('SIGINT', () => { interrupted = true; });
   process.on('SIGTERM', () => { interrupted = true; });
@@ -1358,13 +1355,9 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
         consecutiveErrors++;
       }
 
-      if (!opts.quiet) {
-        const color = result.success ? '\x1b[32m' : '\x1b[31m';
-        console.log(`${color}[weaver] Task ${task.id.slice(0, 8)}: ${result.outcome}\x1b[0m`);
-      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`\x1b[31m[weaver] Task ${task.id.slice(0, 8)} error: ${msg}\x1b[0m`);
+      renderer.error(`Task ${task.id.slice(0, 8)} error`, msg);
       await queue.markFailed(task.id);
       if (!isTransientError(err)) {
         consecutiveErrors++;
@@ -1378,13 +1371,12 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
 
   while (taskCount < maxTasks && !interrupted) {
     if (deadline && Date.now() >= deadline) {
-      if (!opts.quiet) console.log('[weaver] Deadline reached, stopping session.');
+      renderer.info('Deadline reached, stopping session.');
       break;
     }
 
-    // Stop if too many consecutive errors
     if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-      console.error(`\x1b[31m[weaver] ${MAX_CONSECUTIVE_ERRORS} consecutive errors — stopping session. Check your API key or provider config.\x1b[0m`);
+      renderer.error('Session stopped', `${MAX_CONSECUTIVE_ERRORS} consecutive errors — check your API key or provider config.`);
       break;
     }
 
@@ -1416,7 +1408,9 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
     }
 
     taskCount++;
-    if (!opts.quiet) console.log(`\x1b[36m[weaver] Task ${taskCount}/${maxTasks === Infinity ? '∞' : maxTasks}: ${(task.instruction ?? task.id).slice(0, 60)}\x1b[0m`);
+    // Set WEAVER_VERBOSE for node-types that check it
+    if (opts.verbose) process.env.WEAVER_VERBOSE = '1';
+    renderer.taskStart(taskCount, task.instruction ?? task.id);
 
     await queue.markRunning(task.id);
     // Reserve files
@@ -1437,9 +1431,15 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
     await Promise.allSettled(running.values());
   }
 
-  if (!opts.quiet) {
-    console.log(`[weaver] Session complete: ${taskCount} task${taskCount === 1 ? '' : 's'} processed.`);
-  }
+  renderer.sessionEnd({
+    tasks: taskCount,
+    completed: taskCount - consecutiveErrors, // approximate
+    failed: consecutiveErrors,
+    totalInputTokens: 0, // TODO: accumulate across tasks
+    totalOutputTokens: 0,
+    totalCost: 0,
+    elapsed: Date.now() - sessionStartTime,
+  });
 }
 
 export async function handleSteer(opts: ParsedArgs): Promise<void> {

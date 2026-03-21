@@ -84,7 +84,7 @@ export function weaverGitOps(ctx: string): { ctx: string } {
   try {
     execFileSync('git', ['commit', '-m', commitMsg], { cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
     results.push(`Committed: ${commitMsg}`);
-    console.log(`\x1b[36m→ Git: ${commitMsg}\x1b[0m`);
+    if (process.env.WEAVER_VERBOSE) process.stderr.write(`\x1b[2m  Git: ${commitMsg}\x1b[0m\n`);
   } catch {
     results.push('Nothing to commit');
   }

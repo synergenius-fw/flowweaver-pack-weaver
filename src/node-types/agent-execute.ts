@@ -129,59 +129,37 @@ export async function weaverAgentExecute(
 
   const taskPrompt = `Task: ${task.instruction}\nProject directory: ${projectDir}\n${task.targets ? 'Target files: ' + task.targets.join(', ') : ''}`;
 
-  console.log(`\x1b[36m→ Agent executing: ${task.instruction.slice(0, 80)}\x1b[0m`);
+  // Create renderer — single source of all terminal output
+  const { TerminalRenderer } = await import('../bot/terminal-renderer.js');
+  const renderer = new TerminalRenderer({ verbose: !!process.env.WEAVER_VERBOSE });
+
   auditEmit('run-start', { task: task.instruction });
 
   try {
-    // Create provider based on config
     const provider = createProvider(pInfo, projectDir);
     const executor = createWeaverExecutor(projectDir);
 
-    // Track files modified and step log via callbacks
     const filesModified: string[] = [];
     const stepLog: LocalStepLogEntry[] = [];
+    const taskStart = Date.now();
 
+    // Route tool events through renderer + track state
     const onToolEvent = (event: ToolEvent) => {
-      if (event.type === 'tool_call_start') {
-        const args = event.args ?? {};
-        const preview = args.file ? String(args.file).split('/').pop() : args.command ? String(args.command).slice(0, 60) : '';
-        process.stderr.write(`\x1b[33m  ⚡ ${event.name}(${preview})\x1b[0m\n`);
-      }
-      if (event.type === 'tool_call_result') {
-        const icon = event.isError ? '\x1b[31m  ✗' : '\x1b[32m  →';
-        process.stderr.write(`${icon} ${(event.result ?? '').slice(0, 150).replace(/\n/g, ' ')}\x1b[0m\n`);
+      renderer.onToolEvent(event);
 
+      if (event.type === 'tool_call_result') {
         stepLog.push({
           step: event.name,
           status: event.isError ? 'error' : 'ok',
           detail: event.isError ? (event.result ?? '').slice(0, 200) : event.name,
         });
-
-        // Track file modifications
         if ((event.name === 'patch_file' || event.name === 'write_file') && !event.isError && event.args?.file) {
           filesModified.push(event.args.file as string);
         }
       }
     };
 
-    // Stream thinking and text to stderr for real-time feedback
-    let thinkingLine = '';
-    const onStreamEvent = (event: StreamEvent) => {
-      if (event.type === 'thinking_delta') {
-        // Accumulate thinking into a single line, flush on newline
-        thinkingLine += event.text;
-        if (thinkingLine.includes('\n')) {
-          const lines = thinkingLine.split('\n');
-          for (let i = 0; i < lines.length - 1; i++) {
-            if (lines[i].trim()) process.stderr.write(`\x1b[2m  ${lines[i].trim()}\x1b[0m\n`);
-          }
-          thinkingLine = lines[lines.length - 1];
-        }
-      }
-      if (event.type === 'text_delta') {
-        process.stderr.write(event.text);
-      }
-    };
+    const onStreamEvent = (event: StreamEvent) => renderer.onStreamEvent(event);
 
     const result = await withRetry(
       () => runAgentLoop(
@@ -195,19 +173,17 @@ export async function weaverAgentExecute(
         maxRetries: 3,
         baseDelayMs: 5_000,
         onRetry: (attempt, delay, err) => {
-          console.log(`\x1b[33m→ Transient error, retrying in ${delay / 1000}s (attempt ${attempt}/3): ${err.message.slice(0, 80)}\x1b[0m`);
+          renderer.warn(`Transient error, retrying in ${delay / 1000}s (attempt ${attempt}/3): ${err.message.slice(0, 80)}`);
         },
       },
     );
 
-    // Cost display (#4)
     const usage = result.usage;
     const model = pInfo.model ?? 'claude-sonnet-4-6';
     const estimatedCost = CostTracker.estimateCost(model, {
       inputTokens: usage.promptTokens,
       outputTokens: usage.completionTokens,
     });
-    const costStr = estimatedCost > 0 ? ` (~$${estimatedCost.toFixed(3)})` : '';
 
     context.resultJson = JSON.stringify({
       success: result.success,
@@ -227,15 +203,19 @@ export async function weaverAgentExecute(
       estimatedCost,
     });
 
-    console.log(`\x1b[${result.success ? '32' : '31'}m→ Agent: ${result.summary.slice(0, 100)} (${result.toolCallCount} tool calls)\x1b[0m`);
-    if (usage.promptTokens > 0 || usage.completionTokens > 0) {
-      console.log(`\x1b[36m→ Tokens: ${usage.promptTokens.toLocaleString()} in / ${usage.completionTokens.toLocaleString()} out${costStr}\x1b[0m`);
-    }
+    renderer.taskEnd(result.success, {
+      toolCalls: result.toolCallCount,
+      inputTokens: usage.promptTokens,
+      outputTokens: usage.completionTokens,
+      estimatedCost,
+      filesModified: [...new Set(filesModified)].length,
+      elapsed: Date.now() - taskStart,
+    });
 
     return { onSuccess: result.success, onFailure: !result.success, ctx: JSON.stringify(context) };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`\x1b[31m→ Agent error: ${msg}\x1b[0m`);
+    renderer.error('Agent error', msg);
 
     context.resultJson = JSON.stringify({ success: false, error: msg });
     context.filesModified = '[]';

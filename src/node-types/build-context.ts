@@ -30,7 +30,8 @@ export function weaverBuildContext(ctx: string): { ctx: string } {
   }
 
   const bundle = sections.join('\n\n---\n\n');
-  console.log(`\x1b[36m→ Context bundle: ${bundle.length} chars\x1b[0m`);
+  // Output handled by session renderer; keep a dim line for debugging
+  if (process.env.WEAVER_VERBOSE) process.stderr.write(`\x1b[2m  Context: ${bundle.length} chars\x1b[0m\n`);
 
   context.contextBundle = bundle;
   return { ctx: JSON.stringify(context) };

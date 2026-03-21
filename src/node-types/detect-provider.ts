@@ -69,7 +69,8 @@ export function weaverDetectProvider(projectDir: string, config: WeaverConfig): 
   }
 
   const label = providerInfo.model ? `${type} (${providerInfo.model})` : type;
-  console.log(`\x1b[36m→ Provider: ${label}\x1b[0m`);
+  // Provider info now shown by session renderer; keep for verbose/debug
+  if (process.env.WEAVER_VERBOSE) process.stderr.write(`\x1b[2m  Provider: ${label}\x1b[0m\n`);
 
   return {
     env: { projectDir, config, providerType: type, providerInfo },
