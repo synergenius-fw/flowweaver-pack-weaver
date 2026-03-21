@@ -37,8 +37,8 @@ describe('isTransientError — HTTP status codes in message', () => {
     expect(isTransientError(new Error('404 Not Found'))).toBe(false);
   });
 
-  it('returns false for 500 in message', () => {
-    expect(isTransientError(new Error('500 Internal Server Error'))).toBe(false);
+  it('returns true for 500 in message (treated as transient for retry)', () => {
+    expect(isTransientError(new Error('500 Internal Server Error'))).toBe(true);
   });
 });
 
