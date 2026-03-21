@@ -106,9 +106,9 @@ describe('command handlers', () => {
     const ctx = createMockCtx();
     await handleSlashCommand('/help', ctx);
     expect(ctx.out).toHaveBeenCalled();
-    // Should include at least the command names
+    // Should include capabilities overview and command names
     const allOutput = (ctx.out as ReturnType<typeof vi.fn>).mock.calls.map(c => c[0]).join('');
-    expect(allOutput).toContain('/help');
+    expect(allOutput).toContain('Capabilities:');
     expect(allOutput).toContain('/exit');
     expect(allOutput).toContain('/status');
   });

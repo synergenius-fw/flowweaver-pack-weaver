@@ -167,7 +167,7 @@ describe('plan file loading', () => {
     });
 
     const callOpts = (mockRunAgentLoop.mock.calls[0] as unknown[])[4] as { systemPrompt?: string };
-    expect(callOpts.systemPrompt).toContain('Weaver Assistant');
+    expect(callOpts.systemPrompt).toContain('You are Weaver');
     expect(callOpts.systemPrompt).not.toContain('Project Plan & Vision');
   });
 
@@ -186,7 +186,7 @@ describe('plan file loading', () => {
 
     const callOpts = (mockRunAgentLoop.mock.calls[0] as unknown[])[4] as { systemPrompt?: string };
     expect(callOpts.systemPrompt).toContain('Custom prompt.');
-    expect(callOpts.systemPrompt).not.toContain('Weaver Assistant');
+    expect(callOpts.systemPrompt).not.toContain('You are Weaver');
   });
 });
 
