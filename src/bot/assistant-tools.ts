@@ -203,6 +203,27 @@ export const ASSISTANT_TOOLS: ToolDefinition[] = [
       required: ['command'],
     },
   },
+
+  // Conversation management
+  {
+    name: 'conversation_list',
+    description: 'List saved assistant conversations with message counts and timestamps.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'conversation_delete',
+    description: 'Delete a saved conversation by ID.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'Conversation ID to delete' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'conversation_summary',
+    description: 'Get a summary of the current conversation (message count, tokens, bots spawned).',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
 ];
 
 export function createAssistantExecutor(projectDir: string): ToolExecutor {
@@ -354,6 +375,40 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
             encoding: 'utf-8', cwd: projectDir, timeout: 30_000, stdio: ['pipe', 'pipe', 'pipe'],
           });
           return { result: output.trim().slice(0, 5000) || '(no output)', isError: false };
+        }
+
+        // Conversation management
+        case 'conversation_list': {
+          const { ConversationStore } = await import('./conversation-store.js');
+          const cStore = new ConversationStore();
+          const convos = cStore.list();
+          if (convos.length === 0) return { result: 'No saved conversations.', isError: false };
+          const lines = convos.map(cv => {
+            const ago = Math.round((Date.now() - cv.lastMessageAt) / 60_000);
+            const agoStr = ago < 60 ? `${ago}m ago` : ago < 1440 ? `${Math.round(ago / 60)}h ago` : `${Math.round(ago / 1440)}d ago`;
+            const title = cv.title || '(untitled)';
+            return `${cv.id}  "${title}"  ${cv.messageCount} msgs  ${agoStr}`;
+          });
+          return { result: `Conversations (${convos.length}):\n${lines.join('\n')}`, isError: false };
+        }
+        case 'conversation_delete': {
+          const { ConversationStore } = await import('./conversation-store.js');
+          const cStore = new ConversationStore();
+          const existing = cStore.get(String(args.id));
+          if (!existing) return { result: `Conversation "${args.id}" not found.`, isError: true };
+          cStore.delete(String(args.id));
+          return { result: `Deleted conversation "${args.id}" (${existing.title || 'untitled'}).`, isError: false };
+        }
+        case 'conversation_summary': {
+          const { ConversationStore } = await import('./conversation-store.js');
+          const cStore = new ConversationStore();
+          const recent = cStore.getMostRecent();
+          if (!recent) return { result: 'No active conversation.', isError: false };
+          const elapsed = Math.round((Date.now() - recent.createdAt) / 60_000);
+          return {
+            result: `Current conversation: ${recent.id}\n  Title: ${recent.title || '(untitled)'}\n  Messages: ${recent.messageCount}\n  Tokens: ${recent.totalTokens}\n  Bots: ${recent.botIds.length > 0 ? recent.botIds.join(', ') : 'none'}\n  Duration: ${elapsed}m`,
+            isError: false,
+          };
         }
 
         default:
