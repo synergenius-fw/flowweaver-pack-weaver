@@ -290,7 +290,7 @@ export const ALL_TOOLS: WeaverTool[] = [
       required: ['file', 'patches'],
     },
     category: 'project',
-    contexts: ['bot'],
+    contexts: ['bot', 'assistant'],
   },
   {
     name: 'write_file',
@@ -304,7 +304,7 @@ export const ALL_TOOLS: WeaverTool[] = [
       required: ['file', 'content'],
     },
     category: 'project',
-    contexts: ['bot'],
+    contexts: ['bot', 'assistant'],
   },
   {
     name: 'tsc_check',
@@ -312,7 +312,7 @@ export const ALL_TOOLS: WeaverTool[] = [
     inputSchema: { type: 'object', properties: {}, required: [] },
     verboseOutput: true,
     category: 'project',
-    contexts: ['bot'],
+    contexts: ['bot', 'assistant'],
   },
   {
     name: 'run_tests',
@@ -320,7 +320,7 @@ export const ALL_TOOLS: WeaverTool[] = [
     inputSchema: { type: 'object', properties: { pattern: { type: 'string', description: 'Test file pattern (optional)' } }, required: [] },
     verboseOutput: true,
     category: 'project',
-    contexts: ['bot'],
+    contexts: ['bot', 'assistant'],
   },
   {
     name: 'project_list',

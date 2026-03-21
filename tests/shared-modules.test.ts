@@ -20,7 +20,7 @@ describe('tool-registry', () => {
     const { ALL_TOOLS, ASSISTANT_TOOLS } = await import('../src/bot/tool-registry.js');
     const expected = ALL_TOOLS.filter(t => t.contexts.includes('assistant'));
     expect(ASSISTANT_TOOLS.length).toBe(expected.length);
-    expect(ASSISTANT_TOOLS.length).toBe(33);
+    expect(ASSISTANT_TOOLS.length).toBe(37);
   });
 
   it('VERBOSE_TOOL_NAMES contains all verboseOutput tools', async () => {

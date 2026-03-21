@@ -182,6 +182,66 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
           return { result: output.trim().slice(0, 5000) || '(no output)', isError: false };
         }
 
+        case 'write_file': {
+          const filePath = path.isAbsolute(String(args.file)) ? String(args.file) : path.resolve(projectDir, String(args.file));
+          // Safety: must be within project directory
+          if (!filePath.startsWith(projectDir)) {
+            return { result: 'Blocked: cannot write files outside project directory.', isError: true };
+          }
+          const content = String(args.content);
+          if (!content.trim()) {
+            return { result: 'Blocked: cannot write empty file.', isError: true };
+          }
+          // Check shrink protection for existing files
+          if (fs.existsSync(filePath)) {
+            const existing = fs.readFileSync(filePath, 'utf-8');
+            if (existing.length > 0 && content.length < existing.length * 0.5) {
+              return { result: `Blocked: write would shrink file by more than 50% (${existing.length} -> ${content.length} chars).`, isError: true };
+            }
+          }
+          const dir = path.dirname(filePath);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(filePath, content, 'utf-8');
+          return { result: `Wrote ${content.length} chars to ${path.relative(projectDir, filePath)}`, isError: false };
+        }
+        case 'patch_file': {
+          const filePath = path.isAbsolute(String(args.file)) ? String(args.file) : path.resolve(projectDir, String(args.file));
+          if (!filePath.startsWith(projectDir)) {
+            return { result: 'Blocked: cannot patch files outside project directory.', isError: true };
+          }
+          if (!fs.existsSync(filePath)) {
+            return { result: `File not found: ${args.file}`, isError: true };
+          }
+          let content = fs.readFileSync(filePath, 'utf-8');
+          const patches = args.patches as Array<{ find: string; replace: string }>;
+          let applied = 0;
+          for (const p of patches) {
+            if (content.includes(p.find)) {
+              content = content.replace(p.find, p.replace);
+              applied++;
+            }
+          }
+          if (applied === 0) {
+            return { result: `No patches matched in ${args.file}. Check exact strings.`, isError: true };
+          }
+          fs.writeFileSync(filePath, content, 'utf-8');
+          return { result: `Applied ${applied}/${patches.length} patches to ${path.relative(projectDir, filePath)}`, isError: false };
+        }
+        case 'tsc_check': {
+          const output = execFileSync('npx', ['tsc', '--noEmit'], {
+            encoding: 'utf-8', cwd: projectDir, timeout: 60_000, stdio: ['pipe', 'pipe', 'pipe'],
+          });
+          return { result: output.trim() || 'TypeScript check passed — no errors.', isError: false };
+        }
+        case 'run_tests': {
+          const testArgs = ['vitest', 'run'];
+          if (args.pattern) testArgs.push(String(args.pattern));
+          const output = execFileSync('npx', testArgs, {
+            encoding: 'utf-8', cwd: projectDir, timeout: 120_000, stdio: ['pipe', 'pipe', 'pipe'],
+          });
+          return { result: output.trim().slice(-3000) || 'Tests completed.', isError: false };
+        }
+
         // Conversation management
         case 'conversation_list': {
           const { ConversationStore } = await import('./conversation-store.js');
