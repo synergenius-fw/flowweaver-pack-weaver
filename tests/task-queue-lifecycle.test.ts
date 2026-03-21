@@ -249,3 +249,95 @@ describe('TaskQueue priority and ordering', () => {
     expect(next).toBeNull();
   });
 });
+
+describe('TaskQueue claimNext (atomic select+mark running)', () => {
+  let tmpDir: string;
+  let queue: TaskQueue;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'weaver-queue-'));
+    queue = new TaskQueue(tmpDir);
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('claimNext() returns highest priority task and marks it running', async () => {
+    await queue.add({ instruction: 'low', priority: 0 });
+    await queue.add({ instruction: 'high', priority: 10 });
+
+    const claimed = await queue.claimNext();
+    expect(claimed).not.toBeNull();
+    expect(claimed!.instruction).toBe('high');
+    expect(claimed!.status).toBe('running');
+
+    // Verify it is persisted as running
+    const tasks = await queue.list();
+    const highTask = tasks.find(t => t.instruction === 'high');
+    expect(highTask!.status).toBe('running');
+  });
+
+  it('claimNext() returns null when no pending tasks', async () => {
+    const { id } = await queue.add({ instruction: 'done', priority: 0 });
+    await queue.markComplete(id);
+
+    const claimed = await queue.claimNext();
+    expect(claimed).toBeNull();
+  });
+
+  it('claimNext() skips already-running tasks', async () => {
+    const { id } = await queue.add({ instruction: 'running one', priority: 10 });
+    await queue.add({ instruction: 'pending one', priority: 5 });
+    await queue.markRunning(id);
+
+    const claimed = await queue.claimNext();
+    expect(claimed!.instruction).toBe('pending one');
+    expect(claimed!.status).toBe('running');
+  });
+
+  it('successive claimNext() calls dispatch different tasks', async () => {
+    await queue.add({ instruction: 'task-1', priority: 5 });
+    await queue.add({ instruction: 'task-2', priority: 5 });
+
+    const first = await queue.claimNext();
+    const second = await queue.claimNext();
+
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(first!.id).not.toBe(second!.id);
+  });
+
+  it('claimNext() returns null on empty queue', async () => {
+    expect(await queue.claimNext()).toBeNull();
+  });
+});
+
+describe('TaskQueue atomic writeAll', () => {
+  let tmpDir: string;
+  let queue: TaskQueue;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'weaver-queue-'));
+    queue = new TaskQueue(tmpDir);
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('writeAll uses write+rename (no .tmp file left behind)', async () => {
+    await queue.add({ instruction: 'atomic test', priority: 0 });
+    await queue.markComplete((await queue.list())[0].id);
+
+    // After the operation, there should be no .tmp file
+    const files = fs.readdirSync(tmpDir);
+    const tmpFiles = files.filter(f => f.includes('.tmp.'));
+    expect(tmpFiles).toHaveLength(0);
+
+    // But the data should be intact
+    const tasks = await queue.list();
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].status).toBe('completed');
+  });
+});

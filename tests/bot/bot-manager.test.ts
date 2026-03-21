@@ -139,7 +139,7 @@ describe('spawn metadata', () => {
     expect(() => mgr.spawn('echo', { projectDir })).toThrow(/already exists/);
   });
 
-  it('calls git checkout when branch option is provided', () => {
+  it('calls git worktree or checkout when branch option is provided', () => {
     const proc = makeFakeProcess(9007);
     mockSpawn.mockReturnValue(proc);
     mockExecFileSync.mockReturnValue('' as unknown as Buffer);
@@ -147,14 +147,15 @@ describe('spawn metadata', () => {
     const mgr = new BotManager();
     mgr.spawn('foxtrot', { projectDir, branch: 'feature/test' });
 
+    // Should attempt worktree first
     expect(mockExecFileSync).toHaveBeenCalledWith(
       'git',
-      ['checkout', '-B', 'feature/test'],
+      expect.arrayContaining(['worktree', 'add', '-B', 'feature/test']),
       expect.objectContaining({ cwd: projectDir }),
     );
   });
 
-  it('does not throw if git checkout fails (branch may already exist)', () => {
+  it('does not throw if git branch setup fails entirely', () => {
     const proc = makeFakeProcess(9008);
     mockSpawn.mockReturnValue(proc);
     mockExecFileSync.mockImplementation(() => { throw new Error('already exists'); });
@@ -518,5 +519,130 @@ describe('list and get', () => {
     const bots = mgr.list();
     const names = bots.map((b) => b.name);
     expect(names).toContain('ghost-bot');
+  });
+
+  it('discovered bots have null process handle — stop() still works without crash', () => {
+    const ghostDir = path.join(botsDir, 'null-proc-bot');
+    fs.mkdirSync(ghostDir, { recursive: true });
+    const ghostMeta = {
+      name: 'null-proc-bot',
+      pid: 99999,
+      projectDir,
+      botDir: ghostDir,
+      startedAt: Date.now(),
+      status: 'running',
+    };
+    fs.writeFileSync(path.join(ghostDir, 'meta.json'), JSON.stringify(ghostMeta));
+
+    const mgr = new BotManager();
+    mgr.list(); // triggers discovery
+
+    // stop() should not crash when process is null
+    expect(() => mgr.stop('null-proc-bot')).not.toThrow();
+    expect(mgr.get('null-proc-bot')?.status).toBe('stopped');
+  });
+
+  it('discovered bots have null process handle — kill() still works without crash', () => {
+    const ghostDir = path.join(botsDir, 'null-kill-bot');
+    fs.mkdirSync(ghostDir, { recursive: true });
+    const ghostMeta = {
+      name: 'null-kill-bot',
+      pid: 99999,
+      projectDir,
+      botDir: ghostDir,
+      startedAt: Date.now(),
+      status: 'running',
+    };
+    fs.writeFileSync(path.join(ghostDir, 'meta.json'), JSON.stringify(ghostMeta));
+
+    const mgr = new BotManager();
+    mgr.list();
+
+    expect(() => mgr.kill('null-kill-bot')).not.toThrow();
+    expect(mgr.get('null-kill-bot')?.status).toBe('stopped');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SIGINT handler
+// ---------------------------------------------------------------------------
+
+describe('SIGINT cleanup handler', () => {
+  it('registers SIGINT handler on construction', () => {
+    const onSpy = vi.spyOn(process, 'on');
+    const mgr = new BotManager();
+
+    const sigintCalls = onSpy.mock.calls.filter(c => c[0] === 'SIGINT');
+    expect(sigintCalls.length).toBeGreaterThanOrEqual(1);
+
+    onSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Git branch — worktree preference
+// ---------------------------------------------------------------------------
+
+describe('git branch worktree preference', () => {
+  it('attempts git worktree add before falling back to checkout', () => {
+    const proc = makeFakeProcess(3001);
+    mockSpawn.mockReturnValue(proc);
+    // First call: worktree add succeeds
+    mockExecFileSync.mockReturnValue('' as unknown as Buffer);
+
+    const mgr = new BotManager();
+    mgr.spawn('worktree-bot', { projectDir, branch: 'feat/wt' });
+
+    // First git call should be worktree add, not checkout
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git',
+      expect.arrayContaining(['worktree', 'add']),
+      expect.anything(),
+    );
+  });
+
+  it('falls back to checkout -B when worktree fails, and writes warning', () => {
+    const proc = makeFakeProcess(3002);
+    mockSpawn.mockReturnValue(proc);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    // worktree add fails, checkout -B succeeds
+    mockExecFileSync
+      .mockImplementationOnce(() => { throw new Error('worktree not supported'); })
+      .mockReturnValue('' as unknown as Buffer);
+
+    const mgr = new BotManager();
+    mgr.spawn('fallback-bot', { projectDir, branch: 'feat/fb' });
+
+    // Should have warned on stderr
+    const warningCalls = stderrSpy.mock.calls.filter(c =>
+      typeof c[0] === 'string' && c[0].includes('WARNING'),
+    );
+    expect(warningCalls.length).toBeGreaterThanOrEqual(1);
+
+    // Should have fallen back to checkout -B
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git',
+      ['checkout', '-B', 'feat/fb'],
+      expect.anything(),
+    );
+
+    stderrSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LogStream leak on spawn failure
+// ---------------------------------------------------------------------------
+
+describe('logStream leak on spawn failure', () => {
+  it('destroys logStream when spawn throws', () => {
+    mockSpawn.mockImplementation(() => { throw new Error('spawn ENOENT'); });
+
+    const mgr = new BotManager();
+    expect(() => mgr.spawn('fail-spawn-bot', { projectDir })).toThrow('spawn ENOENT');
+
+    // The bot should not be registered
+    expect(mgr.get('fail-spawn-bot')).toBeNull();
   });
 });

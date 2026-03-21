@@ -32,7 +32,7 @@ export interface SpawnOpts {
 const BOTS_DIR = path.join(os.homedir(), '.weaver', 'bots');
 
 export class BotManager {
-  private bots = new Map<string, { meta: ManagedBot; process: ChildProcess }>();
+  private bots = new Map<string, { meta: ManagedBot; process: ChildProcess | null }>();
 
   constructor() {
     // Ensure base dir exists
@@ -42,6 +42,7 @@ export class BotManager {
     const cleanup = () => this.cleanup();
     process.on('exit', cleanup);
     process.on('SIGTERM', cleanup);
+    process.on('SIGINT', cleanup);
   }
 
   spawn(name: string, opts: SpawnOpts): ManagedBot {
@@ -53,10 +54,21 @@ export class BotManager {
     fs.mkdirSync(botDir, { recursive: true });
 
     // Create git branch if specified (keeps main clean for overnight runs)
+    // WARNING: checkout -B mutates the user's working directory. Prefer git worktree
+    // for isolation when the project supports it.
     if (opts.branch) {
       try {
-        execFileSync('git', ['checkout', '-B', opts.branch], { cwd: opts.projectDir, encoding: 'utf-8', stdio: 'pipe' });
-      } catch { /* branch may already exist */ }
+        // Try worktree first for isolation (does not mutate the user's working dir)
+        const worktreePath = path.join(botDir, 'worktree');
+        execFileSync('git', ['worktree', 'add', '-B', opts.branch, worktreePath], { cwd: opts.projectDir, encoding: 'utf-8', stdio: 'pipe' });
+        opts.projectDir = worktreePath;
+      } catch {
+        // Worktree unavailable or failed — fall back to checkout but warn
+        process.stderr.write(`[weaver] WARNING: "git checkout -B ${opts.branch}" will switch the working directory in ${opts.projectDir}. Use git worktree for isolation.\n`);
+        try {
+          execFileSync('git', ['checkout', '-B', opts.branch], { cwd: opts.projectDir, encoding: 'utf-8', stdio: 'pipe' });
+        } catch { /* branch may already exist */ }
+      }
     }
 
     const logPath = path.join(botDir, 'output.log');
@@ -83,12 +95,19 @@ export class BotManager {
       WEAVER_STEERING_DIR: botDir,
     };
 
-    const child = spawn(cmd, args, {
-      cwd: opts.projectDir,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: false,
-    });
+    let child: ChildProcess;
+    try {
+      child = spawn(cmd, args, {
+        cwd: opts.projectDir,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: false,
+      });
+    } catch (err) {
+      // Clean up logStream on spawn failure to prevent fd leak
+      logStream.destroy();
+      throw err;
+    }
 
     // Capture output to log file
     child.stdout?.pipe(logStream);
@@ -180,8 +199,8 @@ export class BotManager {
   stop(name: string): void {
     const bot = this.bots.get(name);
     if (!bot) throw new Error(`Bot "${name}" not found.`);
-    // Send SIGTERM for graceful shutdown
-    if (bot.process.pid && !bot.process.killed) {
+    // Send SIGTERM for graceful shutdown (process is null for discovered bots)
+    if (bot.process?.pid && !bot.process.killed) {
       bot.process.kill('SIGTERM');
     }
     bot.meta.status = 'stopped';
@@ -190,7 +209,7 @@ export class BotManager {
   kill(name: string): void {
     const bot = this.bots.get(name);
     if (!bot) throw new Error(`Bot "${name}" not found.`);
-    if (bot.process.pid && !bot.process.killed) {
+    if (bot.process?.pid && !bot.process.killed) {
       bot.process.kill('SIGKILL');
     }
     bot.meta.status = 'stopped';
@@ -208,7 +227,7 @@ export class BotManager {
 
   cleanup(): void {
     for (const [, bot] of this.bots) {
-      if (bot.process.pid && !bot.process.killed) {
+      if (bot.process?.pid && !bot.process.killed) {
         try { bot.process.kill('SIGTERM'); } catch (err) {
           if (process.env.WEAVER_VERBOSE) process.stderr.write(`[weaver] SIGTERM failed for bot: ${err}\n`);
         }
@@ -235,7 +254,7 @@ export class BotManager {
           }
         }
         // Store without a process handle (can only steer via file, not kill directly)
-        this.bots.set(name, { meta, process: null as unknown as ChildProcess });
+        this.bots.set(name, { meta, process: null });
       } catch { /* corrupt meta */ }
     }
   }

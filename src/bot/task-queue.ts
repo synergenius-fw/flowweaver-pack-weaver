@@ -193,9 +193,26 @@ export class TaskQueue {
     return records;
   }
 
+  /** Atomically claim the next pending task: selects highest-priority and marks it running in one lock. */
+  async claimNext(): Promise<QueuedTask | null> {
+    return withFileLock(this.filePath, () => {
+      const tasks = this.readAll();
+      const pending = tasks.filter(t => t.status === 'pending');
+      pending.sort((a, b) => b.priority - a.priority || a.addedAt - b.addedAt);
+      const chosen = pending[0];
+      if (!chosen) return null;
+      chosen.status = 'running';
+      this.writeAll(tasks);
+      return chosen;
+    });
+  }
+
   private writeAll(tasks: QueuedTask[]): void {
     const dir = path.dirname(this.filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(this.filePath, tasks.map(t => JSON.stringify(t)).join('\n') + (tasks.length > 0 ? '\n' : ''), 'utf-8');
+    // Atomic write: write to temp file then rename to avoid partial reads on crash
+    const tmpPath = this.filePath + '.tmp.' + process.pid;
+    fs.writeFileSync(tmpPath, tasks.map(t => JSON.stringify(t)).join('\n') + (tasks.length > 0 ? '\n' : ''), 'utf-8');
+    fs.renameSync(tmpPath, this.filePath);
   }
 }
