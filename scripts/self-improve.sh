@@ -1,16 +1,24 @@
 #!/bin/bash
 # Self-improvement overnight run for pack-weaver.
 # Creates a branch, queues tasks, starts a continuous session until 10:00.
-# Run: bash scripts/self-improve.sh
+# The continuous improvement loop runs MAX_CYCLES times (default 5), not indefinitely.
+#
+# Usage:
+#   bash scripts/self-improve.sh              # default: 5 cycles, until 10:00
+#   bash scripts/self-improve.sh 10           # 10 cycles
+#   bash scripts/self-improve.sh 5 08:00      # 5 cycles, until 08:00
 
 set -e
 cd "$(dirname "$0")/.."
 
+MAX_CYCLES="${1:-5}"
+DEADLINE="${2:-10:00}"
 BRANCH="weaver/self-improve-$(date +%Y%m%d)"
+
 echo "Creating branch: $BRANCH"
 git checkout -B "$BRANCH"
 
-echo "Queuing tasks..."
+echo "Queuing initial tasks..."
 
 npx flow-weaver weaver queue add "Run 'npx vitest run' and report the full results. List every passing and failing test file."
 
@@ -32,13 +40,20 @@ npx flow-weaver weaver queue add "Read src/cli-handlers.ts and add the 'assistan
 
 npx flow-weaver weaver queue add "Review all catch blocks in src/bot/*.ts files. For any catch block that silently swallows errors (empty catch or just '/* ignore */'), add a meaningful error message or at minimum a debug log. Use process.env.WEAVER_VERBOSE check."
 
+# Add the continuous improvement loop with a cycle cap
+for i in $(seq 1 "$MAX_CYCLES"); do
+  npx flow-weaver weaver queue add "CONTINUOUS IMPROVEMENT (cycle $i of $MAX_CYCLES): Run 'npx vitest run' to check current state. Run 'npx flow-weaver validate src/workflows/' to check workflows. Based on results, identify up to 5 improvements needed (missing tests, failing tests, validation errors, code quality). For each, use run_shell to queue it: npx flow-weaver weaver queue add '<description>'. Do NOT queue another CONTINUOUS IMPROVEMENT task — that is handled by the script."
+done
+
+TOTAL=$(npx flow-weaver weaver queue list 2>&1 | grep -c "pending")
 echo ""
-echo "Queued $(npx flow-weaver weaver queue list 2>&1 | grep -c pending) tasks."
+echo "Queued $TOTAL tasks ($MAX_CYCLES improvement cycles)."
 echo ""
-echo "Starting session until 10:00..."
-echo "Branch: $BRANCH"
-echo "Plan: .weaver-plan.md"
-echo "Logs: check 'npx flow-weaver weaver history' after"
+echo "Starting session until $DEADLINE..."
+echo "  Branch: $BRANCH"
+echo "  Plan: .weaver-plan.md"
+echo "  Dedup: enabled (duplicate instructions are skipped)"
+echo "  Logs: check 'npx flow-weaver weaver history' after"
 echo ""
 
-npx flow-weaver weaver session --continuous --auto-approve --until 10:00
+npx flow-weaver weaver session --continuous --auto-approve --until "$DEADLINE"

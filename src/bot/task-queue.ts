@@ -26,6 +26,16 @@ export class TaskQueue {
 
   async add(task: Omit<QueuedTask, 'id' | 'addedAt' | 'status'>): Promise<string> {
     return withFileLock(this.filePath, () => {
+      // Dedup: skip if a pending task with the same instruction already exists
+      const existing = this.readAll();
+      const isDuplicate = existing.some(
+        t => t.status === 'pending' && t.instruction === task.instruction,
+      );
+      if (isDuplicate) {
+        const dup = existing.find(t => t.status === 'pending' && t.instruction === task.instruction)!;
+        return dup.id; // Return existing task ID instead of creating duplicate
+      }
+
       const entry: QueuedTask = {
         ...task,
         id: crypto.randomUUID().slice(0, 8),
