@@ -57,7 +57,6 @@ export class BotManager {
       'flow-weaver', 'weaver', 'session',
       '--continuous',
       '--project-dir', opts.projectDir,
-      '--config-path', path.join(opts.projectDir, '.weaver.json'),
     ];
     if (opts.autoApprove !== false) args.push('--auto-approve');
     if (opts.parallel && opts.parallel > 1) args.push('--parallel', String(opts.parallel));
