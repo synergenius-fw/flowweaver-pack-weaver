@@ -69,6 +69,7 @@ export interface ParsedArgs {
   assistantList?: boolean;
   assistantDelete?: string;
   assistantWatch?: string;
+  assistantMessage?: string;
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -266,6 +267,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === '--watch-dir' && i + 1 < args.length) {
       i++;
       result.assistantWatch = args[i];
+    } else if ((arg === '-m' || arg === '--message') && i + 1 < args.length) {
+      i++;
+      result.assistantMessage = args[i];
     } else if (arg === '--new') {
       result.assistantNew = true;
     } else if (arg === '--resume' && i + 1 < args.length) {
@@ -1668,6 +1672,21 @@ export async function handleAssistant(opts: ParsedArgs): Promise<void> {
   const { ASSISTANT_TOOLS, createAssistantExecutor } = await import('./bot/assistant-tools.js');
   const { runAssistant } = await import('./bot/assistant-core.js');
   const executor = createAssistantExecutor(projectDir);
+
+  // Single message mode: -m "message" — run one message, print result, exit
+  if (opts.assistantMessage) {
+    const { runAgentLoop } = await import('@synergenius/flow-weaver/agent');
+    const result = await runAgentLoop(provider, ASSISTANT_TOOLS, executor, [{ role: 'user', content: opts.assistantMessage }], {
+      maxIterations: 20,
+      onStreamEvent: (e) => { if (e.type === 'text_delta') process.stdout.write(e.text); },
+      onToolEvent: (e) => {
+        if (e.type === 'tool_call_start') process.stderr.write(`\n  ◆ ${e.name}\n`);
+        if (e.type === 'tool_call_result') process.stderr.write(`  → ${(e.result ?? '').replace(/\n/g, ' ').slice(0, 200)}\n`);
+      },
+    });
+    process.stdout.write('\n');
+    process.exit(result.success ? 0 : 1);
+  }
 
   await runAssistant({
     provider,
