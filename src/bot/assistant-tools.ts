@@ -416,7 +416,7 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
           return { result: output.trim() || 'Validation complete.', isError: false };
         }
         case 'fw_diagram': {
-          const output = execFileSync('npx', ['flow-weaver', 'diagram', String(args.file)], {
+          const output = execFileSync('npx', ['flow-weaver', 'diagram', String(args.file), '--format', 'ascii-compact'], {
             encoding: 'utf-8', cwd: projectDir, timeout: 15_000, stdio: ['pipe', 'pipe', 'pipe'],
           });
           return { result: output.trim(), isError: false };
