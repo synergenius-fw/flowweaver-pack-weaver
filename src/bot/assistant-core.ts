@@ -166,12 +166,27 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     weaverVersion = packPkg.version;
   } catch { /* not available */ }
 
-  // Welcome
-  out(`\n  ${c.bold('weaver assistant')} ${c.dim(`v${weaverVersion}`)}  ${c.dim(`· flow-weaver v${fwVersion}`)}\n`);
-  if (process.env.FW_PLATFORM_TOKEN) {
-    out(`  ${c.dim('AI: Platform credits (no API key needed)')}\n`);
-  }
+  // Welcome — detect cloud status from credentials
+  let cloudStatus = '';
+  try {
+    const credPath = path.join(os.homedir(), '.fw', 'credentials.json');
+    const fsMod = await import('node:fs');
+    if (fsMod.existsSync(credPath)) {
+      const creds = JSON.parse(fsMod.readFileSync(credPath, 'utf-8'));
+      if (creds.token && creds.expiresAt > Date.now()) {
+        const credits: Record<string, string> = { free: '$0.50', pro: '$3.00', business: '$10.00' };
+        cloudStatus = `  · ${c.dim(`Cloud: ${creds.plan}`)}\n  ${c.dim(`AI: Platform credits (${credits[creds.plan] ?? '$0'}/month included)`)}`;
+      }
+    }
+  } catch { /* credentials not available */ }
+
+  out(`\n  ${c.bold('weaver assistant')} ${c.dim(`v${weaverVersion}`)}  ${c.dim(`· flow-weaver v${fwVersion}`)}${cloudStatus ? `  · ${c.dim('Cloud: connected')}` : ''}\n`);
   out(`  ${c.dim(`Project: ${path.basename(projectDir)}`)}\n`);
+  if (cloudStatus) {
+    out(`${cloudStatus}\n`);
+  } else {
+    out(`  ${c.dim('AI: Local (run "fw login" for platform credits)')}\n`);
+  }
   if (conversation.title) {
     out(`  ${c.dim(`Resuming: "${conversation.title}" (${conversation.messageCount} messages)`)}\n`);
   } else {
