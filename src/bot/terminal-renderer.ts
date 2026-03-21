@@ -180,9 +180,16 @@ export class TerminalRenderer {
 
     if (event.type === 'tool_call_result') {
       const elapsed = Date.now() - this.lastToolStartTime;
-      const result = (event.result ?? '').replace(/\n/g, ' ').slice(0, 120);
+      const raw = event.result ?? '';
       const icon = event.isError ? c.red('✗') : c.dim('→');
-      this.out(`  ${icon} ${result} ${c.dim(formatElapsed(elapsed))}\n`);
+      // Show full multiline output for verbose tools; one-line summary for others
+      const isVerboseTool = ['fw_diagram', 'fw_describe', 'fw_docs', 'fw_diagram_mermaid', 'bot_logs', 'run_tests', 'tsc_check'].includes(event.name);
+      if (isVerboseTool && raw.includes('\n') && raw.length > 120) {
+        this.out(`  ${icon} ${c.dim(formatElapsed(elapsed))}\n${raw}\n`);
+      } else {
+        const result = raw.replace(/\n/g, ' ').slice(0, 200);
+        this.out(`  ${icon} ${result} ${c.dim(formatElapsed(elapsed))}\n`);
+      }
     }
   }
 
