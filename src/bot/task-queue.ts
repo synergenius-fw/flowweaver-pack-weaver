@@ -20,7 +20,7 @@ export class TaskQueue {
   private filePath: string;
 
   constructor(dir?: string) {
-    const base = dir ?? path.join(os.homedir(), '.weaver');
+    const base = dir ?? process.env.WEAVER_QUEUE_DIR ?? path.join(os.homedir(), '.weaver');
     this.filePath = path.join(base, 'task-queue.ndjson');
   }
 

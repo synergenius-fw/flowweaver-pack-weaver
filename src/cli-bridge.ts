@@ -3,7 +3,8 @@ import {
   handleRun, handleHistory, handleCosts, handleWatch,
   handleCron, handlePipeline, handleDashboard, handleProviders,
   handleEject, handleBot, handleSession, handleSteer, handleQueue,
-  handleStatus, handleGenesis, handleAudit, handleInit, printHelp,
+  handleStatus, handleGenesis, handleAudit, handleInit, handleAssistant,
+  printHelp,
 } from './cli-handlers.js';
 
 const handlers: Record<string, (opts: ParsedArgs) => Promise<void>> = {
@@ -24,6 +25,7 @@ const handlers: Record<string, (opts: ParsedArgs) => Promise<void>> = {
   genesis: handleGenesis,
   audit: handleAudit,
   init: handleInit,
+  assistant: handleAssistant,
 };
 
 export async function handleCommand(

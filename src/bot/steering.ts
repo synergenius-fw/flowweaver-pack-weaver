@@ -13,7 +13,7 @@ export class SteeringController {
   private controlPath: string;
 
   constructor(controlDir?: string) {
-    const dir = controlDir ?? path.join(os.homedir(), '.weaver');
+    const dir = controlDir ?? process.env.WEAVER_STEERING_DIR ?? path.join(os.homedir(), '.weaver');
     this.controlPath = path.join(dir, 'control.json');
   }
 
