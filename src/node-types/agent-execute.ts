@@ -13,7 +13,7 @@ import {
 } from '@synergenius/flow-weaver/agent';
 import { WEAVER_TOOLS, createWeaverExecutor } from '../bot/weaver-tools.js';
 import { auditEmit } from '../bot/audit-logger.js';
-import { withRetry } from '../bot/retry-utils.js';
+import { withRetry, getErrorGuidance } from '../bot/error-classifier.js';
 import { CostTracker } from '../bot/cost-tracker.js';
 
 // Clean up persistent sessions on process exit
@@ -237,11 +237,8 @@ export async function weaverAgentExecute(
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     let errorDetail = msg;
-    try {
-      const { getErrorGuidance } = await import('../bot/error-guide.js');
-      const guidance = getErrorGuidance(msg);
-      if (guidance) errorDetail = `${msg}\n  Hint: ${guidance}`;
-    } catch { /* error guide not available */ }
+    const guidance = getErrorGuidance(msg);
+    if (guidance) errorDetail = `${msg}\n  Hint: ${guidance}`;
     renderer.error('Agent error', errorDetail);
 
     context.resultJson = JSON.stringify({ success: false, error: msg });

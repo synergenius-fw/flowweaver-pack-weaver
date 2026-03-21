@@ -9,101 +9,10 @@
 import { execFileSync } from 'node:child_process';
 import { executeStep } from './step-executor.js';
 import type { ToolDefinition } from '@synergenius/flow-weaver/agent';
+import { BOT_TOOLS as WEAVER_TOOLS } from './tool-registry.js';
+import { isBlockedUrl } from './safety.js';
 
-export const WEAVER_TOOLS: ToolDefinition[] = [
-  {
-    name: 'validate',
-    description: 'Run flow-weaver validate on a workflow file. Returns JSON with errors and warnings. Use this FIRST to discover issues, and AFTER patching to confirm fixes.',
-    inputSchema: { type: 'object', properties: { file: { type: 'string', description: 'Path to the workflow file to validate' } }, required: ['file'] },
-  },
-  {
-    name: 'read_file',
-    description: 'Read a file and return its full contents. Use this to understand file structure before patching.',
-    inputSchema: { type: 'object', properties: { file: { type: 'string', description: 'Path to the file to read' } }, required: ['file'] },
-  },
-  {
-    name: 'patch_file',
-    description: 'Apply surgical find-and-replace patches to a file. Each patch must have exact "find" and "replace" strings. Preferred over write_file for modifications.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        file: { type: 'string', description: 'Path to the file to patch' },
-        patches: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              find: { type: 'string', description: 'Exact string to find' },
-              replace: { type: 'string', description: 'String to replace with' },
-            },
-            required: ['find', 'replace'],
-          },
-          description: 'Array of find/replace patches',
-        },
-      },
-      required: ['file', 'patches'],
-    },
-  },
-  {
-    name: 'run_shell',
-    description: 'Execute a shell command and return output. Use for: npx flow-weaver validate, git status, etc. Blocked: rm -rf, git push, sudo.',
-    inputSchema: { type: 'object', properties: { command: { type: 'string', description: 'Shell command to execute' } }, required: ['command'] },
-  },
-  {
-    name: 'list_files',
-    description: 'List files in a directory, optionally filtered by regex pattern.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        directory: { type: 'string', description: 'Directory to list' },
-        pattern: { type: 'string', description: 'Optional regex filter pattern' },
-      },
-      required: ['directory'],
-    },
-  },
-  {
-    name: 'write_file',
-    description: 'Write content to a file (creates or overwrites). Use patch_file instead for modifications to existing files.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        file: { type: 'string', description: 'Path to the file to write' },
-        content: { type: 'string', description: 'Complete file content' },
-      },
-      required: ['file', 'content'],
-    },
-  },
-  {
-    name: 'web_fetch',
-    description: 'Fetch HTTP content. Returns text body (max 10KB).',
-    inputSchema: { type: 'object', properties: { url: { type: 'string' }, method: { type: 'string', enum: ['GET', 'POST'] } }, required: ['url'] },
-  },
-  {
-    name: 'tsc_check',
-    description: 'Run TypeScript compiler check (no emit). Returns errors if any.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'run_tests',
-    description: 'Run project tests. Returns structured results with pass/fail counts.',
-    inputSchema: { type: 'object', properties: { pattern: { type: 'string', description: 'Test file pattern (optional)' } }, required: [] },
-  },
-  {
-    name: 'ask_user',
-    description: 'Ask the user a question and wait for response. Use when you need a decision.',
-    inputSchema: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] },
-  },
-  {
-    name: 'learn',
-    description: 'Store a fact for future tasks. Key should be descriptive (e.g. "file:src/agent.ts:port-issue").',
-    inputSchema: { type: 'object', properties: { key: { type: 'string' }, value: { type: 'string' } }, required: ['key', 'value'] },
-  },
-  {
-    name: 'recall',
-    description: 'Look up stored knowledge. Returns matching entries.',
-    inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
-  },
-];
+export { WEAVER_TOOLS };
 
 /** Map tool names to step-executor operations. */
 const OPERATION_MAP: Record<string, string> = {
@@ -129,7 +38,7 @@ export function createWeaverExecutor(projectDir: string) {
       case 'web_fetch': {
         const url = String(args.url);
         // Safety: block localhost, internal IPs
-        if (/localhost|127\.0\.0\.1|0\.0\.0\.0|10\.\d|172\.(1[6-9]|2\d|3[01])\.|192\.168\./i.test(url)) {
+        if (isBlockedUrl(url)) {
           return { result: 'Blocked: cannot fetch internal/localhost URLs.', isError: true };
         }
         const resp = await fetch(url, { method: (args.method as string) ?? 'GET', signal: AbortSignal.timeout(15_000) });

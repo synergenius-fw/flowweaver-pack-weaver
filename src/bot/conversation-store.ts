@@ -15,6 +15,7 @@ import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import type { AgentMessage } from '@synergenius/flow-weaver/agent';
 import { withFileLock } from './file-lock.js';
+import { CHARS_PER_TOKEN } from './safety.js';
 
 export interface ConversationRecord {
   id: string;
@@ -37,7 +38,6 @@ interface StoredMessage {
 }
 
 const MAX_INDEX_SIZE = 20;
-const CHARS_PER_TOKEN = 4;
 
 export class ConversationStore {
   private baseDir: string;

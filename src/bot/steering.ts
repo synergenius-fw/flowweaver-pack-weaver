@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
 import { withFileLock } from './file-lock.js';
+import { resolveWeaverDir } from './paths.js';
 
 export interface SteeringCommand {
   command: 'pause' | 'resume' | 'cancel' | 'redirect' | 'queue';
@@ -13,7 +13,7 @@ export class SteeringController {
   private controlPath: string;
 
   constructor(controlDir?: string) {
-    const dir = controlDir ?? process.env.WEAVER_STEERING_DIR ?? path.join(os.homedir(), '.weaver');
+    const dir = controlDir ?? resolveWeaverDir();
     this.controlPath = path.join(dir, 'control.json');
   }
 

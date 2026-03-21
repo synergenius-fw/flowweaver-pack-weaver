@@ -10,6 +10,10 @@ import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { ASSISTANT_TOOLS } from './tool-registry.js';
+import { isBlockedCommand, isBlockedUrl } from './safety.js';
+
+export { ASSISTANT_TOOLS };
 
 // Shared bot manager instance
 let manager: BotManager | null = null;
@@ -17,296 +21,6 @@ function getManager(): BotManager {
   if (!manager) manager = new BotManager();
   return manager;
 }
-
-export const ASSISTANT_TOOLS: ToolDefinition[] = [
-  // Bot management
-  {
-    name: 'bot_spawn',
-    description: 'Start a new bot session. Returns the bot name and status.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', description: 'Unique name for this bot (e.g. "fix-templates")' },
-        project_dir: { type: 'string', description: 'Project directory for the bot to work in' },
-        parallel: { type: 'number', description: 'Number of parallel tasks (1-5, default 1)' },
-        deadline: { type: 'string', description: 'Stop time in HH:MM format (optional)' },
-        branch: { type: 'string', description: 'Git branch for commits (keeps main clean, good for overnight runs)' },
-      },
-      required: ['name'],
-    },
-  },
-  {
-    name: 'bot_list',
-    description: 'List all bot sessions with their status, task counts, and cost.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'bot_status',
-    description: 'Get detailed status of a specific bot including queue and recent activity.',
-    inputSchema: {
-      type: 'object',
-      properties: { name: { type: 'string', description: 'Bot name' } },
-      required: ['name'],
-    },
-  },
-  {
-    name: 'bot_pause',
-    description: 'Pause a running bot. It will finish its current task then wait.',
-    inputSchema: {
-      type: 'object',
-      properties: { name: { type: 'string', description: 'Bot name' } },
-      required: ['name'],
-    },
-  },
-  {
-    name: 'bot_resume',
-    description: 'Resume a paused bot.',
-    inputSchema: {
-      type: 'object',
-      properties: { name: { type: 'string', description: 'Bot name' } },
-      required: ['name'],
-    },
-  },
-  {
-    name: 'bot_stop',
-    description: 'Gracefully stop a bot (finishes current task, then exits).',
-    inputSchema: {
-      type: 'object',
-      properties: { name: { type: 'string', description: 'Bot name' } },
-      required: ['name'],
-    },
-  },
-  {
-    name: 'bot_logs',
-    description: 'Get recent output log from a bot.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', description: 'Bot name' },
-        lines: { type: 'number', description: 'Number of lines to return (default 30)' },
-      },
-      required: ['name'],
-    },
-  },
-
-  // Queue management
-  {
-    name: 'queue_add',
-    description: 'Add a task to a bot\'s queue.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        bot: { type: 'string', description: 'Bot name' },
-        instruction: { type: 'string', description: 'Task instruction' },
-        targets: { type: 'array', items: { type: 'string' }, description: 'Target files (optional)' },
-      },
-      required: ['bot', 'instruction'],
-    },
-  },
-  {
-    name: 'queue_add_batch',
-    description: 'Add multiple tasks to a bot\'s queue at once.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        bot: { type: 'string', description: 'Bot name' },
-        tasks: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              instruction: { type: 'string' },
-              targets: { type: 'array', items: { type: 'string' } },
-            },
-            required: ['instruction'],
-          },
-          description: 'Array of tasks to add',
-        },
-      },
-      required: ['bot', 'tasks'],
-    },
-  },
-  {
-    name: 'queue_list',
-    description: 'List all tasks in a bot\'s queue with their status.',
-    inputSchema: {
-      type: 'object',
-      properties: { bot: { type: 'string', description: 'Bot name' } },
-      required: ['bot'],
-    },
-  },
-  {
-    name: 'queue_retry',
-    description: 'Reset all failed tasks in a bot\'s queue to pending.',
-    inputSchema: {
-      type: 'object',
-      properties: { bot: { type: 'string', description: 'Bot name' } },
-      required: ['bot'],
-    },
-  },
-
-  // Flow-weaver tools
-  {
-    name: 'fw_validate',
-    description: 'Validate a workflow or directory of workflows. Returns errors and warnings.',
-    inputSchema: {
-      type: 'object',
-      properties: { path: { type: 'string', description: 'File or directory path' } },
-      required: ['path'],
-    },
-  },
-  {
-    name: 'fw_diagram',
-    description: 'Generate a text diagram of a workflow.',
-    inputSchema: {
-      type: 'object',
-      properties: { file: { type: 'string', description: 'Workflow file path' } },
-      required: ['file'],
-    },
-  },
-  {
-    name: 'fw_describe',
-    description: 'Get a natural language description of a workflow.',
-    inputSchema: {
-      type: 'object',
-      properties: { file: { type: 'string', description: 'Workflow file path' } },
-      required: ['file'],
-    },
-  },
-  {
-    name: 'fw_docs',
-    description: 'Look up Flow Weaver documentation by topic. Topics: concepts, jsdoc-grammar, advanced-annotations, built-in-nodes, scaffold, node-conversion, patterns, error-codes, debugging, export-interface.',
-    inputSchema: {
-      type: 'object',
-      properties: { topic: { type: 'string', description: 'Documentation topic slug' } },
-      required: ['topic'],
-    },
-  },
-
-  // Project tools
-  {
-    name: 'read_file',
-    description: 'Read a file and return its contents.',
-    inputSchema: {
-      type: 'object',
-      properties: { file: { type: 'string', description: 'File path' } },
-      required: ['file'],
-    },
-  },
-  {
-    name: 'list_files',
-    description: 'List files in a directory.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        directory: { type: 'string', description: 'Directory path' },
-        pattern: { type: 'string', description: 'Filter pattern (regex, optional)' },
-      },
-      required: ['directory'],
-    },
-  },
-  {
-    name: 'run_shell',
-    description: 'Run a shell command (read-only operations recommended).',
-    inputSchema: {
-      type: 'object',
-      properties: { command: { type: 'string', description: 'Shell command to execute' } },
-      required: ['command'],
-    },
-  },
-
-  // Conversation management
-  {
-    name: 'conversation_list',
-    description: 'List saved assistant conversations with message counts and timestamps.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'conversation_delete',
-    description: 'Delete a saved conversation by ID.',
-    inputSchema: {
-      type: 'object',
-      properties: { id: { type: 'string', description: 'Conversation ID to delete' } },
-      required: ['id'],
-    },
-  },
-  {
-    name: 'conversation_summary',
-    description: 'Get a summary of the current conversation (message count, tokens, bots spawned).',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-
-  // Web access
-  {
-    name: 'web_fetch',
-    description: 'Fetch HTTP content from a URL. Returns text body (max 10KB).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        url: { type: 'string', description: 'URL to fetch' },
-        method: { type: 'string', description: 'HTTP method (default GET)', enum: ['GET', 'POST'] },
-      },
-      required: ['url'],
-    },
-  },
-
-  // CI/CD
-  {
-    name: 'github_status',
-    description: 'Check GitHub Actions status for a branch or PR. Requires gh CLI installed.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        branch: { type: 'string', description: 'Branch name (optional, defaults to current)' },
-        pr: { type: 'number', description: 'PR number (optional, checks PR status instead of branch)' },
-      },
-      required: [],
-    },
-  },
-
-  // Cross-repo
-  {
-    name: 'project_list',
-    description: 'List known project directories that have been used with weaver.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'project_context',
-    description: 'Read package.json and .weaver-plan.md from a project directory to understand its context.',
-    inputSchema: {
-      type: 'object',
-      properties: { directory: { type: 'string', description: 'Absolute path to project directory' } },
-      required: ['directory'],
-    },
-  },
-
-  // Diagrams
-  {
-    name: 'fw_diagram_mermaid',
-    description: 'Generate a Mermaid diagram of a workflow (can be rendered in any Mermaid viewer).',
-    inputSchema: {
-      type: 'object',
-      properties: { file: { type: 'string', description: 'Workflow file path' } },
-      required: ['file'],
-    },
-  },
-
-  // Knowledge
-  {
-    name: 'knowledge_list',
-    description: 'List all stored knowledge entries for the current project.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'knowledge_search',
-    description: 'Search stored knowledge by keyword.',
-    inputSchema: {
-      type: 'object',
-      properties: { query: { type: 'string', description: 'Search query' } },
-      required: ['query'],
-    },
-  },
-];
 
 export function createAssistantExecutor(projectDir: string): ToolExecutor {
   const mgr = getManager();
@@ -458,8 +172,7 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
         case 'run_shell': {
           const cmd = String(args.command);
           // Safety: block destructive commands
-          const blocked = ['rm -rf', 'git push', 'npm publish', 'sudo', 'curl|sh', 'wget|sh'];
-          if (blocked.some(b => cmd.includes(b))) {
+          if (isBlockedCommand(cmd)) {
             return { result: `Blocked: "${cmd}" is not allowed.`, isError: true };
           }
           const output = execFileSync('sh', ['-c', cmd], {
@@ -504,7 +217,7 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
 
         case 'web_fetch': {
           const url = String(args.url);
-          if (/localhost|127\.0\.0\.1|0\.0\.0\.0|10\.\d|172\.(1[6-9]|2\d|3[01])\.|192\.168\./i.test(url)) {
+          if (isBlockedUrl(url)) {
             return { result: 'Blocked: cannot fetch internal/localhost URLs.', isError: true };
           }
           const resp = await fetch(url, { method: (args.method as string) ?? 'GET', signal: AbortSignal.timeout(15_000) });

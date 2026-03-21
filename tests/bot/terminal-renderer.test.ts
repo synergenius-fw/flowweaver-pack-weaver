@@ -409,15 +409,15 @@ describe('TerminalRenderer.onToolEvent', () => {
     expect(output()).toContain('something went wrong');
   });
 
-  it('truncates long results to 120 chars', () => {
+  it('truncates long results to 200 chars', () => {
     const { renderer, output } = makeRenderer();
     renderer.onToolEvent({ type: 'tool_call_start', name: 'foo', args: {} });
-    const longResult = 'X'.repeat(200);
+    const longResult = 'X'.repeat(300);
     renderer.onToolEvent({ type: 'tool_call_result', name: 'foo', result: longResult, isError: false });
     const out = output();
-    // The result portion should not contain the full 200-char string
+    // The result portion should not contain the full 300-char string
     expect(out).not.toContain(longResult);
-    expect(out).toContain('X'.repeat(120));
+    expect(out).toContain('X'.repeat(200));
   });
 
   it('collapses newlines in result to spaces', () => {
