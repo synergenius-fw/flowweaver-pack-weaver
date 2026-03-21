@@ -117,13 +117,27 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     }
   }
 
+  // Resolve versions
+  let fwVersion = '?';
+  let weaverVersion = '?';
+  try {
+    const { execFileSync: vExec } = await import('node:child_process');
+    fwVersion = vExec('npx', ['flow-weaver', '--version'], { encoding: 'utf-8', cwd: projectDir, timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] }).trim().replace(/^flow-weaver\s+v?/i, '');
+  } catch { /* not available */ }
+  try {
+    const fsMod = await import('node:fs');
+    const url = await import('node:url');
+    const packPkg = JSON.parse(fsMod.readFileSync(new url.URL('../package.json', import.meta.url), 'utf-8'));
+    weaverVersion = packPkg.version;
+  } catch { /* not available */ }
+
   // Welcome
-  out(`\n  ${c.bold('weaver assistant')}\n`);
-  out(`  ${c.dim(`Project: ${projectDir}`)}\n`);
+  out(`\n  ${c.bold('weaver assistant')} ${c.dim(`v${weaverVersion}`)}  ${c.dim(`· flow-weaver v${fwVersion}`)}\n`);
+  out(`  ${c.dim(`Project: ${path.basename(projectDir)}`)}\n`);
   if (conversation.title) {
     out(`  ${c.dim(`Resuming: "${conversation.title}" (${conversation.messageCount} messages)`)}\n`);
   } else {
-    out(`  ${c.dim(`Conversation: ${conversation.id}`)}\n`);
+    out(`  ${c.dim(`New conversation`)}\n`);
   }
   out(`  ${c.dim('Type your request. Ctrl+C to exit. /help for commands.')}\n\n`);
 

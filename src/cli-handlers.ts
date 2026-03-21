@@ -2125,6 +2125,15 @@ export async function handleDoctor(opts: ParsedArgs): Promise<void> {
     checks.push({ label: 'Connection', status: 'warn', detail: 'Not tested' });
   }
 
+  // Weaver version (this pack)
+  try {
+    const url = await import('node:url');
+    const packPkg = JSON.parse(fs.readFileSync(new url.URL('../package.json', import.meta.url) as unknown as string, 'utf-8'));
+    checks.push({ label: 'Weaver', status: 'ok', detail: `v${packPkg.version}` });
+  } catch {
+    checks.push({ label: 'Weaver', status: 'ok', detail: 'unknown version' });
+  }
+
   // Flow Weaver version
   try {
     const { execFileSync: fwCheck } = await import('node:child_process');
