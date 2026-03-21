@@ -103,13 +103,12 @@ afterEach(() => {
 // ── bot_spawn ──────────────────────────────────────────────────────────────
 
 describe('bot_spawn', () => {
-  it('spawns a bot and returns JSON with correct fields', async () => {
+  it('spawns a bot and returns readable status message', async () => {
     const result = await executor('bot_spawn', { name: 'my-bot', project_dir: projectDir });
 
     expect(result.isError).toBe(false);
-    const bot = JSON.parse(result.result);
-    expect(bot.name).toBe('my-bot');
-    expect(bot.status).toBe('running');
+    expect(result.result).toContain('my-bot');
+    expect(result.result).toContain('started');
     expect(mockMgr.spawn).toHaveBeenCalledWith('my-bot', expect.objectContaining({ projectDir }));
   });
 

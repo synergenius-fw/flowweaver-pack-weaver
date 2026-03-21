@@ -1663,7 +1663,14 @@ export async function handleAssistant(opts: ParsedArgs): Promise<void> {
     }) as import('@synergenius/flow-weaver/agent').AgentProvider;
   } else if (providerType === 'anthropic' || (providerType === 'auto' && process.env.ANTHROPIC_API_KEY)) {
     const apiKey = process.env.ANTHROPIC_API_KEY ?? (typeof providerSetting === 'object' ? (providerSetting as { apiKey?: string }).apiKey : undefined);
-    if (!apiKey) { console.error('ANTHROPIC_API_KEY required for anthropic provider'); process.exit(1); }
+    if (!apiKey) {
+      console.error('\n  No API key found.\n');
+      console.error('  Set one of:');
+      console.error('    export ANTHROPIC_API_KEY=sk-...');
+      console.error('    fw login                          (platform credentials)');
+      console.error('    flow-weaver weaver init            (auto-detect provider)\n');
+      process.exit(1);
+    }
     provider = createAnthropicProvider({ apiKey, model: typeof providerSetting === 'object' ? providerSetting.model : undefined });
   } else {
     provider = createClaudeCliProvider({ model: typeof providerSetting === 'object' ? providerSetting.model : undefined });

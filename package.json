@@ -67,7 +67,7 @@
     "dev:install": "npm run dev && node -e \"const p=process.argv[1]; if(!p){console.error('Usage: npm run dev:install -- /path/to/project');process.exit(1)} require('child_process').execSync('npm install --no-save /tmp/synergenius-flow-weaver-pack-weaver-'+require('./package.json').version+'.tgz',{cwd:p,stdio:'inherit'}); require('child_process').execSync('find '+p+' -name fw-exec-\\* -type f -delete',{stdio:'pipe'}); console.log('✓ Installed in '+p+' (cache cleaned)')\" --"
   },
   "devDependencies": {
-    "@synergenius/flow-weaver": "^0.22.10",
+    "@synergenius/flow-weaver": "^0.23.0",
     "@types/node": "^25.3.5",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
@@ -77,5 +77,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/synergenius-fw/flow-weaver-pack-weaver"
+  },
+  "dependencies": {
+    "@synergenius/flow-weaver-pack-weaver": "^0.9.8"
   }
 }

@@ -46,7 +46,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     handler: async (ctx) => {
       const bots = await ctx.executor('bot_list', {});
       const summary = await ctx.executor('conversation_summary', {});
-      ctx.out(`\n  ${bots.result}\n  ${summary.result}\n\n`);
+      ctx.out(`\n  Bots:\n  ${bots.result}\n\n  Conversation:\n  ${summary.result}\n\n`);
     },
   },
   {
@@ -63,6 +63,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     handler: async (ctx) => {
       process.stderr.write('\x1b[2J\x1b[H');
       ctx.onClear?.();
+      ctx.out(`  ${c.dim('Screen cleared. New conversation started.')}\n\n`);
     },
   },
   {

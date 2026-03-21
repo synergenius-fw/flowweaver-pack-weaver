@@ -46,7 +46,7 @@ export class BotManager {
 
   spawn(name: string, opts: SpawnOpts): ManagedBot {
     if (this.bots.has(name)) {
-      throw new Error(`Bot "${name}" already exists. Stop it first or use a different name.`);
+      throw new Error(`Bot "${name}" already exists. Use bot_stop("${name}") first, or choose a different name.`);
     }
 
     const botDir = path.join(BOTS_DIR, name);

@@ -122,10 +122,10 @@ describe('paths', () => {
 describe('safety', () => {
   it('isBlockedCommand detects dangerous commands', async () => {
     const { isBlockedCommand } = await import('../src/bot/safety.js');
-    expect(isBlockedCommand('rm -rf /')).toBe(true);
-    expect(isBlockedCommand('git push origin main')).toBe(true);
-    expect(isBlockedCommand('npm publish')).toBe(true);
-    expect(isBlockedCommand('sudo apt install')).toBe(true);
+    expect(isBlockedCommand('rm -rf /')).toBe('rm -rf');
+    expect(isBlockedCommand('git push origin main')).toBe('git push');
+    expect(isBlockedCommand('npm publish')).toBe('npm publish');
+    expect(isBlockedCommand('sudo apt install')).toBe('sudo');
     expect(isBlockedCommand('echo hello')).toBe(false);
     expect(isBlockedCommand('npx vitest run')).toBe(false);
   });

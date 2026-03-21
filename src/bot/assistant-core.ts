@@ -98,7 +98,10 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       chunks.push(typeof chunk === 'string' ? chunk : chunk.toString());
     }
     const pipeInput = chunks.join('').trim();
-    if (!pipeInput) return;
+    if (!pipeInput) {
+      process.stderr.write('  No input provided. Pipe a message: echo "describe my workflows" | flow-weaver weaver assistant\n');
+      return;
+    }
 
     // Build system prompt for pipe mode
     let systemPrompt = opts.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
@@ -118,7 +121,7 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       onStreamEvent: (e) => { if (e.type === 'text_delta') out(e.text); },
       onToolEvent: (e) => {
         if (e.type === 'tool_call_start') out(`\n  ${c.cyan('◆')} ${e.name}\n`);
-        if (e.type === 'tool_call_result') out(`  ${c.dim('→')} ${(e.result ?? '').slice(0, 200)}\n`);
+        if (e.type === 'tool_call_result') out(`  ${c.dim('→')} ${(e.result ?? '').slice(0, 500)}\n`);
       },
     });
     out('\n');
@@ -142,7 +145,7 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
   const store = new ConversationStore();
 
   // Resolve conversation: resume, new, or auto
-  let conversation: { id: string; title: string; messageCount: number };
+  let conversation: { id: string; title: string; messageCount: number; lastMessageAt: number };
   const history: AgentMessage[] = [];
 
   if (opts.resumeId) {
@@ -193,6 +196,8 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       if (creds.token && creds.expiresAt > Date.now()) {
         cloudPlan = creds.plan ?? 'connected';
         cloudStatus = `Cloud: ${cloudPlan}`;
+      } else if (creds.token) {
+        cloudStatus = 'Cloud: expired (run "fw login" to refresh)';
       }
     }
   } catch { /* credentials not available */ }
@@ -205,11 +210,13 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     out(`  ${c.dim('AI: Local (set ANTHROPIC_API_KEY or run "fw login" to connect)')}\n`);
   }
   if (conversation.title) {
-    out(`  ${c.dim(`Resuming: "${conversation.title}" (${conversation.messageCount} messages)`)}\n`);
+    const ago = Math.round((Date.now() - conversation.lastMessageAt) / 60000);
+    out(`  ${c.dim(`Resuming: "${conversation.title}" (${conversation.messageCount} messages, ${ago}m ago). /new to start fresh`)}\n`);
   } else {
     out(`  ${c.dim('New conversation')}\n`);
   }
-  out(`  ${c.dim('Type your request. Ctrl+C to exit. /help for commands.')}\n\n`);
+  out(`  ${c.dim('Type your request. Ctrl+C to exit. /help for commands.')}\n`);
+  out(`  ${c.dim('Try: "describe my workflows" or "fix validation errors"')}\n\n`);
 
   // Rich input with history, arrows, tab completion, slash commands
   const { RichInput } = await import('./rich-input.js');
@@ -291,7 +298,7 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
           const parsed = JSON.parse(result);
           const errorCount = parsed.errorCount ?? parsed.errors?.length ?? 0;
           if (errorCount > 0) {
-            out(`\n  ${c.yellow('⚠')} ${filename} changed: ${errorCount} validation error(s)\n`);
+            out(`\n  ${c.yellow('⚠')} ${opts.watchDir}/${filename}: ${errorCount} validation error(s). Ask me to fix them.\n`);
             out(`  ${c.dim('Type a message to fix, or ignore.')}\n`);
           }
         } catch { /* validation failed or not a workflow — ignore */ }

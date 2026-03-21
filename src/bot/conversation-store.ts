@@ -108,6 +108,7 @@ export class ConversationStore {
 
     const content = fs.readFileSync(msgPath, 'utf-8');
     const messages: AgentMessage[] = [];
+    let corruptCount = 0;
 
     for (const line of content.split('\n')) {
       if (!line.trim()) continue;
@@ -121,8 +122,12 @@ export class ConversationStore {
         if (stored.toolCallId) msg.toolCallId = stored.toolCallId;
         messages.push(msg);
       } catch {
-        // Skip corrupt lines
+        corruptCount++;
       }
+    }
+
+    if (corruptCount > 0) {
+      console.warn(`  (Warning: skipped ${corruptCount} corrupt message(s) in conversation ${id})`);
     }
 
     return messages;

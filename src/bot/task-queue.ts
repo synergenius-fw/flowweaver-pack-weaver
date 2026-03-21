@@ -57,7 +57,7 @@ export class TaskQueue {
       // Queue size cap
       const pendingCount = existing.filter(t => t.status === 'pending').length;
       if (pendingCount >= MAX_PENDING) {
-        throw new Error(`Queue full (${MAX_PENDING} pending tasks). Clear or process existing tasks first.`);
+        throw new Error(`Queue full (${MAX_PENDING} pending tasks). Use queue_retry to resume failed tasks, or queue_list to review.`);
       }
 
       const entry: QueuedTask = {

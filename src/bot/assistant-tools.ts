@@ -38,7 +38,7 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
             deadline: args.deadline as string | undefined,
             branch: args.branch as string | undefined,
           });
-          return { result: JSON.stringify(bot), isError: false };
+          return { result: `Bot "${botName}" started (pid ${bot.pid}). Add tasks with queue_add or check status with bot_status.`, isError: false };
         }
         case 'bot_list': {
           const bots = mgr.list();
@@ -65,7 +65,7 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
           if (failedTasks.length > 0) {
             result += `\nFailed tasks:\n`;
             for (const t of failedTasks) {
-              result += `  - ${t.instruction.slice(0, 80)}\n`;
+              result += `  - ${t.instruction.slice(0, 120)}\n`;
             }
           }
           return { result, isError: false };
@@ -95,7 +95,7 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
             targets: args.targets as string[] | undefined,
             priority: 0,
           });
-          if (duplicate) return { result: `Task already queued (${id}).`, isError: false };
+          if (duplicate) return { result: `Skipped: similar task already exists (${id}).`, isError: false };
           return { result: `Added task ${id} to "${args.bot}" queue.`, isError: false };
         }
         case 'queue_add_batch': {
@@ -113,7 +113,7 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
           const queue = mgr.getQueue(String(args.bot));
           const tasks = await queue.list();
           if (tasks.length === 0) return { result: 'Queue is empty.', isError: false };
-          const lines = tasks.map(t => `[${t.status}] ${t.instruction.slice(0, 70)}`);
+          const lines = tasks.map(t => `[${t.status}] ${t.instruction.slice(0, 120)}`);
           return { result: lines.join('\n'), isError: false };
         }
         case 'queue_retry': {
@@ -172,8 +172,9 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
         case 'run_shell': {
           const cmd = String(args.command);
           // Safety: block destructive commands
-          if (isBlockedCommand(cmd)) {
-            return { result: `Blocked: "${cmd}" is not allowed.`, isError: true };
+          const blockedPattern = isBlockedCommand(cmd);
+          if (blockedPattern) {
+            return { result: `Blocked: command matches disallowed pattern "${blockedPattern}".`, isError: true };
           }
           const output = execFileSync('sh', ['-c', cmd], {
             encoding: 'utf-8', cwd: projectDir, timeout: 30_000, stdio: ['pipe', 'pipe', 'pipe'],
@@ -312,7 +313,7 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { result: msg.slice(0, 500), isError: true };
+      return { result: msg.length > 500 ? msg.slice(0, 497) + '...' : msg, isError: true };
     }
   };
 }
