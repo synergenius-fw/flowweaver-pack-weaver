@@ -1515,12 +1515,11 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
     elapsed,
   });
 
-  // macOS desktop notification on session end
-  if (process.platform === 'darwin' && taskCount > 0) {
+  // Desktop notification on session end (cross-platform)
+  if (taskCount > 0) {
     try {
-      const { execFileSync: execNotify } = await import('node:child_process');
-      const msg = `${sessionCompleted} done, ${sessionFailed} failed, ${sessionNoOp} no-op`;
-      execNotify('osascript', ['-e', `display notification "${msg}" with title "Weaver Session Complete"`], { stdio: 'ignore' });
+      const { sendDesktopNotification } = await import('./bot/bot-manager.js');
+      sendDesktopNotification('Weaver Session Complete', `${sessionCompleted} done, ${sessionFailed} failed, ${sessionNoOp} no-op`);
     } catch { /* non-fatal */ }
   }
 }

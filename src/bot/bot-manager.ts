@@ -73,12 +73,8 @@ export class BotManager {
     if (opts.parallel && opts.parallel > 1) sessionArgs.push('--parallel', String(opts.parallel));
     if (opts.deadline) sessionArgs.push('--until', opts.deadline);
 
-    // On macOS, wrap with caffeinate to prevent sleep during long runs
-    const isMac = process.platform === 'darwin';
-    const cmd = isMac ? 'caffeinate' : 'npx';
-    const args = isMac
-      ? ['-i', '-s', 'npx', ...sessionArgs]  // -i: prevent idle sleep, -s: prevent system sleep
-      : sessionArgs;
+    // Prevent system sleep during long runs (cross-platform)
+    const { cmd, args } = wrapWithSleepInhibitor('npx', sessionArgs);
 
     // Set queue/steering to bot-specific paths
     const env = {
@@ -242,5 +238,56 @@ export class BotManager {
         this.bots.set(name, { meta, process: null as unknown as ChildProcess });
       } catch { /* corrupt meta */ }
     }
+  }
+}
+
+/**
+ * Cross-platform sleep inhibitor. Wraps a command to prevent the OS from sleeping.
+ * - macOS: caffeinate -i -s
+ * - Linux: systemd-inhibit (if available)
+ * - Windows/other: no wrapper (runs command directly)
+ */
+function wrapWithSleepInhibitor(command: string, args: string[]): { cmd: string; args: string[] } {
+  switch (process.platform) {
+    case 'darwin':
+      return { cmd: 'caffeinate', args: ['-i', '-s', command, ...args] };
+    case 'linux': {
+      // Check if systemd-inhibit is available
+      try {
+        execFileSync('which', ['systemd-inhibit'], { stdio: 'pipe' });
+        return {
+          cmd: 'systemd-inhibit',
+          args: ['--what=idle:sleep', '--who=weaver', '--why=Bot session running', command, ...args],
+        };
+      } catch {
+        return { cmd: command, args };
+      }
+    }
+    default:
+      return { cmd: command, args };
+  }
+}
+
+/**
+ * Cross-platform desktop notification.
+ * - macOS: osascript
+ * - Linux: notify-send (if available)
+ * - Windows: PowerShell toast (if available)
+ */
+export function sendDesktopNotification(title: string, message: string): void {
+  try {
+    switch (process.platform) {
+      case 'darwin':
+        execFileSync('osascript', ['-e', `display notification "${message}" with title "${title}"`], { stdio: 'ignore' });
+        break;
+      case 'linux':
+        execFileSync('notify-send', [title, message], { stdio: 'ignore' });
+        break;
+      case 'win32':
+        execFileSync('powershell', ['-Command', `[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); [System.Windows.Forms.MessageBox]::Show('${message}','${title}')`], { stdio: 'ignore' });
+        break;
+    }
+  } catch {
+    // Non-fatal — notification is best-effort
   }
 }
