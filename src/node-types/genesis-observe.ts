@@ -46,14 +46,16 @@ export async function genesisObserve(
 
   try {
     const files: Record<string, string> = {};
-    const dirsToScan = [projectDir];
-    const srcDir = path.join(projectDir, 'src');
-    if (fs.existsSync(srcDir) && fs.statSync(srcDir).isDirectory()) dirsToScan.push(srcDir);
+    const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'coverage', '.next', '.turbo']);
 
-    for (const dir of dirsToScan) {
+    function walkDir(dir: string): void {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
       for (const entry of entries) {
-        if (entry.isFile() && entry.name.endsWith('.ts')) {
+        if (entry.isDirectory()) {
+          if (!SKIP_DIRS.has(entry.name)) {
+            walkDir(path.join(dir, entry.name));
+          }
+        } else if (entry.isFile() && entry.name.endsWith('.ts')) {
           const filePath = path.join(dir, entry.name);
           const relPath = path.relative(projectDir, filePath);
           const content = fs.readFileSync(filePath, 'utf-8');
@@ -61,6 +63,8 @@ export async function genesisObserve(
         }
       }
     }
+
+    walkDir(projectDir);
 
     let packageJson: Record<string, unknown> | null = null;
     const pkgPath = path.join(projectDir, 'package.json');

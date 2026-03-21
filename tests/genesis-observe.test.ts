@@ -282,6 +282,47 @@ describe('genesisObserve', () => {
     expect(Object.keys(fp.files)).toContain(path.join('src', 'helper.ts'));
   });
 
+  it('recursively scans deeply nested directories', async () => {
+    const deepDir = path.join(tmpDir, 'src', 'bot', 'utils');
+    fs.mkdirSync(deepDir, { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'workflow.ts'), '/** @flowWeaver workflow */\nexport function myWorkflow() {}');
+    fs.writeFileSync(path.join(deepDir, 'deep-helper.ts'), '// deeply nested');
+
+    mockedExecFileSync
+      .mockReturnValueOnce('main\n' as any)
+      .mockReturnValueOnce('abc123\n' as any);
+
+    const result = await genesisObserve(true, makeCtx(tmpDir, 'workflow.ts'));
+    expect(result.onSuccess).toBe(true);
+
+    const fp = JSON.parse(JSON.parse(result.ctx).fingerprintJson);
+    expect(Object.keys(fp.files)).toContain(path.join('src', 'bot', 'utils', 'deep-helper.ts'));
+  });
+
+  it('skips node_modules, dist, .git, coverage directories', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'workflow.ts'), '/** @flowWeaver workflow */\nexport function myWorkflow() {}');
+
+    for (const skipDir of ['node_modules', 'dist', '.git', 'coverage']) {
+      const dir = path.join(tmpDir, skipDir);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'should-skip.ts'), '// skipped');
+    }
+
+    mockedExecFileSync
+      .mockReturnValueOnce('main\n' as any)
+      .mockReturnValueOnce('abc123\n' as any);
+
+    const result = await genesisObserve(true, makeCtx(tmpDir, 'workflow.ts'));
+    expect(result.onSuccess).toBe(true);
+
+    const fp = JSON.parse(JSON.parse(result.ctx).fingerprintJson);
+    const fileKeys = Object.keys(fp.files);
+
+    for (const skipDir of ['node_modules', 'dist', '.git', 'coverage']) {
+      expect(fileKeys.some(k => k.startsWith(skipDir))).toBe(false);
+    }
+  });
+
   it('returns onFailure=true when target workflow file does not exist', async () => {
     // No files created — targetWorkflow.ts doesn't exist
     mockedExecFileSync
