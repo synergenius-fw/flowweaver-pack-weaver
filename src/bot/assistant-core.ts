@@ -394,10 +394,29 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
 
     // Handle slash commands
     if (input.startsWith('/')) {
-      const handled = await handleSlashCommand(input, slashCtx);
-      if (handled) continue;
-      // Unknown slash command — tell user
-      out(`  ${c.dim('Unknown command. Type /help for available commands.')}\n\n`);
+      if (isDebug) {
+        // Capture slash command output for debug JSON
+        let slashOutput = '';
+        const debugSlashCtx = { ...slashCtx, out: (s: string) => { slashOutput += s; } };
+        const handled = await handleSlashCommand(input, debugSlashCtx);
+        if (handled) {
+          debugTurnCount++;
+          // Strip ANSI codes for clean debug output
+          const clean = slashOutput.replace(/\x1b\[[0-9;]*m/g, '').trim();
+          process.stdout.write(JSON.stringify({
+            turn: debugTurnCount,
+            input,
+            slashCommand: true,
+            response: clean,
+            conversationId: conversation.id,
+          }) + '\n');
+          continue;
+        }
+      } else {
+        const handled = await handleSlashCommand(input, slashCtx);
+        if (handled) continue;
+      }
+      if (!isDebug) out(`  ${c.dim('Unknown command. Type /help for available commands.')}\n\n`);
       continue;
     }
 

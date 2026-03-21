@@ -49,7 +49,12 @@ export class ProjectModelStore {
     let runs: Array<{ workflowFile: string; startedAt: string; finishedAt: string; durationMs: number; success: boolean; outcome: string; summary: string }> = [];
     try {
       const { RunStore } = await import('./run-store.js');
-      runs = new RunStore().list({ limit: 10_000 });
+      const allRuns = new RunStore().list({ limit: 10_000 });
+      // Filter to runs within this project directory, excluding node_modules
+      runs = allRuns.filter(r =>
+        r.workflowFile.startsWith(this.projectDir) &&
+        !r.workflowFile.includes('/node_modules/')
+      );
     } catch { /* unavailable */ }
 
     let auditEvents: Array<{ type: string; timestamp: string; runId: string; data?: Record<string, unknown> }> = [];
@@ -181,7 +186,12 @@ export class ProjectModelStore {
     const d14 = now - 14 * 86_400_000;
     const result: WorkflowHealth[] = [];
 
-    for (const [file, wfRuns] of byWorkflow) {
+    for (const [absFile, wfRuns] of byWorkflow) {
+      // Convert to relative path for display
+      const file = absFile.startsWith(this.projectDir)
+        ? path.relative(this.projectDir, absFile)
+        : absFile;
+
       const totalRuns = wfRuns.length;
       const successRate = totalRuns > 0 ? wfRuns.filter(r => r.success).length / totalRuns : 0;
       const avgDurationMs = totalRuns > 0 ? Math.round(wfRuns.reduce((s, r) => s + (r.durationMs ?? 0), 0) / totalRuns) : 0;
