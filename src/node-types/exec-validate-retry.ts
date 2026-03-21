@@ -114,7 +114,8 @@ export async function weaverExecValidateRetry(
         try {
           const mod = await import('../bot/system-prompt.js');
           systemPrompt = await mod.buildSystemPrompt();
-        } catch {
+        } catch (err) {
+          if (process.env.WEAVER_VERBOSE) console.error('[exec-validate-retry] system prompt build failed:', err);
           systemPrompt = 'You are Weaver. Return ONLY valid JSON.';
         }
 

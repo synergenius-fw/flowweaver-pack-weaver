@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { WeaverConfig } from '../bot/types.js';
+import type { BotConfig } from '../bot/types.js';
 
 /**
  * Read .weaver.json, merge with defaults, and output the config object.
@@ -13,10 +13,10 @@ import type { WeaverConfig } from '../bot/types.js';
  * @output config [order:1] - Weaver configuration
  * @output onFailure [hidden]
  */
-export function weaverLoadConfig(projectDir?: string): { projectDir: string; config: WeaverConfig } {
+export function weaverLoadConfig(projectDir?: string): { projectDir: string; config: BotConfig } {
   const dir = projectDir || process.cwd();
   const configPath = path.join(dir, '.weaver.json');
-  let config: WeaverConfig = { provider: 'auto' };
+  let config: BotConfig = { provider: 'auto' };
   if (fs.existsSync(configPath)) {
     config = { ...config, ...JSON.parse(fs.readFileSync(configPath, 'utf-8')) };
     console.log(`\x1b[36m→ Loaded config from ${configPath}\x1b[0m`);

@@ -33,40 +33,48 @@ import { genesisEscrowGrace } from '../node-types/genesis-escrow-grace.js';
  * @flowWeaver workflow
  *
  * @node cfg       weaverLoadConfig         [color: "teal"]    [icon: "settings"]     [position: 200 200]
- * @node detect    weaverDetectProvider     [color: "cyan"]    [icon: "search"]       [position: 400 200]
+ * @node detect    weaverDetectProvider     [color: "cyan"]    [icon: "search"]       [position: 400 200] [suppress: "OBJECT_TYPE_MISMATCH", "ANNOTATION_SIGNATURE_TYPE_MISMATCH"]
  * @node gCfg      genesisLoadConfig        [color: "purple"]  [icon: "settings"]     [position: 600 200]
- * @node escRecover genesisEscrowRecover    [color: "yellow"]  [icon: "healing"]      [position: 750 200]
+ * @node escRecover genesisEscrowRecover    [color: "yellow"]  [icon: "healthAndSafety"] [position: 750 200]
  * @node observe   genesisObserve           [color: "blue"]    [icon: "visibility"]   [position: 900 200]
- * @node diffFp    genesisDiffFingerprint   [color: "cyan"]    [icon: "compare"]      [position: 1100 200]
+ * @node diffFp    genesisDiffFingerprint   [color: "cyan"]    [icon: "assessment"]   [position: 1100 200]
  * @node stabilize genesisCheckStabilize    [color: "orange"]  [icon: "lock"]         [position: 1300 200]
  * @node propose   genesisPropose           [color: "blue"]    [icon: "psychology"]   [position: 1500 200]
- * @node validate  genesisValidateProposal  [color: "teal"]    [icon: "check"]        [position: 1700 200]
+ * @node validate  genesisValidateProposal  [color: "teal"]    [icon: "checkCircle"]  [position: 1700 200]
  * @node snapshot  genesisSnapshot          [color: "cyan"]    [icon: "backup"]       [position: 1900 200]
- * @node applyRetry genesisApplyRetry       [color: "purple"]  [icon: "replay"]       [position: 2100 200] [size: 300 200]
- * @node tryApply  genesisTryApply          applyRetry.attempt [position: 2150 230]
- * @node diffWf    genesisDiffWorkflow      [color: "cyan"]    [icon: "compare"]      [position: 2440 200]
+ * @node applyRetry genesisApplyRetry       [color: "purple"]  [icon: "repeat"]       [position: 2100 200] [size: 300 200] [suppress: "DESIGN_UNBOUNDED_RETRY"]
+ * @node tryApply  genesisTryApply          applyRetry.attempt [position: 2150 230] [suppress: "DESIGN_PULL_CANDIDATE"]
+ * @node diffWf    genesisDiffWorkflow      [color: "cyan"]    [icon: "altRoute"]     [position: 2440 200]
  * @node threshold genesisCheckThreshold    [color: "orange"]  [icon: "tune"]         [position: 2640 200]
  * @node approve   genesisApprove           [color: "orange"]  [icon: "send"]         [position: 2840 200]
  * @node commit    genesisCommit            [color: "green"]   [icon: "save"]         [position: 3040 200]
- * @node escStage  genesisEscrowStage       [color: "yellow"]  [icon: "archive"]      [position: 3240 400]
+ * @node escStage  genesisEscrowStage       [color: "yellow"]  [icon: "storage"]      [position: 3240 400]
  * @node escVal    genesisEscrowValidate    [color: "yellow"]  [icon: "verified"]     [position: 3440 400]
- * @node escMig    genesisEscrowMigrate     [color: "yellow"]  [icon: "swap_horiz"]   [position: 3640 400]
- * @node history   genesisUpdateHistory     [color: "teal"]    [icon: "history"]      [position: 3840 200]
+ * @node escMig    genesisEscrowMigrate     [color: "yellow"]  [icon: "sync"]         [position: 3640 400]
+ * @node history   genesisUpdateHistory     [color: "teal"]    [icon: "receipt"]      [position: 3840 200]
  * @node escGrace  genesisEscrowGrace       [color: "yellow"]  [icon: "timer"]        [position: 4040 200]
  * @node report    genesisReport            [color: "green"]   [icon: "description"]  [position: 4240 200]
  *
  * @path Start -> cfg -> detect -> gCfg -> escRecover -> observe -> diffFp -> stabilize -> propose -> validate -> snapshot -> applyRetry -> diffWf -> threshold -> approve -> commit -> escStage -> escVal -> escMig -> history -> escGrace -> report -> Exit
  *
  * @path applyRetry:fail -> report
+ * @path observe:fail -> report
+ * @path propose:fail -> report
+ * @path approve:fail -> report
+ * @path commit:fail -> report
  * @path escStage:fail -> report
  * @path escVal:fail -> report
  * @path escMig:fail -> report
  *
  * @connect applyRetry.attemptCtx:attempt -> tryApply.ctx
  * @connect tryApply.ctx -> applyRetry.attemptCtx:attempt
+ * @connect tryApply.onSuccess -> applyRetry.success:attempt
+ * @connect tryApply.onFailure -> applyRetry.failure:attempt
  *
- * @connect history.ctx -> report.successCtx
+ * @connect escGrace.ctx -> report.successCtx
  * @connect applyRetry.ctx -> report.failCtx
+ * @connect propose.ctx -> report.proposeFailCtx
+ * @connect commit.ctx -> report.commitFailCtx
  *
  * @connect report.summary -> Exit.summary
  *
@@ -74,7 +82,7 @@ import { genesisEscrowGrace } from '../node-types/genesis-escrow-grace.js';
  * @position Exit 4440 200
  *
  * @param execute [order:-1] - Execute
- * @param projectDir [order:0] [optional] - Project directory
+ * @param [projectDir] [order:0] - Project directory
  * @returns onSuccess [order:-2] - On Success
  * @returns onFailure [order:-1] [hidden] - On Failure
  * @returns summary [order:0] - Summary text

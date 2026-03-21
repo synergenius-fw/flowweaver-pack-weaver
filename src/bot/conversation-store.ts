@@ -204,7 +204,8 @@ export class ConversationStore {
     if (!fs.existsSync(this.indexPath)) return [];
     try {
       return JSON.parse(fs.readFileSync(this.indexPath, 'utf-8'));
-    } catch {
+    } catch (err) {
+      if (process.env.WEAVER_VERBOSE) process.stderr.write(`[weaver] conversation index parse failed: ${err}\n`);
       return [];
     }
   }

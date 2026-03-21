@@ -78,7 +78,7 @@ export async function weaverBotReport(
   if (task.queueId) {
     try {
       await markQueueTask(task.queueId, success ? 'completed' : 'failed');
-    } catch { /* best-effort queue update */ }
+    } catch (err) { if (process.env.WEAVER_VERBOSE) console.error('[bot-report] queue update failed:', err); }
   }
 
   const report = {

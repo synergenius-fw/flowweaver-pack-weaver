@@ -77,8 +77,9 @@ export async function genesisObserve(
       gitCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
         cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
       }).trim();
-    } catch {
+    } catch (err) {
       // Not a git repo or git unavailable
+      if (process.env.WEAVER_VERBOSE) console.error('[genesis-observe] git unavailable:', err);
     }
 
     const existingWorkflows: string[] = [];

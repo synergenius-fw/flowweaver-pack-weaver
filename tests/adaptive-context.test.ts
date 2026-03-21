@@ -179,4 +179,46 @@ import { myNode } from '../node-types/my-node.js';
     expect(ctx.contextBundle).toContain('(flow-weaver context not available)');
     expect(ctx.contextBundle).toContain('// source');
   });
+
+  it('mode=create with templates available — list templates called and included in contextBundle', async () => {
+    const fn = await loadModule();
+    mockedExec
+      .mockReturnValueOnce('full authoring context' as any)
+      .mockReturnValueOnce('sequential\nforeach\nai-agent' as any);
+
+    const result = fn(makeCtx('create'));
+    const ctx = JSON.parse(result.ctx);
+
+    expect(mockedExec).toHaveBeenCalledWith(
+      'flow-weaver',
+      ['list', 'templates'],
+      expect.any(Object),
+    );
+    expect(ctx.contextBundle).toContain('## Available Templates');
+    expect(ctx.contextBundle).toContain('sequential\nforeach\nai-agent');
+  });
+
+  it('mode=create when templates CLI throws — error swallowed, authoring context still present, no ## Available Templates', async () => {
+    const fn = await loadModule();
+    mockedExec
+      .mockReturnValueOnce('full authoring context' as any)
+      .mockImplementationOnce(() => { throw new Error('templates binary not found'); });
+
+    const result = fn(makeCtx('create'));
+    const ctx = JSON.parse(result.ctx);
+
+    expect(ctx.contextBundle).toContain('full authoring context');
+    expect(ctx.contextBundle).not.toContain('## Available Templates');
+  });
+
+  it('modify mode with non-existent target — existsSync false, ## Target not in contextBundle', async () => {
+    const fn = await loadModule();
+    mockedExec.mockReturnValue('grammar' as any);
+    mockedExists.mockReturnValue(false);
+
+    const result = fn(makeCtx('modify', ['src/templates/missing.ts']));
+    const ctx = JSON.parse(result.ctx);
+
+    expect(ctx.contextBundle).not.toContain('## Target:');
+  });
 });

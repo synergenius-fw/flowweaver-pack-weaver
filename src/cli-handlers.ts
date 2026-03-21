@@ -1810,6 +1810,7 @@ const COMMAND_HELP: Record<string, string> = {
   genesis:   'genesis [--init] [--watch]     Run self-evolution cycle',
   eject:     'eject [--workflow bot|genesis]  Export managed workflows',
   audit:     'audit [runId] [--limit N]      View audit log',
+  assistant: 'assistant                       AI-powered assistant for managing bots and workflows',
 };
 
 export function printHelp(command?: string): void {

@@ -26,7 +26,7 @@ declare const __flowWeaverDebugger__: TDebugger | undefined;
 /**
  * @flowWeaver workflow
  * @node cfg weaverLoadConfig [color: "teal"] [icon: "settings"] [position: 200 200]
- * @node detect weaverDetectProvider [color: "cyan"] [icon: "search"] [position: 400 200]
+ * @node detect weaverDetectProvider [color: "cyan"] [icon: "search"] [position: 400 200] [suppress: "OBJECT_TYPE_MISMATCH", "ANNOTATION_SIGNATURE_TYPE_MISMATCH"]
  * @node receive weaverReceiveTask [color: "blue"] [icon: "send"] [position: 600 200]
  * @node context weaverBuildContext [color: "teal"] [icon: "code"] [position: 800 200]
  * @node plan weaverPlanTask [color: "blue"] [icon: "psychology"] [position: 1000 200]
@@ -34,11 +34,14 @@ declare const __flowWeaverDebugger__: TDebugger | undefined;
  * @node abort weaverAbortTask [color: "red"] [icon: "code"] [position: 1400 400]
  * @node execRetry weaverExecValidateRetry [color: "purple"] [icon: "code"] [position: 1400 200]
  * @node gitOps weaverGitOps [color: "green"] [icon: "code"] [position: 1600 100]
- * @node notify weaverSendNotify [color: "yellow"] [icon: "send"] [position: 1600 300]
- * @node report weaverBotReport [color: "green"] [icon: "description"] [position: 1800 200]
+ * @node notify weaverSendNotify [color: "yellow"] [icon: "send"] [position: 1600 300] [suppress: "UNUSED_OUTPUT_PORT"]
+ * @node report weaverBotReport [color: "green"] [icon: "description"] [position: 1800 200] [suppress: "UNUSED_OUTPUT_PORT", "DESIGN_ASYNC_NO_ERROR_PATH"]
  * @path Start -> cfg -> detect -> receive -> context -> plan -> approve -> execRetry -> gitOps -> report -> Exit
  * @path execRetry -> notify
  * @path approve:fail -> abort
+ * @path receive:fail -> report
+ * @path plan:fail -> report
+ * @path execRetry:fail -> report
  * @position Start 0 200
  * @position Exit 2000 200
  * @connect notify.onSuccess -> report.execute

@@ -90,7 +90,7 @@ export async function weaverReceiveTask(
       context.hasTask = true;
       return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
     }
-  } catch { /* ignore queue errors */ }
+  } catch (err) { if (process.env.WEAVER_VERBOSE) console.error('[receive-task] queue error:', err); }
 
   console.log('\x1b[33m→ No task found\x1b[0m');
   return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };

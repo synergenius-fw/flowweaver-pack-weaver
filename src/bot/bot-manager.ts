@@ -60,6 +60,8 @@ export class BotManager {
     }
 
     const logPath = path.join(botDir, 'output.log');
+    // Touch the file synchronously so it exists immediately after spawn() returns
+    fs.writeFileSync(logPath, '', { flag: 'a' });
     const logStream = fs.createWriteStream(logPath, { flags: 'a' });
 
     const sessionArgs = [
@@ -188,7 +190,9 @@ export class BotManager {
   cleanup(): void {
     for (const [, bot] of this.bots) {
       if (bot.process.pid && !bot.process.killed) {
-        try { bot.process.kill('SIGTERM'); } catch {}
+        try { bot.process.kill('SIGTERM'); } catch (err) {
+          if (process.env.WEAVER_VERBOSE) process.stderr.write(`[weaver] SIGTERM failed for bot: ${err}\n`);
+        }
       }
     }
   }

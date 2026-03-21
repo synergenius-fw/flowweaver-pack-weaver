@@ -165,7 +165,7 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
   while (true) {
     const input = await getNextInput();
     if (input === null) break;
-    if (!input) continue;
+    if (!input.trim()) continue;
 
     out('\n');
 

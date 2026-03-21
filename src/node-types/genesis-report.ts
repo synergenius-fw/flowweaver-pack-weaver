@@ -34,7 +34,7 @@ export function genesisReport(successCtx?: string, failCtx?: string, proposeFail
       try {
         const result = JSON.parse(context.applyResultJson) as { applied: number; failed: number };
         summary += ` (applied: ${result.applied}, failed: ${result.failed})`;
-      } catch { /* ignore */ }
+      } catch (err) { if (process.env.WEAVER_VERBOSE) console.error('[genesis-report] applyResultJson parse failed:', err); }
     }
     summary += elapsed ? ` [${elapsed}]` : '';
     console.log(`\n\x1b[31m${summary}\x1b[0m\n`);

@@ -137,7 +137,8 @@ When stabilize mode is active, only fix-up operations are allowed: removeNode, r
 ## Response Format
 
 Return ONLY valid JSON. No markdown, no code fences, no explanation outside the JSON structure.`;
-  } catch {
+  } catch (err) {
+    if (process.env.WEAVER_VERBOSE) console.error('[execute-target] prompt build failed:', err);
     return FALLBACK;
   }
 }

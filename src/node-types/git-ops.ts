@@ -49,8 +49,9 @@ function reviewStagedDiff(cwd: string): string[] {
         }
       }
     }
-  } catch {
+  } catch (err) {
     // If diff commands fail, don't block — let commit proceed
+    if (process.env.WEAVER_VERBOSE) console.error('[git-ops] diff review failed:', err);
   }
 
   return issues;
@@ -108,7 +109,8 @@ export function weaverGitOps(ctx: string): { ctx: string } {
     const diff = execFileSync('git', ['diff', '--name-only'], { cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
     const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
     changedFiles = new Set([...diff.split('\n'), ...untracked.split('\n')].filter(Boolean));
-  } catch {
+  } catch (err) {
+    if (process.env.WEAVER_VERBOSE) console.error('[git-ops] git diff failed, using filesModified fallback:', err);
     changedFiles = new Set(files); // fallback: trust filesModified
   }
 
@@ -135,7 +137,7 @@ export function weaverGitOps(ctx: string): { ctx: string } {
   const diffIssues = reviewStagedDiff(projectDir);
   if (diffIssues.length > 0) {
     // Unstage and skip commit — something looks wrong
-    try { execFileSync('git', ['reset', 'HEAD'], { cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }); } catch {}
+    try { execFileSync('git', ['reset', 'HEAD'], { cwd: projectDir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }); } catch (err) { if (process.env.WEAVER_VERBOSE) console.error('[git-ops] reset failed:', err); }
     results.push(`Commit blocked: ${diffIssues.join('; ')}`);
     auditEmit('git-operation', { branch: gitConfig.branch, filesCount: 0, results, blocked: true });
     context.gitResultJson = JSON.stringify({ skipped: true, reason: 'diff review failed', issues: diffIssues, results });

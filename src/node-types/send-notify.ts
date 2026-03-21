@@ -40,7 +40,7 @@ function sendWebhook(
     headers,
     body,
     signal: AbortSignal.timeout(10_000),
-  }).catch(() => {});
+  }).catch((err) => { if (process.env.WEAVER_VERBOSE) console.error('[send-notify] webhook failed:', err); });
 }
 
 /**

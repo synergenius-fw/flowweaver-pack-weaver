@@ -29,7 +29,12 @@ export async function weaverPlanTask(
   }
 
   const { providerInfo: pInfo } = env;
-  const task = JSON.parse(context.taskJson!);
+
+  if (!context.taskJson) {
+    context.planJson = JSON.stringify({ steps: [], summary: 'Planning failed: missing taskJson' });
+    return { onSuccess: false, onFailure: true, ctx: JSON.stringify(context) };
+  }
+  const task = JSON.parse(context.taskJson);
 
   let systemPrompt: string;
   try {
@@ -42,7 +47,8 @@ export async function weaverPlanTask(
     } catch { /* older flow-weaver version */ }
     const botPrompt = mod.buildBotSystemPrompt(context.contextBundle!, cliCommands);
     systemPrompt = basePrompt + '\n\n' + botPrompt;
-  } catch {
+  } catch (err) {
+    if (process.env.WEAVER_VERBOSE) console.error('[plan-task] system prompt build failed:', err);
     systemPrompt = 'You are Weaver, an AI workflow bot. Return ONLY valid JSON with a plan.';
   }
 

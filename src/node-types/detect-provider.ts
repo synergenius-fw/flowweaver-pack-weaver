@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import type { WeaverConfig, WeaverEnv, ProviderInfo } from '../bot/types.js';
+import type { BotConfig, WeaverEnv, ProviderInfo } from '../bot/types.js';
 
 const WHICH_CMD = process.platform === 'win32' ? 'where' : 'which';
 
@@ -23,7 +23,7 @@ function whichSafe(cmd: string, cwd: string): string {
  * @output env [order:0] - Weaver environment bundle
  * @output onFailure [hidden]
  */
-export function weaverDetectProvider(projectDir: string, config: WeaverConfig): {
+export function weaverDetectProvider(projectDir: string, config: BotConfig): {
   env: WeaverEnv;
 } {
   const providerSetting = config.provider ?? 'auto';

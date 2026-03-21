@@ -144,3 +144,140 @@ describe('BotManager', () => {
     expect(meta.pid).toBe(0);
   });
 });
+
+describe('TaskQueue', () => {
+  let queueDir: string;
+
+  beforeEach(() => {
+    queueDir = path.join(os.tmpdir(), `weaver-tq-test-${Date.now()}`);
+    fs.mkdirSync(queueDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    fs.rmSync(queueDir, { recursive: true, force: true });
+  });
+
+  it('add returns a non-empty string ID', async () => {
+    const { TaskQueue } = await import('../src/bot/task-queue.js');
+    const q = new TaskQueue(queueDir);
+    const id = await q.add({ instruction: 'do thing', priority: 0 });
+    expect(typeof id).toBe('string');
+    expect(id.length).toBeGreaterThan(0);
+  });
+
+  it('two tasks added to the same queue have different IDs', async () => {
+    const { TaskQueue } = await import('../src/bot/task-queue.js');
+    const q = new TaskQueue(queueDir);
+    const id1 = await q.add({ instruction: 'task 1', priority: 0 });
+    const id2 = await q.add({ instruction: 'task 2', priority: 0 });
+    expect(id1).not.toBe(id2);
+  });
+
+  it('added task has status=pending, addedAt as number, and correct instruction', async () => {
+    const { TaskQueue } = await import('../src/bot/task-queue.js');
+    const q = new TaskQueue(queueDir);
+    const before = Date.now();
+    await q.add({ instruction: 'check fields', priority: 5 });
+    const after = Date.now();
+
+    const [task] = await q.list();
+    expect(task.status).toBe('pending');
+    expect(task.instruction).toBe('check fields');
+    expect(task.priority).toBe(5);
+    expect(task.addedAt).toBeGreaterThanOrEqual(before);
+    expect(task.addedAt).toBeLessThanOrEqual(after);
+  });
+
+  it('list returns empty array when no tasks added', async () => {
+    const { TaskQueue } = await import('../src/bot/task-queue.js');
+    const q = new TaskQueue(queueDir);
+    const list = await q.list();
+    expect(list).toEqual([]);
+  });
+
+  it('remove by ID returns true and removes the task', async () => {
+    const { TaskQueue } = await import('../src/bot/task-queue.js');
+    const q = new TaskQueue(queueDir);
+    const id = await q.add({ instruction: 'to remove', priority: 0 });
+    const removed = await q.remove(id);
+    expect(removed).toBe(true);
+    const list = await q.list();
+    expect(list.find(t => t.id === id)).toBeUndefined();
+  });
+
+  it('remove with non-existent ID returns false', async () => {
+    const { TaskQueue } = await import('../src/bot/task-queue.js');
+    const q = new TaskQueue(queueDir);
+    const removed = await q.remove('no-such-id');
+    expect(removed).toBe(false);
+  });
+
+  it('next returns the highest priority pending task', async () => {
+    const { TaskQueue } = await import('../src/bot/task-queue.js');
+    const q = new TaskQueue(queueDir);
+    await q.add({ instruction: 'low priority', priority: 1 });
+    await q.add({ instruction: 'high priority', priority: 10 });
+    const next = await q.next();
+    expect(next?.instruction).toBe('high priority');
+  });
+
+  it('markComplete changes task status to completed', async () => {
+    const { TaskQueue } = await import('../src/bot/task-queue.js');
+    const q = new TaskQueue(queueDir);
+    const id = await q.add({ instruction: 'finish me', priority: 0 });
+    await q.markComplete(id);
+    const [task] = await q.list();
+    expect(task.status).toBe('completed');
+  });
+
+  it('retry resets a failed task back to pending', async () => {
+    const { TaskQueue } = await import('../src/bot/task-queue.js');
+    const q = new TaskQueue(queueDir);
+    const id = await q.add({ instruction: 'will fail', priority: 0 });
+    await q.markFailed(id);
+    const retried = await q.retry(id);
+    expect(retried).toBe(true);
+    const [task] = await q.list();
+    expect(task.status).toBe('pending');
+  });
+
+  it('clear removes all tasks and returns the count', async () => {
+    const { TaskQueue } = await import('../src/bot/task-queue.js');
+    const q = new TaskQueue(queueDir);
+    await q.add({ instruction: 'a', priority: 0 });
+    await q.add({ instruction: 'b', priority: 0 });
+    const count = await q.clear();
+    expect(count).toBe(2);
+    const list = await q.list();
+    expect(list).toEqual([]);
+  });
+});
+
+describe('SteeringController', () => {
+  let steerDir: string;
+
+  beforeEach(() => {
+    steerDir = path.join(os.tmpdir(), `weaver-steer-test-${Date.now()}`);
+    fs.mkdirSync(steerDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    fs.rmSync(steerDir, { recursive: true, force: true });
+  });
+
+  it('check returns null when no file exists', async () => {
+    const { SteeringController } = await import('../src/bot/steering.js');
+    const s = new SteeringController(steerDir);
+    const cmd = await s.check();
+    expect(cmd).toBeNull();
+  });
+
+  it('check deletes the file after reading (consume once)', async () => {
+    const { SteeringController } = await import('../src/bot/steering.js');
+    const s = new SteeringController(steerDir);
+    await s.write({ command: 'cancel', timestamp: Date.now() });
+    await s.check(); // first read consumes the file
+    const cmd2 = await s.check();
+    expect(cmd2).toBeNull();
+  });
+});

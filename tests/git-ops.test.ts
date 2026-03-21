@@ -144,6 +144,34 @@ describe('weaverGitOps', () => {
     expect(branch).toBe('weaver/test');
   });
 
+  it('switches to existing branch when checkout -b fails (branch already exists)', () => {
+    // Create the branch without switching to it
+    execSync('git branch weaver/existing', { cwd: tmpDir, stdio: 'pipe' });
+
+    // Create a changed file so the function doesn't skip early
+    const newFile = path.join(tmpDir, 'feat.ts');
+    fs.writeFileSync(newFile, 'export const x = 1;\n');
+
+    const ctxStr = JSON.stringify({
+      env: {
+        projectDir: tmpDir,
+        config: { git: { enabled: true, branch: 'weaver/existing' } },
+        providerInfo: { type: 'claude-cli' },
+      },
+      filesModified: JSON.stringify([newFile]),
+    });
+
+    const result = weaverGitOps(ctxStr);
+    const ctx = JSON.parse(result.ctx);
+    const gitResult = JSON.parse(ctx.gitResultJson);
+
+    expect(gitResult.results.some((r: string) => r.includes('Switched to branch:'))).toBe(true);
+    expect(gitResult.results.some((r: string) => r.includes('weaver/existing'))).toBe(true);
+
+    const branch = execSync('git branch --show-current', { cwd: tmpDir, encoding: 'utf-8' }).trim();
+    expect(branch).toBe('weaver/existing');
+  });
+
   it('handles non-git directory gracefully', () => {
     const nonGitDir = fs.mkdtempSync(path.join(os.tmpdir(), 'weaver-no-git-'));
     try {
@@ -163,5 +191,124 @@ describe('weaverGitOps', () => {
     } finally {
       fs.rmSync(nonGitDir, { recursive: true, force: true });
     }
+  });
+
+  it('commit message uses plural when multiple files committed', () => {
+    const file1 = path.join(tmpDir, 'a.ts');
+    const file2 = path.join(tmpDir, 'b.ts');
+    fs.writeFileSync(file1, 'export const a = 1;\n');
+    fs.writeFileSync(file2, 'export const b = 2;\n');
+
+    const result = weaverGitOps(makeContext([file1, file2]));
+    const ctx = JSON.parse(result.ctx);
+    const gitResult = JSON.parse(ctx.gitResultJson);
+
+    expect(gitResult.skipped).toBe(false);
+    const commitResult = gitResult.results.find((r: string) => r.startsWith('Committed'));
+    expect(commitResult).toContain('2 files');
+  });
+
+  it('gitResultJson is valid JSON on successful commit', () => {
+    const filePath = path.join(tmpDir, 'new.ts');
+    fs.writeFileSync(filePath, 'export const x = 1;\n');
+
+    const result = weaverGitOps(makeContext([filePath]));
+    const ctx = JSON.parse(result.ctx);
+
+    expect(() => JSON.parse(ctx.gitResultJson)).not.toThrow();
+  });
+
+  it('return value has only ctx key', () => {
+    const result = weaverGitOps(makeContext([]));
+    expect(Object.keys(result)).toEqual(['ctx']);
+  });
+
+  it('reviewStagedDiff blocks large deletion (>50 lines deleted, <5 added)', () => {
+    // Create a file with 60 lines and commit it
+    const filePath = path.join(tmpDir, 'big.ts');
+    fs.writeFileSync(filePath, Array(61).fill('// line of code').join('\n') + '\n');
+    execSync('git add . && git commit -m "add big file"', { cwd: tmpDir, stdio: 'pipe' });
+
+    // Replace with 2 lines (large deletion)
+    fs.writeFileSync(filePath, '// tiny\n// file\n');
+
+    const result = weaverGitOps(makeContext([filePath]));
+    const ctx = JSON.parse(result.ctx);
+    const gitResult = JSON.parse(ctx.gitResultJson);
+
+    expect(gitResult.skipped).toBe(true);
+    expect(gitResult.reason).toBe('diff review failed');
+  });
+
+  it('reviewStagedDiff blocks file emptied (0 additions, >10 deletions)', () => {
+    const filePath = path.join(tmpDir, 'filled.ts');
+    fs.writeFileSync(filePath, Array(15).fill('// content line').join('\n') + '\n');
+    execSync('git add . && git commit -m "add filled file"', { cwd: tmpDir, stdio: 'pipe' });
+
+    // Empty the file
+    fs.writeFileSync(filePath, '');
+
+    const result = weaverGitOps(makeContext([filePath]));
+    const ctx = JSON.parse(result.ctx);
+    const gitResult = JSON.parse(ctx.gitResultJson);
+
+    expect(gitResult.skipped).toBe(true);
+    expect(gitResult.reason).toBe('diff review failed');
+    expect(gitResult.issues.some((i: string) => i.includes('file emptied'))).toBe(true);
+  });
+
+  it('reviewStagedDiff blocks sensitive secret pattern in added lines', () => {
+    const filePath = path.join(tmpDir, 'config.ts');
+    fs.writeFileSync(filePath, 'export const secret = "my_super_secret_value_here";\n');
+
+    const result = weaverGitOps(makeContext([filePath]));
+    const ctx = JSON.parse(result.ctx);
+    const gitResult = JSON.parse(ctx.gitResultJson);
+
+    expect(gitResult.skipped).toBe(true);
+    expect(gitResult.reason).toBe('diff review failed');
+    expect(gitResult.issues.some((i: string) => i.includes('credential'))).toBe(true);
+  });
+
+  it('reviewStagedDiff: blocked commit unstages the file (git reset HEAD called)', () => {
+    const filePath = path.join(tmpDir, 'config2.ts');
+    fs.writeFileSync(filePath, 'export const secret = "another_secret_value_here";\n');
+
+    weaverGitOps(makeContext([filePath]));
+
+    // After blocking, nothing should be staged
+    const staged = execSync('git diff --cached --name-only', { cwd: tmpDir, encoding: 'utf-8' }).trim();
+    expect(staged).toBe('');
+  });
+
+  it('reviewStagedDiff: gitResultJson.issues populated when commit blocked', () => {
+    const filePath = path.join(tmpDir, 'filled2.ts');
+    fs.writeFileSync(filePath, Array(15).fill('// content').join('\n') + '\n');
+    execSync('git add . && git commit -m "baseline"', { cwd: tmpDir, stdio: 'pipe' });
+
+    fs.writeFileSync(filePath, '');
+
+    const result = weaverGitOps(makeContext([filePath]));
+    const ctx = JSON.parse(result.ctx);
+    const gitResult = JSON.parse(ctx.gitResultJson);
+
+    expect(Array.isArray(gitResult.issues)).toBe(true);
+    expect(gitResult.issues.length).toBeGreaterThan(0);
+  });
+
+  it('reviewStagedDiff: normal changes (small modification) commit fine', () => {
+    const filePath = path.join(tmpDir, 'normal.ts');
+    fs.writeFileSync(filePath, 'export const x = 1;\n');
+    execSync('git add . && git commit -m "add normal"', { cwd: tmpDir, stdio: 'pipe' });
+
+    // Change one line — not suspicious
+    fs.writeFileSync(filePath, 'export const x = 2;\n');
+
+    const result = weaverGitOps(makeContext([filePath]));
+    const ctx = JSON.parse(result.ctx);
+    const gitResult = JSON.parse(ctx.gitResultJson);
+
+    expect(gitResult.skipped).toBe(false);
+    expect(gitResult.results.some((r: string) => r.includes('Committed'))).toBe(true);
   });
 });

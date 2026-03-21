@@ -8,7 +8,8 @@ let onEvent: AuditEventCallback | undefined;
 export function initAuditLogger(runId: string, callback?: AuditEventCallback): void {
   try {
     store = new AuditStore();
-  } catch {
+  } catch (err) {
+    if (process.env.WEAVER_VERBOSE) process.stderr.write(`[weaver] audit store init failed: ${err}\n`);
     store = null;
   }
   currentRunId = runId;
@@ -27,14 +28,14 @@ export function auditEmit(type: AuditEventType, data?: Record<string, unknown>):
 
   try {
     store?.emit(event);
-  } catch {
-    // non-fatal
+  } catch (err) {
+    if (process.env.WEAVER_VERBOSE) process.stderr.write(`[weaver] audit emit failed: ${err}\n`);
   }
 
   try {
     onEvent?.(event);
-  } catch {
-    // non-fatal
+  } catch (err) {
+    if (process.env.WEAVER_VERBOSE) process.stderr.write(`[weaver] audit callback failed: ${err}\n`);
   }
 }
 

@@ -21,7 +21,7 @@ let cleanupRegistered = false;
 function registerCleanup(): void {
   if (cleanupRegistered) return;
   cleanupRegistered = true;
-  const cleanup = () => { try { killAllCliSessions(); } catch {} };
+  const cleanup = () => { try { killAllCliSessions(); } catch (err) { if (process.env.WEAVER_VERBOSE) console.error('[agent-execute] session cleanup failed:', err); } };
   process.on('exit', cleanup);
   process.on('SIGTERM', cleanup);
   process.on('SIGINT', cleanup);
@@ -74,6 +74,9 @@ class CliSessionProvider implements AgentProvider {
   }
 }
 
+// Test-only export (tree-shaken in production bundles)
+export { CliSessionProvider };
+
 // Re-use StepLogEntry shape from the bot types
 type LocalStepLogEntry = { step: string; status: string; detail: string };
 
@@ -120,10 +123,11 @@ export async function weaverAgentExecute(
     try {
       const docMeta = await import('@synergenius/flow-weaver/doc-metadata');
       cliCommands = docMeta.CLI_COMMANDS ?? [];
-    } catch { /* older fw version */ }
+    } catch (err) { if (process.env.WEAVER_VERBOSE) console.error('[agent-execute] doc-metadata unavailable (older fw):', err); }
     const botPrompt = mod.buildBotSystemPrompt(context.contextBundle, cliCommands, projectDir);
     systemPrompt = basePrompt + '\n\n' + botPrompt;
-  } catch {
+  } catch (err) {
+    if (process.env.WEAVER_VERBOSE) console.error('[agent-execute] system prompt build failed, using fallback:', err);
     systemPrompt = 'You are Weaver, an AI workflow bot. Use the provided tools to complete tasks.';
   }
 
@@ -199,7 +203,7 @@ export async function weaverAgentExecute(
           renderer.warn('Post-agent validation found errors — task marked as failed');
         }
         context.validationResultJson = gateData.validationResultJson;
-      } catch { /* validate-gate not available — skip */ }
+      } catch (err) { if (process.env.WEAVER_VERBOSE) console.error('[agent-execute] validate-gate unavailable, skipping:', err); }
     }
 
     context.resultJson = JSON.stringify({

@@ -40,7 +40,8 @@ export class SessionStore {
     try {
       if (!fs.existsSync(this.filePath)) return null;
       return JSON.parse(fs.readFileSync(this.filePath, 'utf-8')) as SessionState;
-    } catch {
+    } catch (err) {
+      if (process.env.WEAVER_VERBOSE) process.stderr.write(`[weaver] session state load failed: ${err}\n`);
       return null;
     }
   }

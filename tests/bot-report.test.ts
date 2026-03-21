@@ -65,6 +65,41 @@ describe('weaverBotReport', () => {
     const result = await weaverBotReport(true, ctx);
     expect(result.summary).toContain('Git: committed');
   });
+
+  it('abort context with result.success=false sets onFailure=true and onSuccess=false', async () => {
+    const abortCtx = JSON.stringify({
+      env: { projectDir: '/tmp', config: {}, providerInfo: { type: 'claude-cli' } },
+      resultJson: JSON.stringify({ success: false }),
+    });
+
+    const result = await weaverBotReport(true, undefined, undefined, abortCtx);
+
+    expect(result.onFailure).toBe(true);
+    expect(result.onSuccess).toBe(false);
+  });
+
+  it('main context with result.success=false sets onFailure=true and onSuccess=false', async () => {
+    const mainCtx = JSON.stringify({
+      env: { projectDir: '/tmp', config: {}, providerInfo: { type: 'claude-cli' } },
+      resultJson: JSON.stringify({ success: false }),
+    });
+
+    const result = await weaverBotReport(true, mainCtx);
+
+    expect(result.onFailure).toBe(true);
+    expect(result.onSuccess).toBe(false);
+  });
+
+  it('gitResult with skipped=true does not add Git:committed to summary', async () => {
+    const ctx = JSON.stringify({
+      env: { projectDir: '/tmp', config: {}, providerInfo: { type: 'claude-cli' } },
+      gitResultJson: JSON.stringify({ skipped: true, results: [] }),
+    });
+
+    const result = await weaverBotReport(true, ctx);
+
+    expect(result.summary).not.toContain('Git');
+  });
 });
 
 describe('weaverBotReport queue integration', () => {
@@ -164,5 +199,25 @@ describe('weaverBotReport queue integration', () => {
     // Should not throw
     const result = await weaverBotReport(true, ctx);
     expect(result.summary).toContain('test');
+  });
+
+  it('queueId present but no matching task in queue — file unchanged', async () => {
+    const otherTask = { id: 'other-task-999', instruction: 'other', priority: 0, addedAt: Date.now(), status: 'pending' };
+    fs.writeFileSync(queuePath, JSON.stringify(otherTask) + '\n');
+
+    const ctx = JSON.stringify({
+      env: { projectDir: '/tmp', config: {}, providerInfo: { type: 'claude-cli' } },
+      taskJson: JSON.stringify({ instruction: 'no match', queueId: 'nonexistent-id' }),
+      resultJson: JSON.stringify({ success: true }),
+    });
+
+    await weaverBotReport(true, ctx);
+
+    // Queue file must be unchanged — the mismatched task still has status 'pending'
+    const content = fs.readFileSync(queuePath, 'utf-8').trim();
+    const tasks = content.split('\n').filter(Boolean).map(l => JSON.parse(l));
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].id).toBe('other-task-999');
+    expect(tasks[0].status).toBe('pending');
   });
 });

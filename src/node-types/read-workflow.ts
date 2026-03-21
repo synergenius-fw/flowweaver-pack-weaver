@@ -47,7 +47,7 @@ export function weaverReadWorkflow(ctx: string): { ctx: string } {
         timeout: 30_000,
         cwd: projectDir,
       }).trim();
-    } catch { /* diagram generation failed, continue without it */ }
+    } catch (err) { if (process.env.WEAVER_VERBOSE) console.error('[read-workflow] diagram failed:', err); }
 
     try {
       description = execFileSync('flow-weaver', ['describe', filePath], {
@@ -56,7 +56,7 @@ export function weaverReadWorkflow(ctx: string): { ctx: string } {
         timeout: 30_000,
         cwd: projectDir,
       }).trim();
-    } catch { /* description failed, continue without it */ }
+    } catch (err) { if (process.env.WEAVER_VERBOSE) console.error('[read-workflow] describe failed:', err); }
 
     results.push({ file: target, source, diagram, description });
     console.log(`\x1b[36m→ Read: ${target}\x1b[0m`);

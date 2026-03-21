@@ -49,7 +49,8 @@ function buildModifyContext(projectDir: string, targets: string[]): string[] {
       { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 30_000, cwd: projectDir },
     ).trim();
     if (ctxOutput) sections.push(ctxOutput);
-  } catch {
+  } catch (err) {
+    if (process.env.WEAVER_VERBOSE) console.error('[build-context] modify context unavailable:', err);
     sections.push('(flow-weaver context not available)');
   }
 
@@ -72,7 +73,7 @@ function buildModifyContext(projectDir: string, targets: string[]): string[] {
           sections.push(`## Node Type: ${relPath}\n\n\`\`\`typescript\n${ntSource}\n\`\`\``);
         }
       }
-    } catch { /* skip unreadable files */ }
+    } catch (err) { if (process.env.WEAVER_VERBOSE) console.error('[build-context] unreadable file:', err); }
   }
 
   return sections;
@@ -89,7 +90,8 @@ function buildFullContext(projectDir: string, mode?: string): string[] {
       { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 30_000, cwd: projectDir },
     ).trim();
     if (ctxOutput) sections.push(ctxOutput);
-  } catch {
+  } catch (err) {
+    if (process.env.WEAVER_VERBOSE) console.error('[build-context] full context unavailable:', err);
     sections.push('(flow-weaver context not available)');
   }
 
@@ -102,7 +104,7 @@ function buildFullContext(projectDir: string, mode?: string): string[] {
         cwd: projectDir,
       }).trim();
       if (templates) sections.push(`## Available Templates\n\n${templates}`);
-    } catch { /* templates not available */ }
+    } catch (err) { if (process.env.WEAVER_VERBOSE) console.error('[build-context] templates not available:', err); }
   }
 
   return sections;
@@ -143,7 +145,7 @@ function extractReferencedNodeTypes(
       const ntSource = fs.readFileSync(resolved, 'utf-8');
       const relPath = path.relative(projectDir, resolved);
       results.push([relPath, ntSource]);
-    } catch { /* skip */ }
+    } catch (err) { if (process.env.WEAVER_VERBOSE) console.error('[build-context] unreadable node type:', err); }
   }
 
   return results;

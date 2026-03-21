@@ -42,7 +42,8 @@ export async function weaverFixErrors(
   try {
     const mod = await import('../bot/system-prompt.js');
     systemPrompt = await mod.buildSystemPrompt();
-  } catch {
+  } catch (err) {
+    if (process.env.WEAVER_VERBOSE) console.error('[fix-errors] system prompt build failed:', err);
     systemPrompt = 'You are Weaver. Return ONLY valid JSON.';
   }
 
