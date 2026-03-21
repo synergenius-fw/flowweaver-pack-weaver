@@ -31,6 +31,8 @@ const handlers: Record<string, (opts: ParsedArgs) => Promise<void>> = {
   doctor: handleDoctor,
 };
 
+export { printHelp };
+
 export async function handleCommand(
   name: string,
   args: string[],

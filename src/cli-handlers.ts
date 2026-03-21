@@ -1984,6 +1984,9 @@ const COMMAND_HELP: Record<string, string> = {
   eject:     'eject [--workflow bot|genesis]  Export managed workflows',
   audit:     'audit [runId] [--limit N]      View audit log',
   assistant: 'assistant                       AI-powered assistant for managing bots and workflows',
+  examples:  'examples                       Show example tasks and commands',
+  doctor:    'doctor                         Validate setup and check connectivity',
+  status:    'status                         Get bot session status',
 };
 
 export function printHelp(command?: string): void {
@@ -1994,26 +1997,50 @@ export function printHelp(command?: string): void {
   }
 
   console.log(`
-Weaver — AI-powered workflow automation for Flow Weaver
+  Weaver — AI-powered workflow automation for Flow Weaver
 
-Usage: flow-weaver weaver <command> [options]
+  Usage: flow-weaver weaver <command> [options]
 
-Commands:
-  ${Object.values(COMMAND_HELP).join('\n  ')}
+  Get started:
+    assistant                AI assistant for managing bots and workflows
+    bot <task>               Create or modify a workflow from a task
+    init                     Create .weaver.json config
+    doctor                   Validate setup and check connectivity
 
-Global options:
-  -h, --help          Show help
-  -v, --verbose       Show detailed output
-  -n, --dry-run       Preview without executing
-  --quiet             Suppress output
-  -p, --params <json> Input parameters as JSON
-  -c, --config <path> Path to .weaver.json config
-  --approval <mode>   Override approval mode (auto|prompt|web|timeout-auto)
+  Workflows:
+    run <file>               Execute a workflow with AI agent channel
+    watch <file>             Re-run on file changes
+    genesis [--init]         Self-evolution cycle on a workflow
 
-Quick start:
-  flow-weaver weaver init                              # create .weaver.json
-  flow-weaver weaver providers                         # check available AI providers
-  flow-weaver weaver bot "Create a hello world workflow"  # create your first workflow
+  Management:
+    session                  Start continuous task queue processing
+    queue <cmd> [task]       Manage task queue (add, list, clear, remove)
+    status                   Get bot session status
+    steer <cmd>              Control a running session (pause, resume, cancel)
+
+  Info:
+    history [id]             Show execution history
+    costs [--since 7d]       Show AI token usage and costs
+    audit [runId]            View audit log
+    examples                 Show example tasks and commands
+    providers                List available AI providers
+
+  Advanced:
+    pipeline <config.json>   Run multi-stage pipeline
+    cron <schedule> <file>   Schedule workflow execution
+    dashboard [file]         Start live execution dashboard
+    eject [--workflow name]  Export managed workflows
+
+  Options:
+    -h, --help               Show help
+    -v, --verbose            Show detailed output
+    -c, --config <path>      Path to .weaver.json config
+    --approval <mode>        Approval mode (auto|prompt|web|timeout-auto)
+
+  Quick start:
+    flow-weaver weaver init
+    flow-weaver weaver bot "Create a hello world workflow"
+    flow-weaver weaver assistant
 `);
 }
 
