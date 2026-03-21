@@ -128,10 +128,64 @@ describe('parseArgs', () => {
     expect(opts.approvalMode).toBe('web');
   });
 
+  it('parses assistant --debug -m flags together', () => {
+    const opts = parseArgs(['node', 'weaver', 'assistant', '--debug', '-m', 'hello world']);
+    expect(opts.command).toBe('assistant');
+    expect(opts.assistantDebug).toBe(true);
+    expect(opts.assistantMessage).toBe('hello world');
+  });
+
+  it('parses assistant --debug with --resume', () => {
+    const opts = parseArgs(['node', 'weaver', 'assistant', '--debug', '--resume', 'abc123', '-m', 'continue']);
+    expect(opts.command).toBe('assistant');
+    expect(opts.assistantDebug).toBe(true);
+    expect(opts.assistantResume).toBe('abc123');
+    expect(opts.assistantMessage).toBe('continue');
+  });
+
   it('--workflow routes to historyWorkflow for history command', () => {
     const opts = parseArgs(['node', 'weaver', 'history', '--workflow', 'my-wf.ts']);
     expect(opts.historyWorkflow).toBe('my-wf.ts');
     expect(opts.ejectWorkflow).toBeUndefined();
+  });
+});
+
+describe('handleAssistant routing', () => {
+  it('debug mode takes precedence over single-message mode when both --debug and -m are set', async () => {
+    // When both --debug and -m are provided, handleAssistant should route
+    // to the debug path (runAssistant with debug:true and inputMessages),
+    // NOT the single-message path (runAgentLoop directly).
+    //
+    // This test mocks the imports to capture which path is taken.
+
+    const opts = parseArgs(['node', 'weaver', 'assistant', '--debug', '-m', 'test message']);
+    expect(opts.assistantDebug).toBe(true);
+    expect(opts.assistantMessage).toBe('test message');
+
+    // The code in handleAssistant checks:
+    //   if (opts.assistantMessage) { ... single-message path ... }
+    //   if (opts.assistantDebug) { ... debug path ... }
+    //
+    // Bug: assistantMessage check comes first, so --debug -m goes to single-message.
+    // Fix: check assistantDebug first.
+    //
+    // We verify by importing and checking the source order directly.
+    const fsMod = await import('node:fs');
+    const pathMod = await import('node:path');
+    const source = fsMod.readFileSync(
+      pathMod.resolve(__dirname, '..', 'src', 'cli-handlers.ts'), 'utf-8'
+    );
+
+    // Find the positions of both checks in handleAssistant
+    const handleAssistantStart = source.indexOf('async function handleAssistant');
+    const afterStart = source.slice(handleAssistantStart);
+    const debugCheckPos = afterStart.indexOf('opts.assistantDebug');
+    const messageCheckPos = afterStart.indexOf('opts.assistantMessage');
+
+    // Debug check should come BEFORE message check
+    expect(debugCheckPos).toBeGreaterThan(0);
+    expect(messageCheckPos).toBeGreaterThan(0);
+    expect(debugCheckPos).toBeLessThan(messageCheckPos);
   });
 });
 

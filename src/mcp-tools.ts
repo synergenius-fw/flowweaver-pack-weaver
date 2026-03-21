@@ -271,4 +271,42 @@ export async function registerMcpTools(mcp: McpServer): Promise<void> {
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     },
   );
+
+  mcp.tool(
+    'fw_weaver_insights',
+    'Get project health, insights, trust level, and cost summary. Returns structured JSON with actionable recommendations.',
+    {
+      projectDir: z.string().describe('Project directory path'),
+    },
+    async (args) => {
+      try {
+        const { ProjectModelStore } = await import('./bot/project-model.js');
+        const { InsightEngine } = await import('./bot/insight-engine.js');
+        const pms = new ProjectModelStore(args.projectDir as string);
+        const model = await pms.getOrBuild();
+        const engine = new InsightEngine();
+        const insights = engine.analyze(model);
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              health: model.health,
+              bots: model.bots,
+              insights: insights.slice(0, 10),
+              trust: model.trust,
+              cost: model.cost,
+              evolution: {
+                totalCycles: model.evolution.totalCycles,
+                successRate: model.evolution.successRate,
+              },
+            }, null, 2),
+          }],
+        };
+      } catch (err: unknown) {
+        return {
+          content: [{ type: 'text', text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+        };
+      }
+    },
+  );
 }

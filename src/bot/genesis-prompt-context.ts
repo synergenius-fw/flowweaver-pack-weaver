@@ -133,3 +133,64 @@ export async function getWorkflowDescription(filePath: string): Promise<string> 
     return '(workflow description unavailable)';
   }
 }
+
+/**
+ * Builds intelligence context from the project model for Genesis proposals.
+ * Includes health scores, insights, operation effectiveness, and user preferences.
+ */
+export async function getGenesisInsightContext(projectDir: string): Promise<string> {
+  try {
+    const { ProjectModelStore } = await import('./project-model.js');
+    const pms = new ProjectModelStore(projectDir);
+    const model = await pms.getOrBuild();
+
+    const lines: string[] = ['## Project Intelligence', ''];
+    lines.push(`Health: ${model.health.overall}/100`);
+    lines.push(`Trust Phase: ${model.trust.phase}`);
+    lines.push('');
+
+    // Top failure patterns as genesis candidates
+    const candidates = model.failurePatterns
+      .filter(f => !f.transient && f.occurrences >= 3)
+      .slice(0, 3);
+    if (candidates.length > 0) {
+      lines.push('### Top Issues (Genesis Candidates)');
+      for (const c of candidates) {
+        lines.push(`- [${c.occurrences}x] ${c.pattern} (${c.category})`);
+      }
+      lines.push('');
+    }
+
+    // Operation effectiveness
+    const ops = Object.entries(model.evolution.byOperationType);
+    if (ops.length > 0) {
+      lines.push('### Operation Effectiveness');
+      for (const [op, stats] of ops) {
+        lines.push(`- ${op}: ${Math.round(stats.effectiveness * 100)}% effective (${stats.applied}/${stats.proposed})`);
+      }
+      lines.push('');
+    }
+
+    // User preferences
+    if (model.userPreferences.autoApprovePatterns.length > 0) {
+      lines.push(`Auto-approve patterns: ${model.userPreferences.autoApprovePatterns.join(', ')}`);
+    }
+    if (model.userPreferences.neverApprovePatterns.length > 0) {
+      lines.push(`Never-approve patterns: ${model.userPreferences.neverApprovePatterns.join(', ')}`);
+    }
+
+    // Bot performance
+    const weakBots = model.bots.filter(b => b.successRate < 0.5 && b.totalTasksRun > 3);
+    if (weakBots.length > 0) {
+      lines.push('');
+      lines.push('### Underperforming Bots');
+      for (const b of weakBots) {
+        lines.push(`- ${b.name}: ${Math.round(b.successRate * 100)}% success (${b.totalTasksRun} tasks)`);
+      }
+    }
+
+    return lines.join('\n');
+  } catch {
+    return '';
+  }
+}

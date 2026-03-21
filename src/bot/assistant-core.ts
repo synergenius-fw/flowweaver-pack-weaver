@@ -23,6 +23,17 @@ import { VERBOSE_TOOL_NAMES } from './tool-registry.js';
 import { generateToolPromptSection, generateVerboseToolList } from './tool-registry.js';
 import { CHARS_PER_TOKEN } from './safety.js';
 
+export interface AssistantDebugTurn {
+  turn: number;
+  input: string;
+  toolCalls: Array<{ name: string; args: Record<string, unknown>; result: string; isError: boolean }>;
+  response: string;
+  tokensUsed: number;
+  systemPromptLength: number;
+  insightNudge?: string;
+  conversationId: string;
+}
+
 export interface AssistantOptions {
   provider: AgentProvider;
   tools: ToolDefinition[];
@@ -37,6 +48,8 @@ export interface AssistantOptions {
   resumeId?: string;
   /** Always start a fresh conversation */
   newConversation?: boolean;
+  /** Debug mode: output structured NDJSON per turn, no ANSI, full conversation loop */
+  debug?: boolean;
 }
 
 const DEFAULT_SYSTEM_PROMPT = `You are Weaver — a hands-on AI assistant for Flow Weaver projects.
@@ -49,7 +62,9 @@ Tell me what you want to build or fix. I will:
 1. Break it into steps
 2. Use tools to read, write, validate, and test code
 3. Spawn bots for longer tasks that run in the background
-4. Report results — not plans
+4. Track project health and surface insights proactively
+5. Propose bot workflow improvements based on execution patterns
+6. Report results — not plans
 
 ## How to respond
 
@@ -84,11 +99,20 @@ For all other tools, you may explain the result briefly.
 - Lead with action, follow with explanation only if needed
 - If something fails, say what went wrong and what you'll try next
 - Never apologize for tool usage — tools are how you work
-- When you don't know something, say so`;
+- When you don't know something, say so
+
+## Project intelligence
+
+You have access to project health, bot performance, failure patterns, cost trends, and evolution history.
+Be proactive: when you see something relevant to what the user is doing, mention it.
+At session start, briefly acknowledge the project state if there's something worth noting.
+You can propose workflow improvements with genesis_propose when patterns suggest a structural fix.
+If a bot workflow needs modification and isn't ejected yet, auto-eject it first.`;
 
 
 export async function runAssistant(opts: AssistantOptions): Promise<void> {
   const { provider, tools, executor, projectDir } = opts;
+  const isDebug = !!opts.debug;
   const out = (s: string) => process.stderr.write(s);
 
   // Pipe mode: if stdin is not a TTY, read all input as one message
@@ -115,6 +139,16 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       }
     } catch { /* plan not available */ }
 
+    // Inject project intelligence (ambient awareness)
+    try {
+      const { ProjectModelStore } = await import('./project-model.js');
+      const pms = new ProjectModelStore(projectDir);
+      const model = await pms.getOrBuild();
+      if (model && (model.health.workflows.length > 0 || model.bots.length > 0)) {
+        systemPrompt += '\n\n## Project Intelligence\n\n' + pms.formatSummary(model);
+      }
+    } catch { /* project model not available yet */ }
+
     // Run single message, print result, exit
     await runAgentLoop(provider, tools, executor, [{ role: 'user', content: pipeInput }], {
       systemPrompt, maxIterations: 20,
@@ -139,6 +173,16 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       systemPrompt += '\n\n## Project Plan & Vision\n\nAll bots you spawn and tasks you queue MUST align with this plan.\n\n' + plan;
     }
   } catch { /* plan not available */ }
+
+  // Inject project intelligence (ambient awareness)
+  try {
+    const { ProjectModelStore } = await import('./project-model.js');
+    const pms = new ProjectModelStore(projectDir);
+    const model = await pms.getOrBuild();
+    if (model && (model.health.workflows.length > 0 || model.bots.length > 0)) {
+      systemPrompt += '\n\n## Project Intelligence\n\n' + pms.formatSummary(model);
+    }
+  } catch { /* project model not available yet */ }
 
   // Persistent conversation store
   const { ConversationStore } = await import('./conversation-store.js');
@@ -202,21 +246,35 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     }
   } catch { /* credentials not available */ }
 
-  const header = [`weaver assistant v${weaverVersion}`, `flow-weaver v${fwVersion}`];
-  if (cloudStatus) header.push(cloudStatus);
-  out(`\n  ${c.bold(header[0])}  ${c.dim(`· ${header.slice(1).join('  · ')}`)}\n`);
-  out(`  ${c.dim(`Project: ${path.basename(projectDir)}`)}\n`);
-  if (!cloudStatus) {
-    out(`  ${c.dim('AI: Local (set ANTHROPIC_API_KEY or run "fw login" to connect)')}\n`);
+  if (!isDebug) {
+    const header = [`weaver assistant v${weaverVersion}`, `flow-weaver v${fwVersion}`];
+    if (cloudStatus) header.push(cloudStatus);
+    out(`\n  ${c.bold(header[0])}  ${c.dim(`· ${header.slice(1).join('  · ')}`)}\n`);
+    out(`  ${c.dim(`Project: ${path.basename(projectDir)}`)}\n`);
+    if (!cloudStatus) {
+      out(`  ${c.dim('AI: Local (set ANTHROPIC_API_KEY or run "fw login" to connect)')}\n`);
+    }
+    if (conversation.title) {
+      const ago = Math.round((Date.now() - conversation.lastMessageAt) / 60000);
+      out(`  ${c.dim(`Resuming: "${conversation.title}" (${conversation.messageCount} messages, ${ago}m ago). /new to start fresh`)}\n`);
+    } else {
+      out(`  ${c.dim('New conversation')}\n`);
+    }
+    out(`  ${c.dim('Type your request. Ctrl+C to exit. /help for commands.')}\n`);
+    out(`  ${c.dim('Try: "describe my workflows" or "fix validation errors"')}\n\n`);
   }
-  if (conversation.title) {
-    const ago = Math.round((Date.now() - conversation.lastMessageAt) / 60000);
-    out(`  ${c.dim(`Resuming: "${conversation.title}" (${conversation.messageCount} messages, ${ago}m ago). /new to start fresh`)}\n`);
-  } else {
-    out(`  ${c.dim('New conversation')}\n`);
+
+  // Proactive session greeting with project status
+  if (!isDebug) {
+    try {
+      const { ProjectModelStore } = await import('./project-model.js');
+      const pms = new ProjectModelStore(projectDir);
+      const model = await pms.getOrBuild();
+      if (model && (model.health.workflows.length > 0 || model.bots.length > 0)) {
+        out(`  ${c.dim(pms.formatSessionGreeting(model))}\n`);
+      }
+    } catch { /* project model not available yet */ }
   }
-  out(`  ${c.dim('Type your request. Ctrl+C to exit. /help for commands.')}\n`);
-  out(`  ${c.dim('Try: "describe my workflows" or "fix validation errors"')}\n\n`);
 
   // Rich input with history, arrows, tab completion, slash commands
   const { RichInput } = await import('./rich-input.js');
@@ -239,32 +297,53 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       })()
     : (): Promise<string | null> => richInput!.getInput();
 
+  // Debug mode: collect tool calls and response text per turn
+  let debugToolCalls: Array<{ name: string; args: Record<string, unknown>; result: string; isError: boolean }> = [];
+  let debugResponseText = '';
+  let debugInsightNudge: string | undefined;
+  let debugTurnCount = 0;
+
   let lastStreamType = '';
   const onStreamEvent = (event: StreamEvent) => {
     if (event.type === 'text_delta') {
-      if (lastStreamType === 'thinking_delta') out('\n\n');
-      out(event.text);
+      if (lastStreamType === 'thinking_delta' && !isDebug) out('\n\n');
+      if (isDebug) { debugResponseText += event.text; }
+      else { out(event.text); }
     } else if (event.type === 'thinking_delta') {
-      out(c.dim(event.text));
+      if (!isDebug) out(c.dim(event.text));
     }
     lastStreamType = event.type;
   };
 
+  let currentToolName = '';
+  let currentToolArgs: Record<string, unknown> = {};
   const onToolEvent = (event: { type: string; name: string; args?: Record<string, unknown>; result?: string; isError?: boolean }) => {
     if (event.type === 'tool_call_start') {
-      const preview = toolPreview(event.name, event.args ?? {});
-      out(`\n  ${c.cyan('◆')} ${event.name}${preview ? c.dim(`(${preview})`) : ''}\n`);
+      currentToolName = event.name;
+      currentToolArgs = event.args ?? {};
+      if (!isDebug) {
+        const preview = toolPreview(event.name, event.args ?? {});
+        out(`\n  ${c.cyan('◆')} ${event.name}${preview ? c.dim(`(${preview})`) : ''}\n`);
+      }
     }
     if (event.type === 'tool_call_result') {
-      const icon = event.isError ? c.red('✗') : c.dim('→');
-      const raw = event.result ?? '';
-      // Show full output for diagram/describe/docs tools; truncate others
-      const isVerboseTool = VERBOSE_TOOL_NAMES.has(event.name);
-      if (isVerboseTool && raw.length > 150) {
-        out(`  ${icon}\n${raw}\n`);
+      if (isDebug) {
+        debugToolCalls.push({
+          name: currentToolName,
+          args: currentToolArgs,
+          result: (event.result ?? '').slice(0, 2000),
+          isError: !!event.isError,
+        });
       } else {
-        const result = raw.replace(/\n/g, ' ').slice(0, 200);
-        out(`  ${icon} ${result}\n`);
+        const icon = event.isError ? c.red('✗') : c.dim('→');
+        const raw = event.result ?? '';
+        const isVerboseTool = VERBOSE_TOOL_NAMES.has(event.name);
+        if (isVerboseTool && raw.length > 150) {
+          out(`  ${icon}\n${raw}\n`);
+        } else {
+          const result = raw.replace(/\n/g, ' ').slice(0, 200);
+          out(`  ${icon} ${result}\n`);
+        }
       }
     }
   };
@@ -376,20 +455,76 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       // Token-aware compression
       compressHistory(history);
 
+      // Proactive insight surfacing — update system prompt for next turn
+      try {
+        const { ProjectModelStore } = await import('./project-model.js');
+        const { InsightEngine } = await import('./insight-engine.js');
+        const pms = new ProjectModelStore(projectDir);
+        const model = await pms.getOrBuild();
+        const engine = new InsightEngine();
+        const insights = engine.analyze(model).filter(i => i.confidence >= 0.6);
+
+        if (insights.length > 0) {
+          const unsurfaced = insights.filter(insight =>
+            !history.some(m =>
+              m.role === 'assistant' &&
+              typeof m.content === 'string' &&
+              m.content.includes(insight.title)
+            )
+          );
+          if (unsurfaced.length > 0) {
+            const top = unsurfaced[0]!;
+            const nudge = `\n\n[PROACTIVE CONTEXT: ${top.title}. ${top.description}${top.suggestion ? ` Suggestion: ${top.suggestion}` : ''}. Mention this naturally if relevant, or bring it up if there's a lull.]`;
+            if (isDebug) debugInsightNudge = nudge;
+            // Append to system prompt for the next turn only
+            if (!systemPrompt.includes('[PROACTIVE CONTEXT:')) {
+              systemPrompt += nudge;
+            } else {
+              // Replace existing nudge
+              systemPrompt = systemPrompt.replace(/\n\n\[PROACTIVE CONTEXT:.*\]/s, nudge);
+            }
+          }
+        }
+      } catch { /* insights not available */ }
+
+      // Debug mode: emit structured NDJSON per turn
+      if (isDebug) {
+        debugTurnCount++;
+        const debugOutput: AssistantDebugTurn = {
+          turn: debugTurnCount,
+          input,
+          toolCalls: debugToolCalls,
+          response: debugResponseText,
+          tokensUsed,
+          systemPromptLength: systemPrompt.length,
+          insightNudge: debugInsightNudge,
+          conversationId: conversation.id,
+        };
+        process.stdout.write(JSON.stringify(debugOutput) + '\n');
+        // Reset for next turn
+        debugToolCalls = [];
+        debugResponseText = '';
+        debugInsightNudge = undefined;
+      }
+
       if (!result.success && result.summary) {
-        out(`\n  ${c.red(result.summary)}\n`);
+        if (!isDebug) out(`\n  ${c.red(result.summary)}\n`);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      out(`\n  ${c.red('Error:')} ${msg}\n`);
+      if (isDebug) {
+        process.stdout.write(JSON.stringify({ turn: ++debugTurnCount, error: msg, conversationId: conversation.id }) + '\n');
+      } else {
+        out(`\n  ${c.red('Error:')} ${msg}\n`);
+      }
     }
 
-    out('\n');
+    if (!isDebug) out('\n');
   }
 
   watcher?.close();
   richInput?.destroy();
-  out(`\n  ${c.dim('Goodbye.')}\n\n`);
+  if (!isDebug) out(`\n  ${c.dim('Goodbye.')}\n\n`);
 }
 
 function toolPreview(name: string, args: Record<string, unknown>): string {

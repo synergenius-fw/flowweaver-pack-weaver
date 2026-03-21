@@ -60,6 +60,18 @@ export function genesisUpdateHistory(ctx: string): { ctx: string } {
     if (fingerprint) {
       store.saveFingerprint(fingerprint);
     }
+
+    // Invalidate project model cache so next access rebuilds with fresh data
+    try {
+      // Use sync require-like approach: delete the cached model.json directly
+      const crypto = require('node:crypto') as typeof import('node:crypto');
+      const fsMod = require('node:fs') as typeof import('node:fs');
+      const pathMod = require('node:path') as typeof import('node:path');
+      const osMod = require('node:os') as typeof import('node:os');
+      const hash8 = crypto.createHash('sha256').update(env.projectDir).digest('hex').slice(0, 8);
+      const modelPath = pathMod.join(osMod.homedir(), '.weaver', 'projects', hash8, 'model.json');
+      if (fsMod.existsSync(modelPath)) fsMod.unlinkSync(modelPath);
+    } catch { /* project model not available */ }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`\x1b[31m→ Failed to save history: ${msg}\x1b[0m`);

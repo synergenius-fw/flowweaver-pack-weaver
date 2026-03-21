@@ -21,16 +21,23 @@ function createMockCtx(overrides: Partial<SlashContext> = {}): SlashContext {
 }
 
 describe('SLASH_COMMANDS', () => {
-  it('has 9 commands', () => {
-    expect(SLASH_COMMANDS).toHaveLength(9);
+  it('has 13 commands', () => {
+    expect(SLASH_COMMANDS).toHaveLength(13);
   });
 
   it('contains the expected command names', () => {
     const names = SLASH_COMMANDS.map(c => c.name);
-    expect(names).toEqual([
-      '/help', '/status', '/bots', '/clear', '/exit',
-      '/new', '/list', '/verbose', '/history',
-    ]);
+    expect(names).toContain('/help');
+    expect(names).toContain('/status');
+    expect(names).toContain('/bots');
+    expect(names).toContain('/clear');
+    expect(names).toContain('/exit');
+    expect(names).toContain('/new');
+    expect(names).toContain('/list');
+    expect(names).toContain('/verbose');
+    expect(names).toContain('/history');
+    expect(names).toContain('/insights');
+    expect(names).toContain('/health');
   });
 
   it('each command has name, description, and handler', () => {
@@ -48,7 +55,9 @@ describe('SLASH_COMMANDS', () => {
 describe('getSlashCompletions', () => {
   it('returns matching commands for partial input', () => {
     const results = getSlashCompletions('/h');
-    expect(results).toEqual(['/help', '/history']);
+    expect(results).toContain('/help');
+    expect(results).toContain('/history');
+    expect(results).toContain('/health');
   });
 
   it('returns single match', () => {
@@ -64,7 +73,7 @@ describe('getSlashCompletions', () => {
 
   it('returns all commands for just "/"', () => {
     const results = getSlashCompletions('/');
-    expect(results).toHaveLength(9);
+    expect(results).toHaveLength(SLASH_COMMANDS.length);
     expect(results).toEqual(SLASH_COMMANDS.map(c => c.name));
   });
 

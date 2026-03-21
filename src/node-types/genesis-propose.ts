@@ -40,10 +40,18 @@ export async function genesisPropose(
     graceRemaining: context.escrowGraceRemaining ?? 0,
   });
 
+  // Inject project intelligence
+  let insightContext = '';
+  try {
+    const { getGenesisInsightContext } = await import('../bot/genesis-prompt-context.js');
+    insightContext = await getGenesisInsightContext(env.projectDir);
+  } catch { /* insights not available */ }
+
   const userPrompt = [
     '## Current Workflow Structure',
     context.workflowDescription || '(no description available)',
     '',
+    ...(insightContext ? [insightContext, ''] : []),
     '## Project Diff Since Last Cycle',
     JSON.stringify(diff, null, 2),
     '',

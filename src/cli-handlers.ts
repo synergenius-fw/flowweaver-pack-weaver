@@ -70,6 +70,8 @@ export interface ParsedArgs {
   assistantDelete?: string;
   assistantWatch?: string;
   assistantMessage?: string;
+  assistantDebug?: boolean;
+  assistantDebugMessages?: string[];
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -272,6 +274,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.assistantMessage = args[i];
     } else if (arg === '--new') {
       result.assistantNew = true;
+    } else if (arg === '--debug') {
+      result.assistantDebug = true;
     } else if (arg === '--resume' && i + 1 < args.length) {
       i++;
       result.assistantResume = args[i];
@@ -1679,6 +1683,36 @@ export async function handleAssistant(opts: ParsedArgs): Promise<void> {
   const { ASSISTANT_TOOLS, createAssistantExecutor } = await import('./bot/assistant-tools.js');
   const { runAssistant } = await import('./bot/assistant-core.js');
   const executor = createAssistantExecutor(projectDir);
+
+  // Debug mode: pass messages as inputMessages, enable structured output
+  // Must be checked BEFORE single-message mode since both use -m flag
+  if (opts.assistantDebug) {
+    const messages = opts.assistantMessage ? [opts.assistantMessage] : [];
+    // Read additional messages from stdin if not a TTY
+    if (!process.stdin.isTTY) {
+      const chunks: string[] = [];
+      for await (const chunk of process.stdin) {
+        chunks.push(typeof chunk === 'string' ? chunk : chunk.toString());
+      }
+      const stdinMessages = chunks.join('').trim().split('\n').filter(Boolean);
+      messages.push(...stdinMessages);
+    }
+    if (messages.length === 0) {
+      console.error('Debug mode requires messages via -m "msg" or stdin (one per line)');
+      process.exit(1);
+    }
+    await runAssistant({
+      provider,
+      tools: ASSISTANT_TOOLS,
+      executor,
+      projectDir,
+      inputMessages: messages,
+      resumeId: opts.assistantResume,
+      newConversation: !opts.assistantResume,
+      debug: true,
+    });
+    return;
+  }
 
   // Single message mode: -m "message" — run one message, print result, exit
   if (opts.assistantMessage) {

@@ -308,6 +308,177 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
           return { result: entries.map(e => `${e.key}: ${e.value}`).join('\n'), isError: false };
         }
 
+        // Overseer tools
+        case 'project_health': {
+          const { ProjectModelStore } = await import('./project-model.js');
+          const pms = new ProjectModelStore(projectDir);
+          const model = await pms.getOrBuild();
+          const lines: string[] = [
+            `Overall health: ${model.health.overall}/100`,
+            '',
+          ];
+          if (model.health.workflows.length > 0) {
+            lines.push('Workflows:');
+            for (const w of model.health.workflows) {
+              lines.push(`  ${w.file}: ${w.score}/100 (${w.totalRuns} runs, ${Math.round(w.successRate * 100)}% success, trend: ${w.trend})`);
+            }
+            lines.push('');
+          }
+          if (model.bots.length > 0) {
+            lines.push('Bots:');
+            for (const b of model.bots) {
+              lines.push(`  ${b.name}: ${b.ejected ? 'ejected' : 'pack'} (${b.totalTasksRun} tasks, ${Math.round(b.successRate * 100)}% success)`);
+            }
+            lines.push('');
+          }
+          if (model.failurePatterns.length > 0) {
+            lines.push('Failure patterns:');
+            for (const p of model.failurePatterns.slice(0, 5)) {
+              lines.push(`  ${p.pattern} (${p.occurrences}x, ${p.transient ? 'transient' : 'persistent'})`);
+            }
+            lines.push('');
+          }
+          lines.push(`Cost (7d): $${model.cost.last7Days.toFixed(2)} (trend: ${model.cost.trend})`);
+          lines.push(`Trust: phase ${model.trust.phase} (score ${model.trust.score})`);
+          return { result: lines.join('\n'), isError: false };
+        }
+
+        case 'project_insights': {
+          const { ProjectModelStore } = await import('./project-model.js');
+          const { InsightEngine } = await import('./insight-engine.js');
+          const pms = new ProjectModelStore(projectDir);
+          const model = await pms.getOrBuild();
+          const engine = new InsightEngine();
+          const insights = engine.analyze(model);
+          const limit = (args.limit as number) ?? 5;
+          if (insights.length === 0) return { result: 'No actionable insights right now. Keep running workflows to build up data.', isError: false };
+          const lines = insights.slice(0, limit).map(i =>
+            `[${i.severity}] ${i.title} (confidence: ${Math.round(i.confidence * 100)}%)\n  ${i.description}${i.suggestion ? `\n  Suggestion: ${i.suggestion}` : ''}`
+          );
+          return { result: lines.join('\n\n'), isError: false };
+        }
+
+        case 'evolution_status': {
+          const { ProjectModelStore } = await import('./project-model.js');
+          const pms = new ProjectModelStore(projectDir);
+          const model = await pms.getOrBuild();
+          const evo = model.evolution;
+          if (evo.totalCycles === 0) return { result: 'No genesis cycles recorded yet. Use /genesis or genesis_propose to start evolving bot workflows.', isError: false };
+          const lines = [
+            `Total cycles: ${evo.totalCycles} (${Math.round(evo.successRate * 100)}% success rate)`,
+            '',
+            'Operation effectiveness:',
+            ...Object.entries(evo.byOperationType).map(([op, stats]) =>
+              `  ${op}: ${Math.round(stats.effectiveness * 100)}% effective (${stats.applied}/${stats.proposed} applied)`
+            ),
+            '',
+            'Recent cycles:',
+            ...evo.recentCycles.slice(-5).map(c =>
+              `  ${c.id} [${c.outcome}] ${c.proposal?.summary ?? 'no proposal'}`
+            ),
+          ];
+          return { result: lines.join('\n'), isError: false };
+        }
+
+        case 'genesis_propose': {
+          const { ProjectModelStore } = await import('./project-model.js');
+          const pms = new ProjectModelStore(projectDir);
+          const model = await pms.getOrBuild();
+
+          // Check if genesis config exists, create default if not
+          const genesisDir = path.join(projectDir, '.genesis');
+          const configPath = path.join(genesisDir, 'config.json');
+          if (!fs.existsSync(configPath)) {
+            fs.mkdirSync(genesisDir, { recursive: true });
+            const defaultConfig = {
+              intent: args.focus ? String(args.focus) : 'Improve bot workflow reliability and efficiency',
+              focus: args.focus ? [String(args.focus)] : [],
+              constraints: [],
+              approvalThreshold: 'MINOR',
+              budgetPerCycle: (args.budget as number) ?? 3,
+              stabilize: false,
+              targetWorkflow: '',
+              maxCyclesPerRun: 1,
+            };
+
+            // Find bot workflow — check ejected first, then pack
+            const botName = String(args.bot ?? 'weaver-bot');
+            const ejectedPath = path.join(projectDir, '.fw', 'bots', botName, 'weaver-bot.ts');
+            const packPath = path.resolve(projectDir, 'node_modules', '@synergenius', 'flow-weaver-pack-weaver', 'src', 'workflows', 'weaver-bot.ts');
+
+            if (fs.existsSync(ejectedPath)) {
+              defaultConfig.targetWorkflow = ejectedPath;
+            } else if (fs.existsSync(packPath)) {
+              // Auto-eject: copy from pack to project
+              const ejectDir = path.join(projectDir, '.fw', 'bots', botName);
+              fs.mkdirSync(ejectDir, { recursive: true });
+              fs.copyFileSync(packPath, path.join(ejectDir, 'weaver-bot.ts'));
+              defaultConfig.targetWorkflow = path.join(ejectDir, 'weaver-bot.ts');
+              // Also copy node types needed
+            } else {
+              return { result: `Could not find bot workflow for "${botName}". Ensure the weaver pack is installed.`, isError: true };
+            }
+
+            fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2), 'utf-8');
+          }
+
+          // Build insight context
+          let insightSummary = '';
+          try {
+            const { getGenesisInsightContext } = await import('./genesis-prompt-context.js');
+            insightSummary = await getGenesisInsightContext(projectDir);
+          } catch { /* insights not available */ }
+
+          // Build proposal summary from model data
+          const lines: string[] = ['Genesis Proposal Context:', ''];
+          lines.push(`Project health: ${model.health.overall}/100`);
+          lines.push(`Trust phase: ${model.trust.phase}`);
+          if (model.failurePatterns.length > 0) {
+            lines.push('');
+            lines.push('Key failure patterns:');
+            for (const p of model.failurePatterns.slice(0, 3)) {
+              lines.push(`  - ${p.pattern} (${p.occurrences}x, ${p.transient ? 'transient' : 'persistent'})`);
+            }
+          }
+          if (model.bots.length > 0) {
+            lines.push('');
+            lines.push('Bot performance:');
+            for (const b of model.bots) {
+              lines.push(`  - ${b.name}: ${Math.round(b.successRate * 100)}% success (${b.totalTasksRun} tasks, ${b.ejected ? 'ejected' : 'pack'})`);
+            }
+          }
+          if (insightSummary) {
+            lines.push('');
+            lines.push(insightSummary);
+          }
+          lines.push('');
+          lines.push('To generate and apply a full proposal, run: flow-weaver weaver genesis');
+          lines.push('Or use genesis_apply after reviewing this context.');
+
+          return { result: lines.join('\n'), isError: false };
+        }
+
+        case 'genesis_apply': {
+          const proposalId = String(args.proposal_id);
+
+          // Run genesis via CLI
+          try {
+            const output = execFileSync('npx', ['flow-weaver', 'weaver', 'genesis', '--max-cycles', '1'], {
+              encoding: 'utf-8', cwd: projectDir, timeout: 120_000, stdio: ['pipe', 'pipe', 'pipe'],
+            });
+
+            // Invalidate project model cache
+            try {
+              const { ProjectModelStore } = await import('./project-model.js');
+              new ProjectModelStore(projectDir).invalidate();
+            } catch { /* non-fatal */ }
+
+            return { result: output.trim() || 'Genesis cycle completed.', isError: false };
+          } catch (err: any) {
+            return { result: `Genesis cycle failed: ${(err.message ?? '').slice(0, 500)}`, isError: true };
+          }
+        }
+
         default:
           return { result: `Unknown tool: ${name}`, isError: true };
       }

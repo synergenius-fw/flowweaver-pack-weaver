@@ -151,7 +151,7 @@ describe('flowweaver.manifest.json', () => {
   it('declares MCP extension', () => {
     expect(manifest.mcpEntrypoint).toBe('dist/mcp-tools.js');
     const mcpTools = manifest.mcpTools as Array<Record<string, unknown>>;
-    expect(mcpTools).toHaveLength(9);
+    expect(mcpTools).toHaveLength(10);
 
     const names = mcpTools.map((t) => t.name);
     // Original 4
@@ -166,6 +166,8 @@ describe('flowweaver.manifest.json', () => {
     expect(names).toContain('fw_weaver_status');
     // Genesis MCP tool
     expect(names).toContain('fw_weaver_genesis');
+    // Overseer MCP tool
+    expect(names).toContain('fw_weaver_insights');
   });
 
   it('declares init contributions', () => {

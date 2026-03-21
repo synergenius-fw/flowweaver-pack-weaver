@@ -471,6 +471,108 @@ export interface GenesisFingerprint {
   existingWorkflows: string[];
 }
 
+// --- Project Model (Overseer) ---
+
+export interface WorkflowHealth {
+  file: string;
+  score: number;
+  totalRuns: number;
+  successRate: number;
+  avgDurationMs: number;
+  lastRun: string | null;
+  trend: 'improving' | 'stable' | 'degrading';
+}
+
+export interface FailurePattern {
+  pattern: string;
+  category: string;
+  occurrences: number;
+  lastSeen: string;
+  workflows: string[];
+  transient: boolean;
+}
+
+export interface ApprovalDecision {
+  timestamp: string;
+  proposalSummary: string;
+  impactLevel: string;
+  approved: boolean;
+  reason?: string;
+}
+
+export interface OperationEffectiveness {
+  proposed: number;
+  applied: number;
+  rolledBack: number;
+  effectiveness: number;
+}
+
+export interface TrustLevel {
+  score: number;
+  phase: 1 | 2 | 3 | 4;
+  factors: {
+    conversationCount: number;
+    approvalConsistency: number;
+    genesisSuccessRate: number;
+    daysSinceFirstUse: number;
+  };
+}
+
+export interface BotProfile {
+  name: string;
+  workflowFile: string;
+  ejected: boolean;
+  totalTasksRun: number;
+  successRate: number;
+  avgTaskDurationMs: number;
+  topFailurePatterns: FailurePattern[];
+}
+
+export interface ProjectModel {
+  projectDir: string;
+  builtAt: number;
+  health: {
+    overall: number;
+    workflows: WorkflowHealth[];
+  };
+  bots: BotProfile[];
+  failurePatterns: FailurePattern[];
+  userPreferences: {
+    approvalHistory: ApprovalDecision[];
+    autoApprovePatterns: string[];
+    neverApprovePatterns: string[];
+  };
+  evolution: {
+    totalCycles: number;
+    successRate: number;
+    byOperationType: Record<string, OperationEffectiveness>;
+    recentCycles: GenesisCycleRecord[];
+  };
+  cost: {
+    totalSpent: number;
+    last7Days: number;
+    last30Days: number;
+    trend: 'increasing' | 'stable' | 'decreasing';
+    costPerSuccessfulRun: number;
+    highCostWorkflows: Array<{ workflow: string; avgCost: number }>;
+  };
+  trust: TrustLevel;
+}
+
+export interface Insight {
+  id: string;
+  type: 'failure-pattern' | 'health-trend' | 'cost-optimization' | 'evolution-opportunity' | 'unused-workflow' | 'bot-performance';
+  confidence: number;
+  severity: 'info' | 'warning' | 'critical';
+  title: string;
+  description: string;
+  evidence: string[];
+  suggestion?: string;
+  genesisCandidate: boolean;
+  targetBot?: string;
+  operationHint?: string;
+}
+
 export interface GenesisCycleRecord {
   id: string;
   timestamp: string;
@@ -483,6 +585,7 @@ export interface GenesisCycleRecord {
   approved: boolean | null;
   error: string | null;
   snapshotFile: string | null;
+  rejectionReason?: string;
 }
 
 export interface GenesisHistory {
@@ -519,6 +622,7 @@ export interface GenesisContext {
   workflowDiffJson?: string;
   approvalRequired?: boolean;
   approved?: boolean;
+  rejectionReason?: string;
   commitResultJson?: string;
   cycleRecordJson?: string;
   workflowDescription?: string;

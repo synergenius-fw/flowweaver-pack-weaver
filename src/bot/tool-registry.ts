@@ -8,7 +8,7 @@ import type { ToolDefinition } from '@synergenius/flow-weaver/agent';
 
 export interface WeaverTool extends ToolDefinition {
   verboseOutput?: boolean;
-  category: 'bot-management' | 'queue' | 'flow-weaver' | 'project' | 'knowledge' | 'conversation' | 'ci' | 'web';
+  category: 'bot-management' | 'queue' | 'flow-weaver' | 'project' | 'knowledge' | 'conversation' | 'ci' | 'web' | 'overseer';
   contexts: Array<'bot' | 'assistant'>;
 }
 
@@ -432,6 +432,61 @@ export const ALL_TOOLS: WeaverTool[] = [
     },
     category: 'web',
     contexts: ['bot', 'assistant'],
+  },
+
+  // ── Overseer tools (assistant only) ─────────────────────────────
+  {
+    name: 'project_health',
+    description: 'Get project health: workflow scores, bot performance, failure patterns, cost trends, trust level.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    category: 'overseer',
+    contexts: ['assistant'],
+  },
+  {
+    name: 'project_insights',
+    description: 'Get actionable insights: recurring failures, degrading workflows, cost optimizations, evolution opportunities.',
+    inputSchema: {
+      type: 'object',
+      properties: { limit: { type: 'number', description: 'Max insights (default 5)' } },
+      required: [],
+    },
+    category: 'overseer',
+    contexts: ['assistant'],
+  },
+  {
+    name: 'evolution_status',
+    description: 'Get genesis evolution history: cycle outcomes, operation effectiveness, recent proposals.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    category: 'overseer',
+    contexts: ['assistant'],
+  },
+  {
+    name: 'genesis_propose',
+    description: 'Generate a Genesis evolution proposal for a bot workflow based on project insights. Auto-ejects bot if needed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        bot: { type: 'string', description: 'Bot name (default: weaver-bot)' },
+        focus: { type: 'string', description: 'Optional focus area for the proposal' },
+        budget: { type: 'number', description: 'Cost unit budget (default: from config)' },
+      },
+      required: [],
+    },
+    category: 'overseer',
+    contexts: ['assistant'],
+  },
+  {
+    name: 'genesis_apply',
+    description: 'Apply an approved Genesis proposal to the bot workflow.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        proposal_id: { type: 'string', description: 'Proposal ID from genesis_propose' },
+      },
+      required: ['proposal_id'],
+    },
+    category: 'overseer',
+    contexts: ['assistant'],
   },
 
   // ── Bot-only interactive ─────────────────────────────────────────

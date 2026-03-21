@@ -66,8 +66,33 @@ export async function genesisApprove(
     return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   }
 
-  // Non-auto modes reject in non-interactive context
-  console.log('\x1b[33m→ Rejected (approval required, non-auto mode)\x1b[0m');
-  context.approved = false;
+  // Non-auto modes: try interactive approval, fall back to reject
+  let approved = false;
+  let rejectionReason = 'Non-interactive environment';
+
+  if (approvalMode === 'prompt') {
+    try {
+      const readline = await import('node:readline');
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const answer = await new Promise<string>(resolve => {
+        rl.question('\x1b[33m? Approve this proposal? (y/N/reason): \x1b[0m', resolve);
+      });
+      rl.close();
+      const trimmed = answer.trim().toLowerCase();
+      if (trimmed === 'y' || trimmed === 'yes') {
+        approved = true;
+      } else {
+        rejectionReason = trimmed && trimmed !== 'n' && trimmed !== 'no' ? answer.trim() : 'User rejected';
+      }
+    } catch {
+      // Non-interactive — fall through to reject
+    }
+  }
+
+  context.approved = approved;
+  context.rejectionReason = approved ? undefined : rejectionReason;
+  console.log(approved
+    ? '\x1b[32m→ Approved by user\x1b[0m'
+    : `\x1b[33m→ Rejected: ${rejectionReason}\x1b[0m`);
   return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
 }

@@ -992,6 +992,10 @@
     {
       "name": "fw_weaver_genesis",
       "description": "Run bot self-evolution cycle on a target workflow"
+    },
+    {
+      "name": "fw_weaver_insights",
+      "description": "Get project health, insights, trust level, and cost summary"
     }
   ],
   "eventSubscriptions": [
@@ -1021,6 +1025,11 @@
       "capabilities": [
         "events:emit"
       ]
+    },
+    {
+      "event": "execution.completed",
+      "handler": "dist/handlers/on-execution-completed.js",
+      "functionName": "onExecutionCompleted"
     }
   ],
   "webhooks": [
@@ -1073,6 +1082,20 @@
       "name": "Weaver Report View",
       "component": "dist/ui/report-renderer.js",
       "mimeType": "application/x-weaver-report"
+    },
+    {
+      "type": "dashboard-widget",
+      "id": "weaver-insights",
+      "name": "Project Insights",
+      "component": "dist/ui/insights-widget.js",
+      "area": "dashboard",
+      "size": "large"
+    },
+    {
+      "type": "panel",
+      "id": "weaver-evolution",
+      "name": "Evolution History",
+      "component": "dist/ui/evolution-panel.js"
     }
   ],
   "sandboxCapabilities": [

@@ -97,11 +97,43 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     },
   },
   {
+    name: '/insights',
+    description: 'Show project insights and recommendations',
+    handler: async (ctx: SlashContext) => {
+      const result = await ctx.executor('project_insights', {});
+      ctx.out(`\n${result.result}\n\n`);
+    },
+  },
+  {
+    name: '/health',
+    description: 'Show project health summary',
+    handler: async (ctx: SlashContext) => {
+      const result = await ctx.executor('project_health', {});
+      ctx.out(`\n${result.result}\n\n`);
+    },
+  },
+  {
     name: '/history',
     description: 'Show conversation history summary',
     handler: async (ctx) => {
       const result = await ctx.executor('conversation_summary', {});
       ctx.out(`\n  ${result.result}\n\n`);
+    },
+  },
+  {
+    name: '/genesis',
+    description: 'Propose a workflow evolution based on project insights',
+    handler: async (ctx: SlashContext) => {
+      const result = await ctx.executor('genesis_propose', {});
+      ctx.out(`\n${result.result}\n\n`);
+    },
+  },
+  {
+    name: '/trust',
+    description: 'Show current trust level and factors',
+    handler: async (ctx: SlashContext) => {
+      const result = await ctx.executor('project_health', {});
+      ctx.out(`\n${result.result}\n\n`);
     },
   },
 ];
