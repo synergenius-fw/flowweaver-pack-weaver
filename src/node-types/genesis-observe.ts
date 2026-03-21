@@ -46,6 +46,7 @@ export async function genesisObserve(
 
   try {
     const files: Record<string, string> = {};
+    const fileContents: Record<string, string> = {};
     const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'coverage', '.next', '.turbo']);
 
     function walkDir(dir: string): void {
@@ -59,6 +60,7 @@ export async function genesisObserve(
           const filePath = path.join(dir, entry.name);
           const relPath = path.relative(projectDir, filePath);
           const content = fs.readFileSync(filePath, 'utf-8');
+          fileContents[relPath] = content;
           files[relPath] = crypto.createHash('sha256').update(content).digest('hex');
         }
       }
@@ -87,17 +89,20 @@ export async function genesisObserve(
     }
 
     const existingWorkflows: string[] = [];
-    for (const [relPath, _hash] of Object.entries(files)) {
-      const filePath = path.join(projectDir, relPath);
-      const content = fs.readFileSync(filePath, 'utf-8');
+    for (const [relPath, content] of Object.entries(fileContents)) {
       if (content.includes('@flowWeaver workflow')) {
         existingWorkflows.push(relPath);
       }
     }
 
-    const targetPath = path.resolve(projectDir, config.targetWorkflow);
-    const targetContent = fs.readFileSync(targetPath, 'utf-8');
-    const workflowHash = crypto.createHash('sha256').update(targetContent).digest('hex');
+    let workflowHash = '';
+    let targetPath = '';
+    if (config.targetWorkflow) {
+      targetPath = path.resolve(projectDir, config.targetWorkflow);
+      const targetRelPath = path.relative(projectDir, targetPath);
+      const targetContent = fileContents[targetRelPath] ?? fs.readFileSync(targetPath, 'utf-8');
+      workflowHash = crypto.createHash('sha256').update(targetContent).digest('hex');
+    }
 
     const fingerprint: GenesisFingerprint = {
       timestamp: new Date().toISOString(),
@@ -112,7 +117,9 @@ export async function genesisObserve(
     console.log(`\x1b[36m→ Fingerprint: ${Object.keys(files).length} files, ${existingWorkflows.length} workflows\x1b[0m`);
 
     context.fingerprintJson = JSON.stringify(fingerprint);
-    context.workflowDescription = await getWorkflowDescription(targetPath);
+    if (targetPath) {
+      context.workflowDescription = await getWorkflowDescription(targetPath);
+    }
 
     return { onSuccess: true, onFailure: false, ctx: JSON.stringify(context) };
   } catch (err: unknown) {

@@ -22,7 +22,18 @@ import { genesisObserve } from '../src/node-types/genesis-observe.js';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function makeCtx(projectDir: string, targetWorkflow: string): string {
+function makeCtx(projectDir: string, targetWorkflow?: string): string {
+  const genesisConfig: Record<string, unknown> = {
+    intent: 'improve coverage',
+    focus: [],
+    constraints: [],
+    approvalThreshold: 'MINOR',
+    budgetPerCycle: 5,
+    stabilize: false,
+  };
+  if (targetWorkflow !== undefined) {
+    genesisConfig.targetWorkflow = targetWorkflow;
+  }
   const ctx: GenesisContext = {
     env: {
       projectDir,
@@ -30,15 +41,7 @@ function makeCtx(projectDir: string, targetWorkflow: string): string {
       providerType: 'anthropic',
       providerInfo: { type: 'anthropic' },
     },
-    genesisConfigJson: JSON.stringify({
-      intent: 'improve coverage',
-      focus: [],
-      constraints: [],
-      approvalThreshold: 'MINOR',
-      budgetPerCycle: 5,
-      stabilize: false,
-      targetWorkflow,
-    }),
+    genesisConfigJson: JSON.stringify(genesisConfig),
     cycleId: 'test-cycle-1',
   };
   return JSON.stringify(ctx);
@@ -420,6 +423,28 @@ describe('genesisObserve', () => {
     const ctx = JSON.parse(result.ctx) as GenesisContext;
 
     expect(() => JSON.parse(ctx.fingerprintJson!)).not.toThrow();
+  });
+
+  it('succeeds with empty workflowHash when targetWorkflow is missing from config', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'app.ts'), '/** @flowWeaver workflow */\nexport function app() {}');
+    mockedExecFileSync
+      .mockReturnValueOnce('main\n' as any)
+      .mockReturnValueOnce('abc123\n' as any);
+
+    const ctxStr = makeCtx(tmpDir); // no targetWorkflow
+    const result = await genesisObserve(true, ctxStr);
+
+    expect(result.onSuccess).toBe(true);
+    expect(result.onFailure).toBe(false);
+
+    const ctx = JSON.parse(result.ctx) as GenesisContext;
+    const fp = JSON.parse(ctx.fingerprintJson!);
+
+    expect(fp.workflowHash).toBe('');
+    expect(fp.existingWorkflows).toContain('app.ts');
+    // workflowDescription should not be set
+    expect(ctx.workflowDescription).toBeUndefined();
+    expect(mockGetWorkflowDescription).not.toHaveBeenCalled();
   });
 
   it('fingerprintJson.timestamp is a valid ISO string on success', async () => {
