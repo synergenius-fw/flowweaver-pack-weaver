@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { execSync } from 'node:child_process';
 import { runCommand } from '@synergenius/flow-weaver';
+import { BLOCKED_SHELL_PATTERNS } from './safety.js';
 
 // ---------------------------------------------------------------------------
 // Safety thresholds
@@ -25,21 +26,8 @@ const MAX_READ_SIZE = 1_048_576;
 /** Maximum files returned by list-files. */
 const MAX_LIST_FILES = 1000;
 
-/** Shell commands that are NEVER allowed (destructive operations). */
-const BLOCKED_SHELL_PATTERNS = [
-  /\brm\s+(-[a-z]*r|-[a-z]*f)[a-z]*\s/i,  // rm with -r or -f flags
-  /\bgit\s+push\b/i,              // git push (no remote ops)
-  /\bgit\s+reset\s+--hard\b/i,    // git reset --hard
-  /\bnpm\s+publish\b/i,           // npm publish
-  /\bcurl\b.*\|\s*(sh|bash)\b/i,  // curl | sh/bash
-  /\bwget\b.*\|\s*(sh|bash)\b/i,  // wget | sh/bash
-  /\bsudo\b/i,                    // sudo
-  /\bchmod\s+777\b/i,             // chmod 777
-  /\bkill\s+-9\b/i,               // kill -9
-  /\bmkfs\b/i,                    // format disk
-  /\bdd\s+if=/i,                  // dd (disk destroyer)
-  />\s*\/dev\/sd/i,               // write to raw disk
-];
+// Shell blocklist imported from safety.ts — single source of truth.
+// Do NOT add patterns here; add them in safety.ts instead.
 
 /** Track files written in this process to enforce the per-plan cap. */
 let filesWrittenThisPlan = 0;
@@ -55,10 +43,36 @@ export function resetPlanFileCounter(): void {
 
 function assertSafePath(filePath: string, projectDir: string): void {
   const resolved = path.resolve(projectDir, filePath);
-  if (!resolved.startsWith(path.resolve(projectDir))) {
+  const resolvedBase = path.resolve(projectDir);
+  if (!resolved.startsWith(resolvedBase + path.sep) && resolved !== resolvedBase) {
     throw new Error(
       `Path traversal blocked: "${filePath}" resolves outside project directory.`,
     );
+  }
+
+  // Symlink protection: resolve real paths for any existing segments.
+  // Walk up from the resolved path to find the deepest existing ancestor,
+  // then verify its real path is still inside the project directory.
+  let checkPath = resolved;
+  while (!fs.existsSync(checkPath) && checkPath !== resolvedBase) {
+    checkPath = path.dirname(checkPath);
+  }
+  if (fs.existsSync(checkPath)) {
+    try {
+      const realPath = fs.realpathSync(checkPath);
+      const realBase = fs.realpathSync(resolvedBase);
+      if (!realPath.startsWith(realBase + path.sep) && realPath !== realBase) {
+        throw new Error(
+          `Path traversal blocked: "${filePath}" resolves outside project directory via symlink.`,
+        );
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('Path traversal')) throw err;
+      // If realpath fails (broken symlink etc), block it
+      throw new Error(
+        `Path traversal blocked: "${filePath}" could not verify path safety.`,
+      );
+    }
   }
 }
 
@@ -219,6 +233,21 @@ export async function executeStep(
         return {
           file: filePath,
           output: `No patches applied. Search strings not found: ${notFound.join('; ')}`,
+        };
+      }
+
+      // Shrink guard: block patches that would reduce file size by >50%
+      const originalSize = fileSize;
+      const newSize = Buffer.byteLength(content, 'utf-8');
+      if (originalSize > SHRINK_GUARD_MIN_SIZE && newSize < originalSize * MAX_SHRINK_RATIO) {
+        const shrinkPct = Math.round((1 - newSize / originalSize) * 100);
+        return {
+          file: filePath,
+          blocked: true,
+          blockReason:
+            `Refusing to patch ${path.basename(filePath)}: result (${newSize}B) ` +
+            `is ${shrinkPct}% smaller than original (${originalSize}B). ` +
+            `This looks like accidental content removal. Review patches carefully.`,
         };
       }
 

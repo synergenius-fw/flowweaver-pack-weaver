@@ -122,10 +122,10 @@ describe('paths', () => {
 describe('safety', () => {
   it('isBlockedCommand detects dangerous commands', async () => {
     const { isBlockedCommand } = await import('../src/bot/safety.js');
-    expect(isBlockedCommand('rm -rf /')).toBe('rm -rf');
-    expect(isBlockedCommand('git push origin main')).toBe('git push');
-    expect(isBlockedCommand('npm publish')).toBe('npm publish');
-    expect(isBlockedCommand('sudo apt install')).toBe('sudo');
+    expect(isBlockedCommand('rm -rf /')).toBeTruthy();
+    expect(isBlockedCommand('git push origin main')).toBeTruthy();
+    expect(isBlockedCommand('npm publish')).toBeTruthy();
+    expect(isBlockedCommand('sudo apt install')).toBeTruthy();
     expect(isBlockedCommand('echo hello')).toBe(false);
     expect(isBlockedCommand('npx vitest run')).toBe(false);
   });
@@ -141,10 +141,11 @@ describe('safety', () => {
   });
 
   it('exports constants', async () => {
-    const { CHARS_PER_TOKEN, MAX_READ_SIZE, BLOCKED_COMMANDS } = await import('../src/bot/safety.js');
+    const { CHARS_PER_TOKEN, MAX_READ_SIZE, BLOCKED_SHELL_PATTERNS } = await import('../src/bot/safety.js');
     expect(CHARS_PER_TOKEN).toBe(4);
     expect(MAX_READ_SIZE).toBe(1_048_576);
-    expect(BLOCKED_COMMANDS).toContain('rm -rf');
+    expect(Array.isArray(BLOCKED_SHELL_PATTERNS)).toBe(true);
+    expect(BLOCKED_SHELL_PATTERNS.length).toBeGreaterThan(10);
   });
 });
 

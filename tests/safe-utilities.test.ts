@@ -299,6 +299,40 @@ describe('safePath', () => {
   });
 });
 
+describe('safePath symlink protection', () => {
+  const symlinkBase = path.join(
+    require('node:os').tmpdir(),
+    'weaver-symlink-test-' + Date.now(),
+  );
+  const outsideDir = path.join(
+    require('node:os').tmpdir(),
+    'weaver-outside-' + Date.now(),
+  );
+  const fs = require('node:fs');
+
+  beforeEach(() => {
+    fs.mkdirSync(symlinkBase, { recursive: true });
+    fs.mkdirSync(outsideDir, { recursive: true });
+    fs.writeFileSync(path.join(outsideDir, 'secret.txt'), 'SECRET');
+    // Create symlink inside base that points outside
+    fs.symlinkSync(outsideDir, path.join(symlinkBase, 'escape'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(symlinkBase, { recursive: true, force: true });
+    fs.rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  it('rejects path that resolves outside via symlink', () => {
+    // "escape/secret.txt" resolves via symlink to outsideDir/secret.txt
+    expect(safePath(symlinkBase, 'escape/secret.txt')).toBeNull();
+  });
+
+  it('rejects symlink directory itself', () => {
+    expect(safePath(symlinkBase, 'escape')).toBeNull();
+  });
+});
+
 describe('safePathOrThrow', () => {
   const base = '/project/workspace';
 

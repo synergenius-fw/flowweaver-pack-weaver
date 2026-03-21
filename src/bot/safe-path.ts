@@ -6,12 +6,13 @@
  * user input, AI output, or external configuration.
  */
 
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 /**
  * Validate that a relative path does not escape the base directory.
  * Returns the resolved absolute path if safe, or null if the path
- * attempts traversal.
+ * attempts traversal. Also resolves symlinks to prevent bypass attacks.
  */
 export function safePath(baseDir: string, relativePath: string): string | null {
   const normalized = path.normalize(relativePath);
@@ -26,6 +27,24 @@ export function safePath(baseDir: string, relativePath: string): string | null {
   // Ensure resolved path is within baseDir
   if (!resolved.startsWith(resolvedBase + path.sep) && resolved !== resolvedBase) {
     return null;
+  }
+
+  // Symlink protection: walk up to find deepest existing segment and
+  // verify its real path stays within the base directory.
+  let checkPath = resolved;
+  while (!fs.existsSync(checkPath) && checkPath !== resolvedBase) {
+    checkPath = path.dirname(checkPath);
+  }
+  if (fs.existsSync(checkPath)) {
+    try {
+      const realPath = fs.realpathSync(checkPath);
+      const realBase = fs.realpathSync(resolvedBase);
+      if (!realPath.startsWith(realBase + path.sep) && realPath !== realBase) {
+        return null;
+      }
+    } catch {
+      return null; // Can't verify safety, reject
+    }
   }
 
   return resolved;

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -251,5 +251,221 @@ describe('list-files', () => {
   it('handles invalid regex', async () => {
     const result = await executeStep({ operation: 'list-files', args: { directory: '.', pattern: '[unclosed' } }, tmpDir);
     expect(result.output).toContain('Invalid regex');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue 1: Symlink bypass in assertSafePath
+// ---------------------------------------------------------------------------
+
+describe('symlink path traversal', () => {
+  const symlinkDir = path.join(tmpDir, 'symlink-test');
+  const outsideDir = path.join(os.tmpdir(), 'weaver-outside-' + Date.now());
+
+  beforeEach(() => {
+    fs.mkdirSync(symlinkDir, { recursive: true });
+    fs.mkdirSync(outsideDir, { recursive: true });
+    fs.writeFileSync(path.join(outsideDir, 'secret.txt'), 'TOP SECRET', 'utf-8');
+  });
+
+  afterEach(() => {
+    fs.rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  it('blocks read through symlink pointing outside project', async () => {
+    // Create a symlink inside the project that points to an outside directory
+    const linkPath = path.join(symlinkDir, 'escape-link');
+    fs.symlinkSync(outsideDir, linkPath);
+
+    const result = await executeStep(
+      { operation: 'read-file', args: { file: 'symlink-test/escape-link/secret.txt' } },
+      symlinkDir.replace(/\/symlink-test$/, '/symlink-test'),
+    );
+    // Should be blocked, not return the secret
+    expect(result.output).not.toContain('TOP SECRET');
+  });
+
+  it('blocks write through symlink pointing outside project', async () => {
+    const linkPath = path.join(symlinkDir, 'write-escape');
+    fs.symlinkSync(outsideDir, linkPath);
+
+    await expect(executeStep(
+      { operation: 'write-file', args: { file: 'write-escape/pwned.txt', content: 'hacked' } },
+      symlinkDir,
+    )).rejects.toThrow();
+
+    // The file should NOT exist outside
+    expect(fs.existsSync(path.join(outsideDir, 'pwned.txt'))).toBe(false);
+  });
+
+  it('blocks patch through symlink pointing outside project', async () => {
+    const linkPath = path.join(symlinkDir, 'patch-escape');
+    fs.symlinkSync(outsideDir, linkPath);
+
+    await expect(executeStep(
+      { operation: 'patch-file', args: { file: 'patch-escape/secret.txt', find: 'TOP', replace: 'NO' } },
+      symlinkDir,
+    )).rejects.toThrow('Path traversal');
+
+    // Original file should be unchanged
+    expect(fs.readFileSync(path.join(outsideDir, 'secret.txt'), 'utf-8')).toBe('TOP SECRET');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue 2: Patch-file missing shrink guard
+// ---------------------------------------------------------------------------
+
+describe('patch-file shrink guard', () => {
+  it('blocks patch that would shrink file by more than 50%', async () => {
+    const filePath = path.join(tmpDir, 'shrinkable.ts');
+    const originalContent = 'x'.repeat(500) + '\nkeep this line\n' + 'y'.repeat(500);
+    fs.writeFileSync(filePath, originalContent, 'utf-8');
+
+    // Patch replaces most of the content with almost nothing
+    const result = await executeStep({
+      operation: 'patch-file',
+      args: {
+        file: 'shrinkable.ts',
+        patches: [
+          { find: 'x'.repeat(500), replace: '' },
+          { find: 'y'.repeat(500), replace: '' },
+        ],
+      },
+    }, tmpDir);
+
+    expect(result.blocked).toBe(true);
+    expect(result.blockReason).toContain('shrink');
+
+    // Original file unchanged
+    expect(fs.readFileSync(filePath, 'utf-8')).toBe(originalContent);
+  });
+
+  it('allows patch within shrink threshold', async () => {
+    const filePath = path.join(tmpDir, 'ok-patch.ts');
+    fs.writeFileSync(filePath, 'aaaa bbbb cccc dddd eeee ffff', 'utf-8');
+
+    const result = await executeStep({
+      operation: 'patch-file',
+      args: { file: 'ok-patch.ts', find: 'aaaa', replace: 'zz' },
+    }, tmpDir);
+
+    expect(result.blocked).toBeUndefined();
+    expect(result.output).toContain('Applied 1/1');
+  });
+
+  it('skips shrink guard on small files', async () => {
+    const filePath = path.join(tmpDir, 'tiny.ts');
+    fs.writeFileSync(filePath, 'ab', 'utf-8');
+
+    const result = await executeStep({
+      operation: 'patch-file',
+      args: { file: 'tiny.ts', find: 'ab', replace: '' },
+    }, tmpDir);
+
+    // Small files (< 100 bytes) should not trigger shrink guard
+    expect(result.blocked).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue 3: Pipe-to-interpreter detection
+// ---------------------------------------------------------------------------
+
+describe('pipe-to-interpreter shell blocking', () => {
+  it('blocks base64 piped to bash', async () => {
+    const result = await executeStep(
+      { operation: 'run-shell', args: { command: 'echo dG91Y2ggL3RtcC9wd25lZA== | base64 -d | bash' } },
+      tmpDir,
+    );
+    expect(result.blocked).toBe(true);
+  });
+
+  it('blocks base64 piped to sh', async () => {
+    const result = await executeStep(
+      { operation: 'run-shell', args: { command: 'echo foo | base64 -d | sh' } },
+      tmpDir,
+    );
+    expect(result.blocked).toBe(true);
+  });
+
+  it('blocks node -e with inline code', async () => {
+    const result = await executeStep(
+      { operation: 'run-shell', args: { command: 'node -e "require(\'child_process\').execSync(\'rm -rf /\')"' } },
+      tmpDir,
+    );
+    expect(result.blocked).toBe(true);
+  });
+
+  it('blocks node --eval', async () => {
+    const result = await executeStep(
+      { operation: 'run-shell', args: { command: 'node --eval "process.exit(1)"' } },
+      tmpDir,
+    );
+    expect(result.blocked).toBe(true);
+  });
+
+  it('blocks python -c', async () => {
+    const result = await executeStep(
+      { operation: 'run-shell', args: { command: 'python -c "import os; os.system(\'rm -rf /\')"' } },
+      tmpDir,
+    );
+    expect(result.blocked).toBe(true);
+  });
+
+  it('blocks python3 -c', async () => {
+    const result = await executeStep(
+      { operation: 'run-shell', args: { command: 'python3 -c "import os"' } },
+      tmpDir,
+    );
+    expect(result.blocked).toBe(true);
+  });
+
+  it('blocks eval with command substitution', async () => {
+    const result = await executeStep(
+      { operation: 'run-shell', args: { command: 'eval $(echo dangerous)' } },
+      tmpDir,
+    );
+    expect(result.blocked).toBe(true);
+  });
+
+  it('blocks eval with string', async () => {
+    const result = await executeStep(
+      { operation: 'run-shell', args: { command: 'eval "rm -rf /"' } },
+      tmpDir,
+    );
+    expect(result.blocked).toBe(true);
+  });
+
+  it('blocks perl -e', async () => {
+    const result = await executeStep(
+      { operation: 'run-shell', args: { command: 'perl -e "system(\'whoami\')"' } },
+      tmpDir,
+    );
+    expect(result.blocked).toBe(true);
+  });
+
+  it('blocks ruby -e', async () => {
+    const result = await executeStep(
+      { operation: 'run-shell', args: { command: 'ruby -e "exec(\'id\')"' } },
+      tmpDir,
+    );
+    expect(result.blocked).toBe(true);
+  });
+
+  it('allows legitimate node commands', async () => {
+    const result = await executeStep(
+      { operation: 'run-shell', args: { command: 'node --version' } },
+      tmpDir,
+    );
+    expect(result.blocked).toBeUndefined();
+  });
+
+  it('allows legitimate python commands', async () => {
+    const result = await executeStep(
+      { operation: 'run-shell', args: { command: 'python3 --version' } },
+      tmpDir,
+    );
+    expect(result.blocked).toBeUndefined();
   });
 });
