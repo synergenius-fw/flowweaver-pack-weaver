@@ -303,6 +303,7 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
 
   // Debug mode: collect tool calls and response text per turn
   let debugToolCalls: Array<{ name: string; args: Record<string, unknown>; result: string; isError: boolean }> = [];
+  const debugStreamToolNames = new Map<string, string>(); // id -> name for CLI provider tool tracking
   let debugResponseText = '';
   let debugInsightNudge: string | undefined;
   let debugTurnCount = 0;
@@ -315,6 +316,22 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       else { out(event.text); }
     } else if (event.type === 'thinking_delta') {
       if (!isDebug) out(c.dim(event.text));
+    }
+    // Capture tool events from stream (CLI provider handles tools via MCP,
+    // so onToolEvent never fires — we catch them here instead)
+    if (isDebug) {
+      const e = event as Record<string, unknown>;
+      if (event.type === 'tool_use_start') {
+        debugStreamToolNames.set(String(e.id), String(e.name));
+      }
+      if (event.type === 'tool_result') {
+        debugToolCalls.push({
+          name: debugStreamToolNames.get(String(e.id)) ?? 'unknown',
+          args: {},
+          result: String(e.result ?? '').slice(0, 2000),
+          isError: !!e.isError,
+        });
+      }
     }
     lastStreamType = event.type;
   };
@@ -389,6 +406,9 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       out(`  ${c.dim(`Watching: ${opts.watchDir}`)}\n\n`);
     } catch { /* watch not available */ }
   }
+
+  // Track which insights have been nudged (by ID) to avoid repetition
+  const nudgedInsightIds = new Set<string>();
 
   // Main conversation loop
   while (!shouldExit) {
@@ -479,36 +499,43 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       compressHistory(history);
 
       // Proactive insight surfacing — update system prompt for next turn
-      try {
-        const { ProjectModelStore } = await import('./project-model.js');
-        const { InsightEngine } = await import('./insight-engine.js');
-        const pms = new ProjectModelStore(projectDir);
-        const model = await pms.getOrBuild();
-        const engine = new InsightEngine();
-        const insights = engine.analyze(model).filter(i => i.confidence >= 0.6);
+      // Max 3 nudges per session to avoid being annoying
+      if (nudgedInsightIds.size < 3) {
+        try {
+          const { ProjectModelStore } = await import('./project-model.js');
+          const { InsightEngine } = await import('./insight-engine.js');
+          const pms = new ProjectModelStore(projectDir);
+          const model = await pms.getOrBuild();
+          const engine = new InsightEngine();
+          const insights = engine.analyze(model).filter(i => i.confidence >= 0.6);
 
-        if (insights.length > 0) {
-          const unsurfaced = insights.filter(insight =>
-            !history.some(m =>
-              m.role === 'assistant' &&
-              typeof m.content === 'string' &&
-              m.content.includes(insight.title)
-            )
-          );
-          if (unsurfaced.length > 0) {
-            const top = unsurfaced[0]!;
-            const nudge = `\n\n[PROACTIVE CONTEXT: ${top.title}. ${top.description}${top.suggestion ? ` Suggestion: ${top.suggestion}` : ''}. Mention this naturally if relevant, or bring it up if there's a lull.]`;
-            if (isDebug) debugInsightNudge = nudge;
-            // Append to system prompt for the next turn only
-            if (!systemPrompt.includes('[PROACTIVE CONTEXT:')) {
-              systemPrompt += nudge;
+          if (insights.length > 0) {
+            // Skip insights already nudged (by ID) or mentioned in conversation
+            const unsurfaced = insights.filter(insight =>
+              !nudgedInsightIds.has(insight.id) &&
+              !history.some(m =>
+                m.role === 'assistant' &&
+                typeof m.content === 'string' &&
+                m.content.includes(insight.title)
+              )
+            );
+            if (unsurfaced.length > 0) {
+              const top = unsurfaced[0]!;
+              nudgedInsightIds.add(top.id);
+              const nudge = `\n\n[PROACTIVE CONTEXT: ${top.title}. ${top.description}${top.suggestion ? ` Suggestion: ${top.suggestion}` : ''}. Mention this naturally if relevant, or bring it up if there's a lull.]`;
+              if (isDebug) debugInsightNudge = nudge;
+              if (!systemPrompt.includes('[PROACTIVE CONTEXT:')) {
+                systemPrompt += nudge;
+              } else {
+                systemPrompt = systemPrompt.replace(/\n\n\[PROACTIVE CONTEXT:.*\]/s, nudge);
+              }
             } else {
-              // Replace existing nudge
-              systemPrompt = systemPrompt.replace(/\n\n\[PROACTIVE CONTEXT:.*\]/s, nudge);
+              // Remove stale nudge from system prompt
+              systemPrompt = systemPrompt.replace(/\n\n\[PROACTIVE CONTEXT:.*\]/s, '');
             }
           }
-        }
-      } catch { /* insights not available */ }
+        } catch { /* insights not available */ }
+      }
 
       // Debug mode: emit structured NDJSON per turn
       if (isDebug) {
@@ -526,6 +553,7 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
         process.stdout.write(JSON.stringify(debugOutput) + '\n');
         // Reset for next turn
         debugToolCalls = [];
+        debugStreamToolNames.clear();
         debugResponseText = '';
         debugInsightNudge = undefined;
       }
