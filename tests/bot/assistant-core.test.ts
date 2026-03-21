@@ -27,6 +27,7 @@ vi.mock('../../src/bot/conversation-store.js', () => {
       appendMessages: vi.fn(),
       updateAfterTurn: vi.fn(),
       setTitle: vi.fn(),
+      syncToCloud: vi.fn().mockResolvedValue(undefined),
     };
   }
   return { ConversationStore: vi.fn().mockImplementation(makeStore) };
@@ -101,6 +102,7 @@ beforeEach(() => {
     appendMessages: vi.fn(),
     updateAfterTurn: vi.fn(),
     setTitle: vi.fn(),
+    syncToCloud: vi.fn().mockResolvedValue(undefined),
   } as unknown as typeof storeInstance;
   const _store = storeInstance;
   MockConversationStore.mockImplementation(function() { return _store; } as unknown as new () => InstanceType<typeof ConversationStore>);

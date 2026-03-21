@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { runWorkflow } from './bot/runner.js';
 import { RunStore } from './bot/run-store.js';
@@ -1093,6 +1094,43 @@ export async function handleEject(opts: ParsedArgs): Promise<void> {
   console.log(`[weaver] Metadata written to ${metaPath}`);
   console.log('[weaver] You can now customize the ejected workflow(s) freely.');
   console.log('[weaver] The bot will use local files when available.');
+
+  // Generate CUSTOMIZATION.md guide
+  const customizationGuide = `# Customizing Your Weaver Bot
+
+## What You Got
+${results.map(r => `- ${r.file} — ${r.workflow} workflow (${r.nodeTypes.length} node types)`).join('\n')}
+
+You can edit these files freely. Weaver will use your local versions.
+
+## Safe Changes
+- Add a notification node (Slack, Discord, email) after git-ops
+- Change approval mode: edit the @node approve line
+- Add custom validation: insert a node between agent and gitOps
+- Modify the system prompt: edit system-prompt.ts
+- Add new tools: create a node type and wire it in
+
+## How to Add a Node
+1. Create a new file: my-node.ts with @flowWeaver nodeType annotation
+2. Import it in the workflow file
+3. Add: @node myNode myNodeType [color: "blue"] [icon: "star"]
+4. Wire it: @connect existingNode.output -> myNode.input
+5. Compile: flow-weaver compile <workflow-file>
+
+## How to Test
+  flow-weaver validate <workflow-file>    # check for errors
+  flow-weaver diagram <workflow-file>     # visualize the DAG
+  weaver bot "test task" --auto-approve   # run a test task
+
+## Learn More
+  weaver examples                         # see what's possible
+  weaver doctor                           # check your setup
+  flow-weaver docs concepts               # Flow Weaver documentation
+`;
+
+  const customPath = path.resolve(destDir, 'CUSTOMIZATION.md');
+  fs.writeFileSync(customPath, customizationGuide, 'utf-8');
+  console.log(`[weaver] Generated ${customPath}`);
 }
 
 export async function handleRun(opts: ParsedArgs): Promise<void> {
@@ -1525,6 +1563,32 @@ export async function handleSession(opts: ParsedArgs): Promise<void> {
       sendDesktopNotification('Weaver Session Complete', `${sessionCompleted} done, ${sessionFailed} failed, ${sessionNoOp} no-op`);
     } catch { /* non-fatal */ }
   }
+
+  // Webhook notification if configured
+  if (config?.notify) {
+    try {
+      const webhookUrl = typeof config.notify === 'string' ? config.notify
+        : typeof config.notify === 'object' && 'webhook' in config.notify ? (config.notify as { webhook: string }).webhook
+        : null;
+      if (webhookUrl) {
+        fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'session.completed',
+            timestamp: new Date().toISOString(),
+            tasks: taskCount,
+            completed: sessionCompleted,
+            failed: sessionFailed,
+            noOp: sessionNoOp,
+            tokens: sessionInputTokens + sessionOutputTokens,
+            cost: sessionCost,
+            elapsed: Date.now() - sessionStartTime,
+          }),
+        }).catch(() => {}); // fire-and-forget
+      }
+    } catch { /* non-fatal */ }
+  }
 }
 
 export async function handleAssistant(opts: ParsedArgs): Promise<void> {
@@ -1559,13 +1623,37 @@ export async function handleAssistant(opts: ParsedArgs): Promise<void> {
 
   const config = await loadConfig(opts.configPath);
 
+  // Check platform login — override provider if logged in
+  let providerOverride: string | undefined;
+  try {
+    const credPath = path.join(os.homedir(), '.fw', 'credentials.json');
+    if (fs.existsSync(credPath)) {
+      const creds = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
+      if (creds.token && creds.platformUrl && creds.expiresAt > Date.now()) {
+        providerOverride = 'platform';
+        // Make credentials available to the provider
+        process.env.FW_PLATFORM_TOKEN = creds.token;
+        process.env.FW_PLATFORM_URL = creds.platformUrl;
+      }
+    }
+  } catch { /* not available */ }
+
   // Create provider
-  const { createAnthropicProvider, createClaudeCliProvider } = await import('@synergenius/flow-weaver/agent');
+  const agentMod = await import('@synergenius/flow-weaver/agent');
+  const { createAnthropicProvider, createClaudeCliProvider } = agentMod;
+  const createPlatformProvider = 'createPlatformProvider' in agentMod
+    ? (agentMod as Record<string, unknown>).createPlatformProvider as (opts: { token: string; platformUrl: string }) => unknown
+    : null;
   const providerSetting = config?.provider ?? 'auto';
   const providerType = typeof providerSetting === 'object' ? providerSetting.name : String(providerSetting);
 
-  let provider;
-  if (providerType === 'anthropic' || (providerType === 'auto' && process.env.ANTHROPIC_API_KEY)) {
+  let provider: import('@synergenius/flow-weaver/agent').AgentProvider;
+  if ((providerOverride === 'platform' || providerType === 'platform') && createPlatformProvider) {
+    provider = createPlatformProvider({
+      token: process.env.FW_PLATFORM_TOKEN!,
+      platformUrl: process.env.FW_PLATFORM_URL!,
+    }) as import('@synergenius/flow-weaver/agent').AgentProvider;
+  } else if (providerType === 'anthropic' || (providerType === 'auto' && process.env.ANTHROPIC_API_KEY)) {
     const apiKey = process.env.ANTHROPIC_API_KEY ?? (typeof providerSetting === 'object' ? (providerSetting as { apiKey?: string }).apiKey : undefined);
     if (!apiKey) { console.error('ANTHROPIC_API_KEY required for anthropic provider'); process.exit(1); }
     provider = createAnthropicProvider({ apiKey, model: typeof providerSetting === 'object' ? providerSetting.model : undefined });

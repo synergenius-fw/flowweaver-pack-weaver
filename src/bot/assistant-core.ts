@@ -71,6 +71,41 @@ For those: you may summarize or explain the result as needed.`;
 
 export async function runAssistant(opts: AssistantOptions): Promise<void> {
   const { provider, tools, executor, projectDir } = opts;
+  const out = (s: string) => process.stderr.write(s);
+
+  // Pipe mode: if stdin is not a TTY, read all input as one message
+  if (!process.stdin.isTTY && !opts.inputMessages) {
+    const chunks: string[] = [];
+    for await (const chunk of process.stdin) {
+      chunks.push(typeof chunk === 'string' ? chunk : chunk.toString());
+    }
+    const pipeInput = chunks.join('').trim();
+    if (!pipeInput) return;
+
+    // Build system prompt for pipe mode
+    let systemPrompt = opts.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
+    try {
+      const fsMod = await import('node:fs');
+      const pathMod = await import('node:path');
+      const planPath = pathMod.resolve(projectDir, '.weaver-plan.md');
+      if (fsMod.existsSync(planPath)) {
+        const plan = fsMod.readFileSync(planPath, 'utf-8').trim();
+        systemPrompt += '\n\n## Project Plan & Vision\n\nAll bots you spawn and tasks you queue MUST align with this plan.\n\n' + plan;
+      }
+    } catch { /* plan not available */ }
+
+    // Run single message, print result, exit
+    await runAgentLoop(provider, tools, executor, [{ role: 'user', content: pipeInput }], {
+      systemPrompt, maxIterations: 20,
+      onStreamEvent: (e) => { if (e.type === 'text_delta') out(e.text); },
+      onToolEvent: (e) => {
+        if (e.type === 'tool_call_start') out(`\n  ${c.cyan('◆')} ${e.name}\n`);
+        if (e.type === 'tool_call_result') out(`  ${c.dim('→')} ${(e.result ?? '').slice(0, 200)}\n`);
+      },
+    });
+    out('\n');
+    return;
+  }
 
   // Build system prompt — include project plan if it exists
   let systemPrompt = opts.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
@@ -83,8 +118,6 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       systemPrompt += '\n\n## Project Plan & Vision\n\nAll bots you spawn and tasks you queue MUST align with this plan.\n\n' + plan;
     }
   } catch { /* plan not available */ }
-
-  const out = (s: string) => process.stderr.write(s);
 
   // Persistent conversation store
   const { ConversationStore } = await import('./conversation-store.js');
@@ -133,6 +166,9 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
 
   // Welcome
   out(`\n  ${c.bold('weaver assistant')} ${c.dim(`v${weaverVersion}`)}  ${c.dim(`· flow-weaver v${fwVersion}`)}\n`);
+  if (process.env.FW_PLATFORM_TOKEN) {
+    out(`  ${c.dim('AI: Platform credits (no API key needed)')}\n`);
+  }
   out(`  ${c.dim(`Project: ${path.basename(projectDir)}`)}\n`);
   if (conversation.title) {
     out(`  ${c.dim(`Resuming: "${conversation.title}" (${conversation.messageCount} messages)`)}\n`);
@@ -252,6 +288,9 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
       const tokensUsed = result.usage.promptTokens + result.usage.completionTokens;
       store.appendMessages(conversation.id, [{ role: 'user', content: input }, ...newMessages]);
       store.updateAfterTurn(conversation.id, [{ role: 'user', content: input }, ...newMessages], tokensUsed);
+
+      // Sync to cloud if logged in (fire-and-forget)
+      store.syncToCloud(conversation.id, [{ role: 'user', content: input }, ...newMessages]).catch(() => {});
 
       // Auto-title from first assistant response
       if (!conversation.title) {

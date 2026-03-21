@@ -140,7 +140,7 @@ export async function weaverAgentExecute(
   auditEmit('run-start', { task: task.instruction });
 
   try {
-    const provider = createProvider(pInfo, projectDir);
+    const provider = await createProvider(pInfo, projectDir);
     const executor = createWeaverExecutor(projectDir);
 
     const filesModified: string[] = [];
@@ -253,10 +253,10 @@ export async function weaverAgentExecute(
 /**
  * Create an AgentProvider from pack-weaver's ProviderInfo.
  */
-function createProvider(
+async function createProvider(
   pInfo: { type: string; apiKey?: string; model?: string; maxTokens?: number },
   projectDir?: string,
-): AgentProvider {
+): Promise<AgentProvider> {
   const type = pInfo.type ?? 'auto';
 
   // Explicit Anthropic API
@@ -273,8 +273,21 @@ function createProvider(
     return createSessionProvider(pInfo.model, projectDir);
   }
 
-  // Auto mode: try Anthropic API key from env, then fall back to Claude CLI
+  // Auto mode: try platform login, then Anthropic API key, then Claude CLI
   if (type === 'auto') {
+    // Check platform login first (no local key needed)
+    // Uses env vars set by handleSession/handleAssistant, or reads credentials directly
+    if (process.env.FW_PLATFORM_TOKEN && process.env.FW_PLATFORM_URL) {
+      try {
+        const agentMod = await import('@synergenius/flow-weaver/agent');
+        if ('createPlatformProvider' in agentMod) {
+          const factory = (agentMod as Record<string, unknown>).createPlatformProvider as
+            (opts: { token: string; platformUrl: string }) => AgentProvider;
+          return factory({ token: process.env.FW_PLATFORM_TOKEN, platformUrl: process.env.FW_PLATFORM_URL });
+        }
+      } catch { /* platform provider not available in this fw version */ }
+    }
+
     if (process.env.ANTHROPIC_API_KEY) {
       return createAnthropicProvider({
         apiKey: process.env.ANTHROPIC_API_KEY,

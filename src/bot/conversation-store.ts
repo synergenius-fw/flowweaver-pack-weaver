@@ -176,6 +176,38 @@ export class ConversationStore {
     });
   }
 
+  async syncToCloud(id: string, newMessages: AgentMessage[]): Promise<void> {
+    try {
+      const credPath = path.join(os.homedir(), '.fw', 'credentials.json');
+      if (!fs.existsSync(credPath)) return;
+      const creds = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
+      if (!creds.token || !creds.platformUrl || creds.expiresAt <= Date.now()) return;
+
+      const conversation = this.get(id);
+      if (!conversation) return;
+
+      // Fire-and-forget sync — don't block the conversation
+      const lastMessage = newMessages.find(m => m.role === 'user');
+      if (!lastMessage) return;
+
+      const message = typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
+
+      fetch(`${creds.platformUrl}/ai-chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(creds.token.startsWith('fw_')
+            ? { 'X-API-Key': creds.token }
+            : { Authorization: `Bearer ${creds.token}` }),
+        },
+        body: JSON.stringify({
+          message: `[Synced from CLI] ${message}`,
+          conversationId: (conversation as any).cloudConversationId,
+        }),
+      }).catch(() => {}); // fire-and-forget
+    } catch { /* sync not available */ }
+  }
+
   async setTitle(id: string, title: string): Promise<void> {
     await withFileLock(this.indexPath, () => {
       const index = this.readIndex();
