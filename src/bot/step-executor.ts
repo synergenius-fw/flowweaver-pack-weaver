@@ -271,16 +271,21 @@ export async function executeStep(
       if (!fs.existsSync(filePath)) {
         return { output: `File not found: ${file}` };
       }
-      if (fs.statSync(filePath).isDirectory()) {
-        const entries = fs.readdirSync(filePath, { encoding: 'utf-8' });
-        return { output: `"${file}" is a directory. Contents:\n${entries.join('\n')}` };
+      try {
+        const stat = fs.statSync(filePath);
+        if (stat.isDirectory()) {
+          const entries = fs.readdirSync(filePath, { encoding: 'utf-8' });
+          return { output: `"${file}" is a directory. Contents:\n${entries.join('\n')}` };
+        }
+        if (stat.size > MAX_READ_SIZE) {
+          return { output: `File too large to read (${stat.size} bytes, max ${MAX_READ_SIZE}). Use run-shell with head/tail instead.` };
+        }
+        const content = fs.readFileSync(filePath, 'utf-8');
+        return { file: filePath, output: content };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { output: `Error reading file "${file}": ${msg}` };
       }
-      const fileSize = fs.statSync(filePath).size;
-      if (fileSize > MAX_READ_SIZE) {
-        return { output: `File too large to read (${fileSize} bytes, max ${MAX_READ_SIZE}). Use run-shell with head/tail instead.` };
-      }
-      const content = fs.readFileSync(filePath, 'utf-8');
-      return { file: filePath, output: content };
     }
 
     // -----------------------------------------------------------------
@@ -331,7 +336,13 @@ export async function executeStep(
         return { output: `Directory not found: ${dir}` };
       }
 
-      const entries = fs.readdirSync(targetDir, { recursive: true, encoding: 'utf-8' }) as string[];
+      let entries: string[];
+      try {
+        entries = fs.readdirSync(targetDir, { recursive: true, encoding: 'utf-8' }) as string[];
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { output: `Error listing directory "${dir}": ${msg}` };
+      }
       let files = entries
         .filter(e => {
           if (e.includes('node_modules') || e.includes('.git')) return false;
