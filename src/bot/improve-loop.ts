@@ -109,6 +109,15 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     }
   }
 
+  // Ensure node_modules is gitignored in worktree (symlink shouldn't be committed)
+  try {
+    const wtGitignore = path.join(worktreeDir, '.gitignore');
+    const existing = fs.existsSync(wtGitignore) ? fs.readFileSync(wtGitignore, 'utf-8') : '';
+    if (!existing.includes('node_modules')) {
+      fs.appendFileSync(wtGitignore, '\nnode_modules/\n');
+    }
+  } catch { /* non-fatal */ }
+
   // Install deps in worktree if needed
   const worktreeNodeModules = path.join(worktreeDir, 'node_modules');
   if (!fs.existsSync(worktreeNodeModules)) {
@@ -243,27 +252,8 @@ Keep changes to 1-3 files. All paths relative to ${worktreeDir}.${planContext}${
     }
 
     // Step 7: Commit in worktree (exclude symlinks and node_modules)
-    // Filter staged files to only include actual code changes
-    // Extract a meaningful commit message from the discovery response
-    // Build commit message from changed files + discovery
-    const stagedFiles = execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: worktreeDir, encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
-    const fileNames = stagedFiles.map(f => path.basename(f, '.ts')).join(', ');
-
-    // Try to extract a meaningful description from the discovery
-    const descLine = discovery
-      .split('\n')
-      .map(l => l.trim())
-      .filter(l => l.length > 15)
-      .filter(l => !/^(here|let me|i found|i'll|looking|checking|reading|good$|now |you are|important)/i.test(l))
-      .map(l => l.replace(/^\*\*|^\d+\.\s*|\*\*$|^[-•]\s*/g, '').trim())
-      .find(l => /test|cover|fix|add|missing|error|handle|improv/i.test(l)) ?? '';
-
-    const commitDescription = descLine
-      ? descLine.slice(0, 60)
-      : `add tests for ${fileNames}`.slice(0, 60);
-    const commitMsg = `[improve] ${commitDescription}`;
     try {
-      // Stage only tracked/changed files, exclude node_modules and symlinks
+      // Stage all changes
       execFileSync('git', ['add', '--all'], { cwd: worktreeDir, stdio: 'pipe' });
 
       // Check if there's actually anything staged
@@ -273,6 +263,27 @@ Keep changes to 1-3 files. All paths relative to ${worktreeDir}.${planContext}${
         cycles.push({ cycle, outcome: 'skip', description: 'No staged changes after fix', filesChanged: [] });
         continue;
       }
+
+      // Build commit message from staged files + discovery text
+      const stagedFiles = staged.split('\n').filter(Boolean);
+      const srcFiles = stagedFiles.filter(f => f.startsWith('src/')).map(f => path.basename(f, '.ts'));
+      const testFiles = stagedFiles.filter(f => f.startsWith('tests/') || f.includes('.test.'));
+      const fileNames = srcFiles.length > 0 ? srcFiles.join(', ') : stagedFiles.map(f => path.basename(f, '.ts')).join(', ');
+
+      const descLine = discovery
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 15)
+        .filter(l => !/^(here|let me|i found|i'll|looking|checking|reading|good$|now |you are|step \d|important|first|use )/i.test(l))
+        .map(l => l.replace(/^\*\*|^\d+\.\s*|\*\*$|^[-•]\s*/g, '').trim())
+        .find(l => /test|cover|fix|add|miss|error|handl|improv|bug|reliab|word.bound/i.test(l)) ?? '';
+
+      const commitDescription = descLine
+        ? descLine.slice(0, 60)
+        : testFiles.length > 0
+          ? `add tests for ${fileNames}`.slice(0, 60)
+          : `improve ${fileNames}`.slice(0, 60);
+      const commitMsg = `[improve] ${commitDescription}`;
 
       execFileSync('git', ['commit', '-m', `${commitMsg}\n\nCo-authored-by: Weaver Assistant <weaver@synergenius.dev>`], { cwd: worktreeDir, stdio: 'pipe' });
       const hash = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
