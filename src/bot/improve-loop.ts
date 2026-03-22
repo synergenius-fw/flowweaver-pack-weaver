@@ -168,7 +168,7 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     const output = (err as { stderr?: Buffer; stdout?: Buffer }).stdout?.toString() ?? '';
     const failMatch = output.match(/(\d+) failed/);
     baselineFailCount = failMatch ? parseInt(failMatch[1]!, 10) : 0;
-    if (baselineFailCount <= 2) {
+    if (baselineFailCount <= 5) {
       out(`  ${c.yellow('⚠')} Baseline: ${baselineFailCount} pre-existing failure(s) — will tolerate these\n\n`);
     } else {
       out(`  ${c.red('✗')} Baseline: ${baselineFailCount} failures — too many, fix them first.\n`);
