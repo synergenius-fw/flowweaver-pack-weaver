@@ -17,7 +17,7 @@ import { execFileSync } from 'node:child_process';
 import { c } from './ansi.js';
 
 export interface ImproveConfig {
-  maxCycles: number;
+  maxCycles: number;  // 0 = unlimited, runs until stopped or nothing left to improve
   maxConsecutiveFailures: number;
   protectedPatterns: string[];
   testCommand: string;
@@ -81,7 +81,7 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
   out(`  ${c.dim(`Project: ${path.basename(projectDir)}`)}\n`);
   out(`  ${c.dim(`Branch: ${branchName}`)}\n`);
   out(`  ${c.dim(`Worktree: ${path.relative(projectDir, worktreeDir)}`)}\n`);
-  out(`  ${c.dim(`Max cycles: ${maxCycles}, stop after ${maxConsecutiveFailures} consecutive failures`)}\n`);
+  out(`  ${c.dim(`Max cycles: ${maxCycles === 0 ? 'unlimited' : maxCycles}, stop after ${maxConsecutiveFailures} consecutive failures`)}\n`);
   out(`  ${c.dim(`Test: ${testCommand}`)}\n`);
   if (caffeinate) out(`  ${c.dim('Sleep inhibited (caffeinate)')}\n`);
   out('\n');
@@ -150,7 +150,7 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
   }
 
   // Main loop
-  for (let cycle = 1; cycle <= maxCycles; cycle++) {
+  for (let cycle = 1; maxCycles === 0 || cycle <= maxCycles; cycle++) {
     if (consecutiveFailures >= maxConsecutiveFailures) {
       out(`  ${c.yellow('⚠')} Stopping: ${maxConsecutiveFailures} consecutive failures.\n`);
       break;
