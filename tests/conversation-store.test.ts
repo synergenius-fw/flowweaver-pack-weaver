@@ -175,6 +175,42 @@ describe('ConversationStore', () => {
     expect(capped.length).toBeLessThanOrEqual(20);
   });
 
+  it('cleans up message directories for conversations evicted by index cap', async () => {
+    // Create 22 conversations with messages so each has a directory with files
+    const allIds: string[] = [];
+    for (let i = 0; i < 22; i++) {
+      const c = await store.create(`/tmp/project-${i}`);
+      store.appendMessages(c.id, [{ role: 'user', content: `msg ${i}` }]);
+      allIds.push(c.id);
+    }
+
+    // All 22 directories should exist before capping
+    for (const id of allIds) {
+      expect(fs.existsSync(path.join(testDir, id))).toBe(true);
+    }
+
+    // Trigger cap by updating the most recent conversation
+    const list = store.list();
+    await store.updateAfterTurn(list[0].id, [{ role: 'user', content: 'trigger cap' }], 10);
+
+    // Index should be capped at 20
+    const capped = store.list();
+    expect(capped.length).toBeLessThanOrEqual(20);
+    const keptIds = new Set(capped.map(c => c.id));
+
+    // Evicted conversations should have their directories cleaned up
+    const evictedIds = allIds.filter(id => !keptIds.has(id));
+    expect(evictedIds.length).toBeGreaterThan(0);
+    for (const id of evictedIds) {
+      expect(fs.existsSync(path.join(testDir, id))).toBe(false);
+    }
+
+    // Kept conversations should still have their directories
+    for (const id of [...keptIds]) {
+      expect(fs.existsSync(path.join(testDir, id))).toBe(true);
+    }
+  });
+
   // --- Priority 1: Atomic writes ---
 
   it('uses atomic write (temp + rename) for index.json', async () => {

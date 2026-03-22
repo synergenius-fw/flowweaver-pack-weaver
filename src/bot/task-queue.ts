@@ -14,6 +14,8 @@ export interface QueuedTask {
   priority: number;
   addedAt: number;
   status: 'pending' | 'running' | 'completed' | 'no-op' | 'failed' | 'cancelled';
+  /** PID of the process running this task (set when status becomes 'running'). */
+  runnerId?: number;
   /** Error reason (set on failure) */
   failureReason?: string;
 }
@@ -105,7 +107,15 @@ export class TaskQueue {
   }
 
   async markRunning(id: string): Promise<void> {
-    await this.updateStatus(id, 'running');
+    return withFileLock(this.filePath, () => {
+      const tasks = this.readAll();
+      const task = tasks.find(t => t.id === id);
+      if (task) {
+        task.status = 'running';
+        task.runnerId = process.pid;
+        this.writeAll(tasks);
+      }
+    });
   }
 
   async markComplete(id: string): Promise<void> {
@@ -158,14 +168,22 @@ export class TaskQueue {
     });
   }
 
-  /** Reset orphaned "running" tasks to pending (crash recovery). */
+  /** Reset orphaned "running" tasks to pending (crash recovery).
+   *  Only resets tasks whose runner PID is no longer alive. */
   async recoverOrphans(): Promise<number> {
     return withFileLock(this.filePath, () => {
       const tasks = this.readAll();
       let count = 0;
       for (const t of tasks) {
         if (t.status === 'running') {
+          // Check if the runner process is still alive
+          if (t.runnerId != null) {
+            let alive = false;
+            try { process.kill(t.runnerId, 0); alive = true; } catch { /* process gone */ }
+            if (alive) continue; // skip — process is still working on this task
+          }
           t.status = 'pending';
+          t.runnerId = undefined;
           count++;
         }
       }
@@ -202,6 +220,7 @@ export class TaskQueue {
       const chosen = pending[0];
       if (!chosen) return null;
       chosen.status = 'running';
+      chosen.runnerId = process.pid;
       this.writeAll(tasks);
       return chosen;
     });

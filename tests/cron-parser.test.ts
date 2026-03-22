@@ -245,6 +245,14 @@ describe('parseCron', () => {
     it('throws on invalid range values', () => {
       expect(() => parseCron('a-b * * * *')).toThrow('Invalid range');
     });
+
+    it('throws on invalid range values in step expressions (e.g., a-b/2)', () => {
+      expect(() => parseCron('a-b/2 * * * *')).toThrow('Invalid range');
+    });
+
+    it('throws on partially invalid range in step expressions (e.g., 1-x/3)', () => {
+      expect(() => parseCron('1-x/3 * * * *')).toThrow('Invalid range');
+    });
   });
 });
 

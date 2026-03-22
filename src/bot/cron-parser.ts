@@ -38,6 +38,7 @@ function parseField(token: string, min: number, max: number): CronField {
         end = max;
       } else if (rangeStr!.includes('-')) {
         [start, end] = rangeStr!.split('-').map(Number) as [number, number];
+        if (isNaN(start) || isNaN(end)) throw new Error(`Invalid range in "${part}"`);
       } else {
         start = parseInt(rangeStr!, 10);
         end = max;

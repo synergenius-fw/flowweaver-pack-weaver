@@ -160,7 +160,7 @@ describe('TaskQueue crash recovery', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('recoverOrphans resets running tasks to pending', async () => {
+  it('recoverOrphans resets running tasks to pending when PID is dead', async () => {
     const { id: id1 } = await queue.add({ instruction: 'orphan 1', priority: 0 });
     const { id: id2 } = await queue.add({ instruction: 'orphan 2', priority: 0 });
     await queue.add({ instruction: 'pending recovery', priority: 0 });
@@ -168,12 +168,36 @@ describe('TaskQueue crash recovery', () => {
     await queue.markRunning(id1);
     await queue.markRunning(id2);
 
+    // Simulate dead PIDs by patching runnerId to a non-existent PID
+    const raw = fs.readFileSync(queue.filePath, 'utf-8');
+    const patched = raw.split('\n').map(line => {
+      if (!line.trim()) return line;
+      try {
+        const task = JSON.parse(line);
+        if (task.status === 'running') task.runnerId = 999999;
+        return JSON.stringify(task);
+      } catch { return line; }
+    }).join('\n');
+    fs.writeFileSync(queue.filePath, patched, 'utf-8');
+
     const recovered = await queue.recoverOrphans();
     expect(recovered).toBe(2);
 
     const tasks = await queue.list();
     expect(tasks.filter(t => t.status === 'pending')).toHaveLength(3);
     expect(tasks.filter(t => t.status === 'running')).toHaveLength(0);
+  });
+
+  it('recoverOrphans skips running tasks whose process is still alive', async () => {
+    const { id } = await queue.add({ instruction: 'still running', priority: 0 });
+    await queue.markRunning(id);
+
+    // runnerId defaults to current process PID, which IS alive
+    const recovered = await queue.recoverOrphans();
+    expect(recovered).toBe(0);
+
+    const tasks = await queue.list();
+    expect(tasks.find(t => t.id === id)!.status).toBe('running');
   });
 
   it('recoverOrphans does not touch failed/completed tasks', async () => {
@@ -263,7 +287,7 @@ describe('TaskQueue claimNext (atomic select+mark running)', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('claimNext() returns highest priority task and marks it running', async () => {
+  it('claimNext() returns highest priority task and marks it running with PID', async () => {
     await queue.add({ instruction: 'low', priority: 0 });
     await queue.add({ instruction: 'high', priority: 10 });
 
@@ -271,11 +295,13 @@ describe('TaskQueue claimNext (atomic select+mark running)', () => {
     expect(claimed).not.toBeNull();
     expect(claimed!.instruction).toBe('high');
     expect(claimed!.status).toBe('running');
+    expect(claimed!.runnerId).toBe(process.pid);
 
-    // Verify it is persisted as running
+    // Verify it is persisted as running with PID
     const tasks = await queue.list();
     const highTask = tasks.find(t => t.instruction === 'high');
     expect(highTask!.status).toBe('running');
+    expect(highTask!.runnerId).toBe(process.pid);
   });
 
   it('claimNext() returns null when no pending tasks', async () => {

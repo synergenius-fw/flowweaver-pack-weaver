@@ -154,7 +154,7 @@ export class BotManager {
   }
 
   get(name: string): ManagedBot | null {
-    const bot = this.bots.get(name);
+    const bot = this.resolve(name);
     if (!bot) return null;
     // Health check on access
     if (bot.meta.status === 'running' && !this.isAlive(bot.meta)) {
@@ -173,13 +173,13 @@ export class BotManager {
   }
 
   getQueue(name: string): TaskQueue {
-    const bot = this.bots.get(name);
+    const bot = this.resolve(name);
     if (!bot) throw new Error(`Bot "${name}" not found.`);
     return new TaskQueue(bot.meta.botDir);
   }
 
   getSteering(name: string): SteeringController {
-    const bot = this.bots.get(name);
+    const bot = this.resolve(name);
     if (!bot) throw new Error(`Bot "${name}" not found.`);
     return new SteeringController(bot.meta.botDir);
   }
@@ -197,14 +197,14 @@ export class BotManager {
   }
 
   stop(name: string): void {
-    const bot = this.bots.get(name);
+    const bot = this.resolve(name);
     if (!bot) throw new Error(`Bot "${name}" not found.`);
     this.sendSignal(bot, 'SIGTERM');
     bot.meta.status = 'stopped';
   }
 
   kill(name: string): void {
-    const bot = this.bots.get(name);
+    const bot = this.resolve(name);
     if (!bot) throw new Error(`Bot "${name}" not found.`);
     this.sendSignal(bot, 'SIGKILL');
     bot.meta.status = 'stopped';
@@ -220,7 +220,7 @@ export class BotManager {
   }
 
   logs(name: string, lines = 50): string {
-    const bot = this.bots.get(name);
+    const bot = this.resolve(name);
     if (!bot) throw new Error(`Bot "${name}" not found.`);
     const logPath = path.join(bot.meta.botDir, 'output.log');
     if (!fs.existsSync(logPath)) return '(no logs yet)';
@@ -237,6 +237,16 @@ export class BotManager {
         }
       }
     }
+  }
+
+  /** Look up a bot by name, lazily discovering bots from disk if not in memory. */
+  private resolve(name: string): { meta: ManagedBot; process: ChildProcess | null } | undefined {
+    let bot = this.bots.get(name);
+    if (!bot) {
+      this.discoverExistingBots();
+      bot = this.bots.get(name);
+    }
+    return bot;
   }
 
   /** Discover bots from disk that were spawned by a previous assistant session. */
