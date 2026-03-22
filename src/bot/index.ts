@@ -108,6 +108,9 @@ export { WebApprovalHandler } from './web-approval.js';
 // Genesis
 export { GenesisStore } from './genesis-store.js';
 
+// Project intelligence (overseer)
+export { ProjectModelStore } from './project-model.js';
+
 // File locking
 export { withFileLock } from './file-lock.js';
 export type { FileLockOptions } from './file-lock.js';
