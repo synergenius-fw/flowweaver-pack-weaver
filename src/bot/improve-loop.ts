@@ -163,7 +163,11 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
       }
     } catch { /* no plan */ }
 
-    const discoverMsg = `Look at this project and find ONE specific, small improvement. Focus on: untested code, missing error handling, reliability gaps, or code quality issues. Pick something concrete (1-3 files max). Tell me what you found and which files — do NOT fix it yet.${planContext}`;
+    const discoverMsg = `You are working in: ${worktreeDir}
+
+Look at this project and find ONE specific, small improvement. Focus on: untested code, missing error handling, reliability gaps, or code quality issues. Pick something concrete (1-3 files max). Tell me what you found and which files — do NOT fix it yet.
+
+IMPORTANT: All file paths MUST be relative to ${worktreeDir}. Use this as your working directory for all file operations.${planContext}`;
 
     let discovery = '';
     try {
@@ -188,7 +192,9 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     }
 
     // Step 2: Fix
-    const fixMsg = 'Fix it now. Use write_file to create the test file and patch_file to modify existing code. Write failing tests first, then implement the minimal fix. Run the tests with run_tests to verify. Keep changes small — 1-3 files max.';
+    const fixMsg = `Fix it now. You are working in: ${worktreeDir}
+
+Use write_file to create test files and patch_file to modify existing code. All paths must be relative to ${worktreeDir}. Write failing tests first, then implement the minimal fix. Run the tests with run_tests to verify. Keep changes small — 1-3 files max.`;
     try {
       const fixRaw = await withTimeout(runAssistantInDir(worktreeDir, fixMsg, conversationId), 180_000);
       const fixParsed = JSON.parse(fixRaw);
@@ -246,15 +252,22 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     // Step 7: Commit in worktree (exclude symlinks and node_modules)
     // Filter staged files to only include actual code changes
     // Extract a meaningful commit message from the discovery response
-    const commitDescription = discovery
+    // Build commit message from changed files + discovery
+    const stagedFiles = execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: worktreeDir, encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+    const fileNames = stagedFiles.map(f => path.basename(f, '.ts')).join(', ');
+
+    // Try to extract a meaningful description from the discovery
+    const descLine = discovery
       .split('\n')
       .map(l => l.trim())
-      .filter(l => l && !/^(here'?s|let me|i found|i'?ll|looking|checking|reading|good|now)/i.test(l))
-      .map(l => l.replace(/^\*\*|^\d+\.\s*|\*\*$/g, '').trim()) // strip markdown bold, numbered lists
-      .filter(l => l.length > 10) // skip short fragments
-      .slice(0, 1)
-      .join('')
-      .slice(0, 70) || 'code improvement';
+      .filter(l => l.length > 15)
+      .filter(l => !/^(here|let me|i found|i'll|looking|checking|reading|good$|now |you are|important)/i.test(l))
+      .map(l => l.replace(/^\*\*|^\d+\.\s*|\*\*$|^[-•]\s*/g, '').trim())
+      .find(l => /test|cover|fix|add|missing|error|handle|improv/i.test(l)) ?? '';
+
+    const commitDescription = descLine
+      ? descLine.slice(0, 60)
+      : `add tests for ${fileNames}`.slice(0, 60);
     const commitMsg = `[improve] ${commitDescription}`;
     try {
       // Stage only tracked/changed files, exclude node_modules and symlinks
