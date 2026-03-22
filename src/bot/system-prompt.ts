@@ -224,8 +224,9 @@ export async function buildSystemPrompt(): Promise<string> {
       docMeta.VALIDATION_CODES ?? [],
       docMeta.CLI_COMMANDS ?? [],
     );
-  } catch {
+  } catch (err) {
     // Fallback if doc-metadata not available (e.g., older flow-weaver version)
+    console.warn('Failed to load doc-metadata for system prompt; using empty fallback:', err);
     cachedPrompt = buildPromptFromMetadata([], [], [], [], []);
   }
 
@@ -292,7 +293,9 @@ Be concise in your text responses — let tool results speak.`;
         const plan = fs.readFileSync(planPath, 'utf-8').trim();
         prompt += '\n\n## Project Plan & Vision\n\nIMPORTANT: All work MUST align with this plan. If a task contradicts the plan, skip it and explain why.\n\n' + plan;
       }
-    } catch { /* plan file not available */ }
+    } catch (err) {
+      console.warn('Failed to load project plan file:', err);
+    }
   }
 
   if (contextBundle) {
