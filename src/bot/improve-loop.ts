@@ -308,6 +308,9 @@ Fix the failures without reverting your improvement. If you can't fix them, reve
     }
 
     if (!testsPassing) {
+      // Record what was attempted so next cycle can learn from it
+      const failSummary = discovery.split('\n').filter(l => l.trim()).slice(0, 2).join(' ').slice(0, 100);
+      completedWork.push(`FAILED: ${failSummary} (tests broke, rolled back — try a different approach)`);
       rollback(worktreeDir);
       const elapsed = Math.round((Date.now() - cycleStart) / 1000);
       cycles.push({ cycle, outcome: 'failure', description: `Tests failed after ${attempt} attempts (${elapsed}s)`, filesChanged: getChangedFiles(worktreeDir) });
