@@ -5,3 +5,4 @@ dist/
 .weaver.json
 fw-exec-*
 .weaver-improve/
+.weaver-improve-output.log
