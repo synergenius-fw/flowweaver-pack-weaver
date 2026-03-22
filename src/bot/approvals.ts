@@ -213,7 +213,9 @@ class WebhookApproval implements ApprovalHandler {
           approved: body.approved ?? true,
           reason: body.reason ?? (body.approved ? 'approved via webhook' : 'rejected via webhook'),
         };
-      } catch {
+      } catch (pollErr: unknown) {
+        const pollMsg = pollErr instanceof Error ? pollErr.message : String(pollErr);
+        console.warn(`[weaver] Webhook poll error: ${pollMsg}, will retry`);
         continue;
       }
     }
@@ -260,13 +262,19 @@ class LazyWebApproval implements ApprovalHandler {
     event: NotificationEvent,
   ): Promise<ApprovalResult> {
     if (!this.inner) {
-      const { WebApprovalHandler } = await import('./web-approval.js');
-      this.inner = new WebApprovalHandler({
-        timeoutSeconds: this.options.timeoutSeconds,
-        open: this.options.webOpen ?? true,
-        notifier: this.options.notifier,
-        dashboardServer: this.options.dashboardServer,
-      });
+      try {
+        const { WebApprovalHandler } = await import('./web-approval.js');
+        this.inner = new WebApprovalHandler({
+          timeoutSeconds: this.options.timeoutSeconds,
+          open: this.options.webOpen ?? true,
+          notifier: this.options.notifier,
+          dashboardServer: this.options.dashboardServer,
+        });
+      } catch (importErr: unknown) {
+        const msg = importErr instanceof Error ? importErr.message : String(importErr);
+        console.warn(`[weaver] Failed to load web-approval module: ${msg}`);
+        throw new Error(`Web approval unavailable: ${msg}`);
+      }
     }
     return this.inner.handle(request, event);
   }
