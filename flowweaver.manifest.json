@@ -947,6 +947,10 @@
       "description": "Validate setup and check connectivity"
     },
     {
+      "name": "improve",
+      "description": "Autonomous codebase improvement — finds issues, fixes with tests, commits or rolls back"
+    },
+    {
       "name": "status",
       "description": "Get bot session status"
     },

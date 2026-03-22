@@ -14,7 +14,7 @@ import type { ExecutionEvent, WeaverConfig, RunRecord, RunOutcome, RunCostSummar
 import { AuditStore } from './bot/audit-store.js';
 
 export interface ParsedArgs {
-  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'status' | 'genesis' | 'audit' | 'init' | 'assistant' | 'examples' | 'doctor';
+  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'status' | 'genesis' | 'audit' | 'init' | 'assistant' | 'examples' | 'doctor' | 'improve';
   file?: string;
   verbose: boolean;
   dryRun: boolean;
@@ -72,6 +72,12 @@ export interface ParsedArgs {
   assistantMessage?: string;
   assistantDebug?: boolean;
   assistantDebugMessages?: string[];
+  // improve
+  improveMaxCycles?: number;
+  improveMaxFailures?: number;
+  improveProtected?: string[];
+  improveTestCmd?: string;
+  improveBuildCmd?: string;
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -260,6 +266,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       }
     } else if (arg === 'genesis') {
       result.command = 'genesis';
+    } else if (arg === 'improve') {
+      result.command = 'improve';
     } else if (arg === 'init') {
       result.command = 'init';
     } else if (arg === '--init') {
@@ -298,6 +306,21 @@ export function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === '--project-dir' && i + 1 < args.length) {
       i++;
       result.file = args[i];
+    } else if (arg === '--max-cycles' && i + 1 < args.length) {
+      i++;
+      result.improveMaxCycles = parseInt(args[i]!, 10) || undefined;
+    } else if (arg === '--max-failures' && i + 1 < args.length) {
+      i++;
+      result.improveMaxFailures = parseInt(args[i]!, 10) || undefined;
+    } else if (arg === '--protected' && i + 1 < args.length) {
+      i++;
+      result.improveProtected = args[i]!.split(',').map(s => s.trim());
+    } else if (arg === '--test-cmd' && i + 1 < args.length) {
+      i++;
+      result.improveTestCmd = args[i];
+    } else if (arg === '--build-cmd' && i + 1 < args.length) {
+      i++;
+      result.improveBuildCmd = args[i];
     } else if (arg === 'run') {
       // skip, next arg is the file
     } else if (!arg.startsWith('-')) {
@@ -2216,6 +2239,19 @@ export async function handleInit(opts: ParsedArgs): Promise<void> {
   console.log('  The assistant will read your project and help you create');
   console.log('  your first workflow. Just tell it what you want to build.');
   console.log('');
+}
+
+export async function handleImprove(opts: ParsedArgs): Promise<void> {
+  const projectDir = opts.file ? path.resolve(opts.file) : process.cwd();
+  const { runImproveLoop, DEFAULT_PROTECTED } = await import('./bot/improve-loop.js');
+  await runImproveLoop({
+    maxCycles: opts.improveMaxCycles ?? 20,
+    maxConsecutiveFailures: opts.improveMaxFailures ?? 3,
+    protectedPatterns: opts.improveProtected ?? DEFAULT_PROTECTED,
+    testCommand: opts.improveTestCmd ?? 'npx vitest run',
+    buildCommand: opts.improveBuildCmd,
+    projectDir,
+  });
 }
 
 export async function handleExamples(_opts: ParsedArgs): Promise<void> {

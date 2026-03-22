@@ -4,7 +4,7 @@ import {
   handleCron, handlePipeline, handleDashboard, handleProviders,
   handleEject, handleBot, handleSession, handleSteer, handleQueue,
   handleStatus, handleGenesis, handleAudit, handleInit, handleAssistant,
-  handleExamples, handleDoctor,
+  handleExamples, handleDoctor, handleImprove,
   printHelp,
 } from './cli-handlers.js';
 
@@ -29,6 +29,7 @@ const handlers: Record<string, (opts: ParsedArgs) => Promise<void>> = {
   assistant: handleAssistant,
   examples: handleExamples,
   doctor: handleDoctor,
+  improve: handleImprove,
 };
 
 export { printHelp };
