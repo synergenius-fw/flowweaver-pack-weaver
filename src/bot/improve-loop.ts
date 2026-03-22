@@ -179,6 +179,12 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
 
     const cycleEngine = new SteeringEngine(steers);
 
+    // Record HEAD at cycle start to detect if assistant commits during its turn
+    let headAtCycleStart = '';
+    try {
+      headAtCycleStart = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
+    } catch { /* not a git repo? */ }
+
     // Build context for the assistant
     let planContext = '';
     try {
@@ -336,14 +342,15 @@ Fix the failures without reverting your improvement. If you can't fix them, reve
 
     // Check if the assistant already committed (the test_pass steer tells it to commit immediately)
     try {
-      const latestCommit = execFileSync('git', ['log', '-1', '--format=%H %s', branchName], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
-      const headBefore = execFileSync('git', ['log', '-1', '--format=%H', 'HEAD~1'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
-      if (latestCommit && !latestCommit.startsWith(headBefore)) {
-        // There are new commits — the assistant committed during its turn
+      const headNow = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
+      if (headAtCycleStart && headNow !== headAtCycleStart) {
+        // HEAD moved — assistant committed during its turn
+        const newCommits = execFileSync('git', ['log', '--oneline', `${headAtCycleStart}..HEAD`], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
         const commitHash = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
         const commitMsg = execFileSync('git', ['log', '-1', '--format=%s'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
-        out(`    ${c.green('✓')} ${c.dim(commitHash)} (committed by assistant)\n\n`);
-        cycles.push({ cycle, outcome: 'success', description: commitMsg.slice(0, 70), filesChanged: getChangedFiles(worktreeDir), commitHash });
+        const commitCount = newCommits.split('\n').filter(Boolean).length;
+        out(`    ${c.green('✓')} ${c.dim(commitHash)} (${commitCount} commit${commitCount > 1 ? 's' : ''} by assistant)\n\n`);
+        cycles.push({ cycle, outcome: 'success', description: commitMsg.slice(0, 70), filesChanged: [], commitHash });
         completedWork.push(commitMsg.slice(0, 80));
         consecutiveFailures = 0;
         continue;
