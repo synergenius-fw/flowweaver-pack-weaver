@@ -156,7 +156,8 @@ describe('GenesisStore', () => {
       try {
         expect(() => store.loadHistory()).not.toThrow();
         const history = store.loadHistory();
-        expect(history.cycles).toEqual([]);
+        // Backup recovery: returns data from .bak file when primary is unreadable
+        expect(history.cycles).toHaveLength(1);
       } finally {
         fs.chmodSync(histPath, 0o644);
       }
@@ -332,6 +333,51 @@ describe('GenesisStore', () => {
       store.appendSelfMigration(makeSelfMigration({ outcome: 'rolled-back' }));
       store.appendSelfMigration(makeSelfMigration({ outcome: 'migrated' }));
       expect(store.getSelfFailureCount()).toBe(0);
+    });
+  });
+
+  // =========================================================================
+  // crash recovery — atomic writes
+  // =========================================================================
+  describe('crash recovery', () => {
+    it('appendCycle recovers from corrupted history.json via backup', () => {
+      // Simulate: 3 cycles were written, then a crash truncated history.json
+      store.appendCycle(makeCycleRecord({ id: 'a' }));
+      store.appendCycle(makeCycleRecord({ id: 'b' }));
+      store.appendCycle(makeCycleRecord({ id: 'c' }));
+
+      // Verify all 3 are there
+      expect(store.loadHistory().cycles).toHaveLength(3);
+
+      // Simulate crash: truncate history.json to corrupt JSON
+      const histPath = path.join(tmpDir, '.genesis', 'history.json');
+      fs.writeFileSync(histPath, '{"configHash":"","cycles":[{"id":"a', 'utf-8');
+
+      // loadHistory should recover from the .bak file rather than return empty
+      const history = store.loadHistory();
+      expect(history.cycles.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('appendSelfMigration recovers from corrupted self-history.json via backup', () => {
+      store.appendSelfMigration(makeSelfMigration({ migrationId: 'm1' }));
+      store.appendSelfMigration(makeSelfMigration({ migrationId: 'm2' }));
+
+      expect(store.loadSelfHistory()).toHaveLength(2);
+
+      // Simulate crash: corrupt self-history.json
+      const histPath = path.join(tmpDir, '.genesis', 'self-history.json');
+      fs.writeFileSync(histPath, '[{"migrationId":"m1', 'utf-8');
+
+      // Should recover from backup
+      const records = store.loadSelfHistory();
+      expect(records.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('appendCycle does not leave .tmp files on disk', () => {
+      store.appendCycle(makeCycleRecord({ id: 'x' }));
+      const genesisDir = path.join(tmpDir, '.genesis');
+      const tmpFiles = fs.readdirSync(genesisDir).filter(f => f.includes('.tmp'));
+      expect(tmpFiles).toEqual([]);
     });
   });
 

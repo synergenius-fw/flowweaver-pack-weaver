@@ -49,14 +49,18 @@ export class GenesisStore {
 
   loadHistory(): GenesisHistory {
     const historyPath = path.join(this.genesisDir, 'history.json');
+    const fallback: GenesisHistory = { configHash: '', cycles: [] };
     if (!fs.existsSync(historyPath)) {
-      return { configHash: '', cycles: [] };
+      return fallback;
     }
     try {
       const content = fs.readFileSync(historyPath, 'utf-8');
-      return jsonParseOr<GenesisHistory>(content, { configHash: '', cycles: [] }, 'genesis history');
+      const parsed = jsonParseOr<GenesisHistory>(content, null as unknown as GenesisHistory, 'genesis history');
+      if (parsed && Array.isArray(parsed.cycles)) return parsed;
+      // Primary file corrupt — try backup
+      return this.readJsonBackup<GenesisHistory>(historyPath, fallback);
     } catch {
-      return { configHash: '', cycles: [] };
+      return this.readJsonBackup<GenesisHistory>(historyPath, fallback);
     }
   }
 
@@ -64,7 +68,7 @@ export class GenesisStore {
     const history = this.loadHistory();
     history.cycles.push(cycle);
     this.ensureDirs();
-    fs.writeFileSync(path.join(this.genesisDir, 'history.json'), JSON.stringify(history, null, 2), 'utf-8');
+    this.writeJsonAtomic(path.join(this.genesisDir, 'history.json'), history);
   }
 
   saveSnapshot(cycleId: string, content: string): string {
@@ -154,19 +158,21 @@ export class GenesisStore {
   loadSelfHistory(): GenesisSelfMigrationRecord[] {
     const histPath = path.join(this.genesisDir, 'self-history.json');
     if (!fs.existsSync(histPath)) return [];
-    const content = fs.readFileSync(histPath, 'utf-8');
-    return jsonParseOr<GenesisSelfMigrationRecord[]>(content, [], 'genesis self-history');
+    try {
+      const content = fs.readFileSync(histPath, 'utf-8');
+      const parsed = jsonParseOr<GenesisSelfMigrationRecord[]>(content, null as unknown as GenesisSelfMigrationRecord[], 'genesis self-history');
+      if (Array.isArray(parsed)) return parsed;
+      return this.readJsonBackup<GenesisSelfMigrationRecord[]>(histPath, []);
+    } catch {
+      return this.readJsonBackup<GenesisSelfMigrationRecord[]>(histPath, []);
+    }
   }
 
   appendSelfMigration(record: GenesisSelfMigrationRecord): void {
     const records = this.loadSelfHistory();
     records.push(record);
     this.ensureDirs();
-    fs.writeFileSync(
-      path.join(this.genesisDir, 'self-history.json'),
-      JSON.stringify(records, null, 2),
-      'utf-8',
-    );
+    this.writeJsonAtomic(path.join(this.genesisDir, 'self-history.json'), records);
   }
 
   getSelfFailureCount(): number {
@@ -177,6 +183,40 @@ export class GenesisStore {
       else break;
     }
     return count;
+  }
+
+  /** Atomic write: serialize to temp file, backup existing, rename into place. */
+  private writeJsonAtomic(filePath: string, data: unknown): void {
+    const tmpPath = filePath + `.tmp.${process.pid}`;
+    const backupPath = filePath + '.bak';
+    const content = JSON.stringify(data, null, 2);
+
+    fs.writeFileSync(tmpPath, content, 'utf-8');
+
+    // Backup current file before overwriting
+    if (fs.existsSync(filePath)) {
+      try { fs.copyFileSync(filePath, backupPath); } catch { /* best effort */ }
+    }
+
+    fs.renameSync(tmpPath, filePath);
+
+    // Update backup after successful write
+    try { fs.copyFileSync(filePath, backupPath); } catch { /* best effort */ }
+  }
+
+  /** Read from .bak file when primary is corrupt. */
+  private readJsonBackup<T>(filePath: string, fallback: T): T {
+    const backupPath = filePath + '.bak';
+    if (!fs.existsSync(backupPath)) return fallback;
+    try {
+      const content = fs.readFileSync(backupPath, 'utf-8');
+      const data = JSON.parse(content) as T;
+      // Restore backup to primary
+      try { this.writeJsonAtomic(filePath, data); } catch { /* best effort */ }
+      return data;
+    } catch {
+      return fallback;
+    }
   }
 
   static hashFile(filePath: string): string {
