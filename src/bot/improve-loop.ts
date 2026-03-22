@@ -86,13 +86,9 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
   if (caffeinate) out(`  ${c.dim('Sleep inhibited (caffeinate)')}\n`);
   out('\n');
 
-  // Check clean working tree
+  // Verify this is a git repo (worktree requires it)
   try {
-    const status = execFileSync('git', ['status', '--porcelain'], { cwd: projectDir, encoding: 'utf-8' }).trim();
-    if (status) {
-      out(`  ${c.red('✗')} Working tree has uncommitted changes. Commit or stash first.\n`);
-      return emptyResult(startedAt, branchName, worktreeDir, 'complete');
-    }
+    execFileSync('git', ['rev-parse', '--git-dir'], { cwd: projectDir, stdio: 'pipe' });
   } catch {
     out(`  ${c.red('✗')} Not a git repository.\n`);
     return emptyResult(startedAt, branchName, worktreeDir, 'complete');
