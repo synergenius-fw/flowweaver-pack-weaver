@@ -188,6 +188,63 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     }
   } catch { /* project model not available yet */ }
 
+  // Auto-context scan: on first-ever use, scan project and persist context in knowledge store
+  try {
+    const { KnowledgeStore } = await import('./knowledge-store.js');
+    const knowledge = new KnowledgeStore(projectDir);
+    const existing = knowledge.recall('project:context');
+    if (existing.length === 0) {
+      // First-ever scan — build project context
+      const fsMod = await import('node:fs');
+      const parts: string[] = [];
+
+      // Package info
+      const pkgPath = path.join(projectDir, 'package.json');
+      if (fsMod.existsSync(pkgPath)) {
+        try {
+          const pkg = JSON.parse(fsMod.readFileSync(pkgPath, 'utf-8'));
+          parts.push(`Project: ${pkg.name ?? 'unknown'} v${pkg.version ?? '0.0.0'}`);
+          if (pkg.description) parts.push(`Description: ${pkg.description}`);
+          const deps = Object.keys(pkg.dependencies ?? {}).slice(0, 10);
+          if (deps.length > 0) parts.push(`Key deps: ${deps.join(', ')}`);
+        } catch { /* parse failed */ }
+      }
+
+      // Workflow scan
+      try {
+        const { execFileSync: scanExec } = await import('node:child_process');
+        const found = scanExec('npx', ['flow-weaver', 'find-workflows', '--json'], {
+          encoding: 'utf-8', cwd: projectDir, timeout: 10_000, stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        const workflows = JSON.parse(found);
+        if (Array.isArray(workflows) && workflows.length > 0) {
+          parts.push(`Workflows (${workflows.length}): ${workflows.map((w: { name?: string; file?: string }) => w.name ?? w.file ?? 'unknown').join(', ')}`);
+        }
+      } catch { /* find-workflows failed */ }
+
+      // TypeScript config
+      const tsConfigPath = path.join(projectDir, 'tsconfig.json');
+      if (fsMod.existsSync(tsConfigPath)) parts.push('TypeScript: yes');
+
+      // Weaver config
+      const weaverConfigPath = path.join(projectDir, '.weaver.json');
+      if (fsMod.existsSync(weaverConfigPath)) {
+        try {
+          const wc = JSON.parse(fsMod.readFileSync(weaverConfigPath, 'utf-8'));
+          parts.push(`Weaver provider: ${typeof wc.provider === 'string' ? wc.provider : wc.provider?.name ?? 'auto'}`);
+        } catch { /* parse failed */ }
+      }
+
+      if (parts.length > 0) {
+        knowledge.learn('project:context', parts.join('\n'), 'auto-scan');
+        systemPrompt += '\n\n## Project Context (auto-scanned)\n\n' + parts.join('\n');
+      }
+    } else {
+      // Context already scanned — inject from knowledge store
+      systemPrompt += '\n\n## Project Context\n\n' + existing[0]!.value;
+    }
+  } catch { /* knowledge store not available */ }
+
   // Persistent conversation store
   const { ConversationStore } = await import('./conversation-store.js');
   const store = new ConversationStore();
