@@ -2259,16 +2259,17 @@ export async function handleConnect(opts: ParsedArgs): Promise<void> {
     process.exit(1);
   }
 
-  const { DeviceConnection, registerDefaultHandlers } = await import('./bot/device-connection.js');
+  const { DeviceConnection, registerWeaverHandlers } = await import('./bot/device-connection.js');
 
   const conn = new DeviceConnection({
     platformUrl: creds.platformUrl,
     token: creds.token,
     projectDir,
     deviceName: opts.file ? path.basename(opts.file) : path.basename(projectDir),
+    logger: (msg) => process.stderr.write(`  \x1b[2m${msg}\x1b[0m\n`),
   });
 
-  registerDefaultHandlers(conn, projectDir);
+  registerWeaverHandlers(conn, projectDir);
 
   console.log('');
   console.log('  \x1b[1mweaver connect\x1b[0m');
