@@ -365,6 +365,19 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     } catch { /* project model not available yet */ }
   }
 
+  // Check for updates (cached, max once per 24h, non-blocking)
+  if (!isDebug) {
+    try {
+      const { checkForUpdates, formatUpdateNotification } = await import('./update-checker.js');
+      const updates = await checkForUpdates(projectDir);
+      const notification = formatUpdateNotification(updates);
+      if (notification) {
+        out(`  ${c.yellow('⬆')} ${c.dim(notification.split('\n')[0]!)}\n`);
+        systemPrompt += `\n\n## Update Available\n\n${notification}\nMention this to the user if relevant.`;
+      }
+    } catch { /* update check failed — non-fatal */ }
+  }
+
   // Inject first-run context into system prompt so the assistant adapts
   if (workflowCount === 0 && isFirstRun) {
     systemPrompt += '\n\n## First-Run Context\n\nThis is a NEW user with NO workflows yet. Be welcoming. Suggest creating their first workflow. If they describe what they want to build, offer to create it immediately. Do NOT assume they know Flow Weaver concepts — explain briefly as you go.';

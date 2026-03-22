@@ -561,7 +561,7 @@ export interface ProjectModel {
 
 export interface Insight {
   id: string;
-  type: 'failure-pattern' | 'health-trend' | 'cost-optimization' | 'evolution-opportunity' | 'unused-workflow' | 'bot-performance';
+  type: 'failure-pattern' | 'health-trend' | 'cost-optimization' | 'evolution-opportunity' | 'unused-workflow' | 'bot-performance' | 'update-available';
   confidence: number;
   severity: 'info' | 'warning' | 'critical';
   title: string;
