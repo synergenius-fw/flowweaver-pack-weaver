@@ -259,15 +259,24 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     try {
       // Stage only tracked/changed files, exclude node_modules and symlinks
       execFileSync('git', ['add', '-A', '--', '.', ':!node_modules'], { cwd: worktreeDir, stdio: 'pipe' });
+
+      // Check if there's actually anything staged
+      const staged = execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
+      if (!staged) {
+        out(`    ${c.dim('Skip: assistant made no file changes')}\n\n`);
+        cycles.push({ cycle, outcome: 'skip', description: 'No staged changes after fix', filesChanged: [] });
+        continue;
+      }
+
       execFileSync('git', ['commit', '-m', `${commitMsg}\n\nCo-authored-by: Weaver Assistant <weaver@synergenius.dev>`], { cwd: worktreeDir, stdio: 'pipe' });
       const hash = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
       out(`    ${c.green('✓')} ${c.dim(hash)} ${commitMsg}\n\n`);
-      cycles.push({ cycle, outcome: 'success', description: discovery.split('\n')[0]!, filesChanged: changedFiles, commitHash: hash });
+      cycles.push({ cycle, outcome: 'success', description: commitDescription, filesChanged: changedFiles, commitHash: hash });
       consecutiveFailures = 0;
-    } catch {
-      out(`    ${c.red('✗')} Commit failed\n`);
+    } catch (err) {
+      out(`    ${c.red('✗')} Commit failed: ${err instanceof Error ? err.message.split('\n')[0] : 'unknown'}\n`);
       rollback(worktreeDir);
-      cycles.push({ cycle, outcome: 'failure', description: 'Commit failed', filesChanged: changedFiles });
+      cycles.push({ cycle, outcome: 'failure', description: 'Commit failed', filesChanged: changedFiles, error: String(err) });
       consecutiveFailures++;
     }
   }

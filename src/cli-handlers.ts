@@ -2246,7 +2246,7 @@ export async function handleImprove(opts: ParsedArgs): Promise<void> {
   const { runImproveLoop, DEFAULT_PROTECTED } = await import('./bot/improve-loop.js');
   await runImproveLoop({
     maxCycles: opts.improveMaxCycles ?? 0,
-    maxConsecutiveFailures: opts.improveMaxFailures ?? 3,
+    maxConsecutiveFailures: opts.improveMaxFailures ?? 5,
     protectedPatterns: opts.improveProtected ?? DEFAULT_PROTECTED,
     testCommand: opts.improveTestCmd ?? 'npx vitest run',
     buildCommand: opts.improveBuildCmd,
