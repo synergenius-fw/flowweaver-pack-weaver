@@ -114,12 +114,17 @@ export class PipelineRunner {
 
           let workflowResult: WorkflowResult;
           if (timeout) {
-            workflowResult = await Promise.race([
-              workflowPromise,
-              new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error(`Stage "${stageId}" timed out after ${timeout}s`)), timeout * 1000),
-              ),
-            ]);
+            let timer: ReturnType<typeof setTimeout>;
+            try {
+              workflowResult = await Promise.race([
+                workflowPromise,
+                new Promise<never>((_, reject) => {
+                  timer = setTimeout(() => reject(new Error(`Stage "${stageId}" timed out after ${timeout}s`)), timeout * 1000);
+                }),
+              ]);
+            } finally {
+              clearTimeout(timer!);
+            }
           } else {
             workflowResult = await workflowPromise;
           }

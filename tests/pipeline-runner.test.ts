@@ -1,8 +1,13 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { vi } from 'vitest';
 import { PipelineRunner } from '../src/bot/pipeline-runner.js';
-import type { PipelineConfig } from '../src/bot/types.js';
+import type { PipelineConfig, WorkflowResult } from '../src/bot/types.js';
+
+vi.mock('../src/bot/runner.js', () => ({
+  runWorkflow: vi.fn(),
+}));
 
 function makeConfig(overrides: Partial<PipelineConfig> = {}): PipelineConfig {
   return {
@@ -365,5 +370,68 @@ describe('PipelineRunner.load preserves config fields', () => {
     const loaded = PipelineRunner.load(configPath);
 
     expect(loaded.description).toBe('A test pipeline');
+  });
+});
+
+describe('PipelineRunner timeout timer cleanup', () => {
+  let runner: PipelineRunner;
+
+  beforeEach(() => {
+    runner = new PipelineRunner();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('clears the timeout timer when workflow completes before timeout', async () => {
+    const { runWorkflow } = await import('../src/bot/runner.js');
+    const mockResult: WorkflowResult = {
+      success: true,
+      outcome: 'completed' as const,
+      outputs: {},
+      durationMs: 100,
+      steps: [],
+    };
+    (runWorkflow as ReturnType<typeof vi.fn>).mockResolvedValue(mockResult);
+
+    const config: PipelineConfig = {
+      version: 1,
+      name: 'timeout-test',
+      stages: [{ id: 'fast', workflow: '/w/fast.yaml', timeoutSeconds: 60 }],
+    };
+
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+
+    const resultPromise = runner.run(config);
+    // Flush microtasks so the workflow resolves
+    await vi.advanceTimersByTimeAsync(0);
+    const result = await resultPromise;
+
+    expect(result.success).toBe(true);
+    // The timeout timer must have been cleared
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+  });
+
+  it('rejects with timeout error when workflow exceeds timeout', async () => {
+    const { runWorkflow } = await import('../src/bot/runner.js');
+    // Workflow that never resolves
+    (runWorkflow as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+
+    const config: PipelineConfig = {
+      version: 1,
+      name: 'timeout-test',
+      stages: [{ id: 'slow', workflow: '/w/slow.yaml', timeoutSeconds: 5 }],
+    };
+
+    const resultPromise = runner.run(config);
+    await vi.advanceTimersByTimeAsync(5001);
+    const result = await resultPromise;
+
+    expect(result.success).toBe(false);
+    expect(result.stages['slow']?.status).toBe('failed');
+    expect(result.stages['slow']?.error).toMatch(/timed out/);
   });
 });
