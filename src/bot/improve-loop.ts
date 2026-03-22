@@ -67,12 +67,24 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
   const branchName = `weaver/improve-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
   const worktreeDir = path.join(projectDir, '.weaver-improve', branchName.replace(/\//g, '-'));
 
+  // Prevent sleep on macOS
+  let caffeinate: import('node:child_process').ChildProcess | null = null;
+  try {
+    if (process.platform === 'darwin') {
+      const { spawn } = await import('node:child_process');
+      caffeinate = spawn('caffeinate', ['-i', '-s'], { stdio: 'ignore', detached: true });
+      caffeinate.unref();
+    }
+  } catch { /* caffeinate not available */ }
+
   out(`\n  ${c.bold('weaver improve')}\n`);
   out(`  ${c.dim(`Project: ${path.basename(projectDir)}`)}\n`);
   out(`  ${c.dim(`Branch: ${branchName}`)}\n`);
   out(`  ${c.dim(`Worktree: ${path.relative(projectDir, worktreeDir)}`)}\n`);
   out(`  ${c.dim(`Max cycles: ${maxCycles}, stop after ${maxConsecutiveFailures} consecutive failures`)}\n`);
-  out(`  ${c.dim(`Test: ${testCommand}`)}\n\n`);
+  out(`  ${c.dim(`Test: ${testCommand}`)}\n`);
+  if (caffeinate) out(`  ${c.dim('Sleep inhibited (caffeinate)')}\n`);
+  out('\n');
 
   // Check clean working tree
   try {
@@ -237,11 +249,15 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
 
     // Step 7: Commit in worktree (exclude symlinks and node_modules)
     // Filter staged files to only include actual code changes
+    // Extract a meaningful commit message from the discovery response
     const commitDescription = discovery
       .split('\n')
-      .filter(l => l.trim() && !l.startsWith('Here') && !l.startsWith('Let me') && !l.startsWith('I found'))
-      .slice(0, 2)
-      .join(' ')
+      .map(l => l.trim())
+      .filter(l => l && !/^(here'?s|let me|i found|i'?ll|looking|checking|reading|good|now)/i.test(l))
+      .map(l => l.replace(/^\*\*|^\d+\.\s*|\*\*$/g, '').trim()) // strip markdown bold, numbered lists
+      .filter(l => l.length > 10) // skip short fragments
+      .slice(0, 1)
+      .join('')
       .slice(0, 70) || 'code improvement';
     const commitMsg = `[improve] ${commitDescription}`;
     try {
@@ -275,6 +291,11 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
       : cycles.some(cy => cy.description === 'Nothing to improve') ? 'nothing-to-improve'
       : 'max-cycles',
   };
+
+  // Release sleep inhibitor
+  if (caffeinate) {
+    try { caffeinate.kill(); } catch { /* already dead */ }
+  }
 
   // Summary
   out(`\n  ${c.bold('=== Improve Complete ===')}\n`);
