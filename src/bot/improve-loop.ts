@@ -62,7 +62,7 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
   const out = (s: string) => process.stderr.write(s);
   const cycles: ImproveCycleResult[] = [];
   let consecutiveFailures = 0;
-  let conversationId = '';
+  const completedWork: string[] = []; // track what's been done so it doesn't repeat
   const startedAt = new Date().toISOString();
   const branchName = `weaver/improve-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
   const worktreeDir = path.join(projectDir, '.weaver-improve', branchName.replace(/\//g, '-'));
@@ -152,22 +152,31 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
       break;
     }
 
-    out(`  ${c.bold(`--- Cycle ${cycle}/${maxCycles} ---`)}\n`);
+    out(`  ${c.bold(`--- Cycle ${cycle}/${maxCycles === 0 ? '∞' : maxCycles} ---`)}\n`);
 
-    // Step 1: Discover — guided by .weaver-plan.md if it exists
+    // Fresh conversation per cycle — discover and fix share context within a cycle,
+    // but each cycle starts clean to avoid context window bloat.
+    // The work log carries memory of what was already done.
+    let conversationId = '';
+
+    // Step 1: Discover — guided by .weaver-plan.md and work log
     let planContext = '';
     try {
       const planPath = path.join(worktreeDir, '.weaver-plan.md');
       if (fs.existsSync(planPath)) {
-        planContext = `\n\nIMPORTANT: All improvements MUST align with the project plan in .weaver-plan.md. Do NOT work on things outside the plan's scope. If the plan specifies priorities, follow them.`;
+        planContext = `\n\nIMPORTANT: All improvements MUST align with the project plan in .weaver-plan.md. Do NOT work on things outside the plan's scope. If the plan specifies priorities, rotate between them.`;
       }
     } catch { /* no plan */ }
 
+    const workLog = completedWork.length > 0
+      ? `\n\nALREADY DONE (do NOT repeat these):\n${completedWork.map(w => `- ${w}`).join('\n')}`
+      : '';
+
     const discoverMsg = `You are working in: ${worktreeDir}
 
-Look at this project and find ONE specific, small improvement. Focus on: untested code, missing error handling, reliability gaps, or code quality issues. Pick something concrete (1-3 files max). Tell me what you found and which files — do NOT fix it yet.
+First, use knowledge_search with query "project" to recall what you know about this codebase. Then find ONE specific, small improvement. Focus on: real bugs, missing error handling, reliability gaps, UX issues, or untested critical paths. Pick something concrete (1-3 files max). Tell me what you found and which files — do NOT fix it yet.
 
-IMPORTANT: All file paths MUST be relative to ${worktreeDir}. Use this as your working directory for all file operations.${planContext}`;
+All file paths MUST be relative to ${worktreeDir}.${planContext}${workLog}`;
 
     let discovery = '';
     try {
@@ -194,7 +203,9 @@ IMPORTANT: All file paths MUST be relative to ${worktreeDir}. Use this as your w
     // Step 2: Fix
     const fixMsg = `Fix it now. You are working in: ${worktreeDir}
 
-Use write_file to create test files and patch_file to modify existing code. All paths must be relative to ${worktreeDir}. Write failing tests first, then implement the minimal fix. Run the tests with run_tests to verify. Keep changes small — 1-3 files max.`;
+Use write_file to create test files and patch_file to modify existing code. All paths must be relative to ${worktreeDir}. Write failing tests first, then implement the minimal fix. Run the tests with run_tests to verify. Keep changes small — 1-3 files max.
+
+After fixing, use knowledge_search and learn to store any important patterns or insights you discovered about the codebase (e.g. "pattern:error-handling: this project uses X approach", "gotcha:file-lock: withFileLock requires async callback").`;
     try {
       const fixRaw = await withTimeout(runAssistantInDir(worktreeDir, fixMsg, conversationId), 180_000);
       const fixParsed = JSON.parse(fixRaw);
@@ -285,6 +296,7 @@ Use write_file to create test files and patch_file to modify existing code. All 
       const hash = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
       out(`    ${c.green('✓')} ${c.dim(hash)} ${commitMsg}\n\n`);
       cycles.push({ cycle, outcome: 'success', description: commitDescription, filesChanged: changedFiles, commitHash: hash });
+      completedWork.push(`${commitDescription} (${stagedFiles.join(', ')})`);
       consecutiveFailures = 0;
     } catch (err) {
       out(`    ${c.red('✗')} Commit failed: ${err instanceof Error ? err.message.split('\n')[0] : 'unknown'}\n`);
