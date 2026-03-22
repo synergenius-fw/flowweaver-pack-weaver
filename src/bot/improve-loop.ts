@@ -173,8 +173,7 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
 
     out(`  ${c.bold(`--- Cycle ${cycle}/${maxCycles === 0 ? '∞' : maxCycles} ---`)}\n`);
 
-    // Single call per cycle: find AND fix in one turn.
-    // Cuts Claude CLI overhead in half (one subprocess instead of two).
+    // Build context for the assistant
     let planContext = '';
     try {
       const planPath = path.join(worktreeDir, '.weaver-plan.md');
@@ -187,9 +186,10 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
       ? `\nALREADY DONE (do NOT repeat): ${completedWork.join('; ')}`
       : '';
 
+    // Step 1: Find and fix in one turn
     const improveMsg = `You are working in: ${worktreeDir}
 
-Find ONE small improvement and fix it in this single turn. Steps:
+Find ONE small improvement and fix it. Steps:
 1. Recall what you know: knowledge_search "project"
 2. Find one concrete issue (real bug, missing error handling, reliability gap, or untested critical path)
 3. Write a failing test first, then implement the minimal fix
@@ -198,10 +198,12 @@ Find ONE small improvement and fix it in this single turn. Steps:
 
 Keep changes to 1-3 files. All paths relative to ${worktreeDir}.${planContext}${workLog}`;
 
+    let conversationId = '';
     let discovery = '';
     try {
       const raw = await withTimeout(runAssistantInDir(worktreeDir, improveMsg, ''), 300_000);
       const parsed = JSON.parse(raw);
+      conversationId = String(parsed.conversationId ?? '');
       discovery = String(parsed.response ?? '');
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
@@ -219,53 +221,98 @@ Keep changes to 1-3 files. All paths relative to ${worktreeDir}.${planContext}${
       break;
     }
 
-    // Step 3: Check changes
-    const changedFiles = getChangedFiles(worktreeDir);
-    if (changedFiles.length === 0) {
-      out(`    ${c.dim('Skip: no files changed')}\n`);
-      cycles.push({ cycle, outcome: 'skip', description: 'No changes', filesChanged: [] });
-      continue;
-    }
+    // Step 2: Iterative test-fix loop (like a developer would)
+    // Time budget: 10 minutes per cycle — keep iterating until green or time's up
+    const CYCLE_BUDGET_MS = 10 * 60 * 1000;
+    const cycleStart = Date.now();
+    let testsPassing = false;
+    let attempt = 0;
 
-    // Step 4: Protected files
-    const blocked = changedFiles.find(f => isProtected(f, protectedPatterns));
-    if (blocked) {
-      out(`    ${c.yellow('⚠')} Blocked: modified protected file ${blocked}\n`);
-      rollback(worktreeDir);
-      cycles.push({ cycle, outcome: 'blocked', description: `Protected file: ${blocked}`, filesChanged: changedFiles });
-      continue;
-    }
+    while (Date.now() - cycleStart < CYCLE_BUDGET_MS) {
+      attempt++;
+      const changedFiles = getChangedFiles(worktreeDir);
+      if (changedFiles.length === 0) {
+        out(`    ${c.dim('Skip: no files changed')}\n`);
+        break;
+      }
 
-    // Step 5: Build
-    if (buildCommand) {
+      // Check protected files
+      const blocked = changedFiles.find(f => isProtected(f, protectedPatterns));
+      if (blocked) {
+        out(`    ${c.yellow('⚠')} Blocked: modified protected file ${blocked}\n`);
+        break;
+      }
+
+      // Build if needed
+      if (buildCommand) {
+        try {
+          execFileSync('sh', ['-c', buildCommand], { cwd: worktreeDir, stdio: 'pipe', timeout: 120_000 });
+        } catch {
+          out(`    ${c.red('✗')} Build failed (attempt ${attempt})\n`);
+          if (Date.now() - cycleStart >= CYCLE_BUDGET_MS) break;
+          // Ask assistant to fix build errors
+          try {
+            const fixRaw = await withTimeout(runAssistantInDir(worktreeDir, `Build failed. Fix the build errors. You are working in: ${worktreeDir}`, conversationId), 180_000);
+            const fixParsed = JSON.parse(fixRaw);
+            conversationId = String(fixParsed.conversationId ?? conversationId);
+          } catch { break; }
+          continue;
+        }
+      }
+
+      // Run tests
+      out(`    ${c.dim(`Testing (attempt ${attempt})...`)}\n`);
       try {
-        execFileSync('sh', ['-c', buildCommand], { cwd: worktreeDir, stdio: 'pipe', timeout: 120_000 });
-      } catch {
-        out(`    ${c.red('✗')} Build failed — rollback\n`);
-        rollback(worktreeDir);
-        cycles.push({ cycle, outcome: 'failure', description: 'Build failed', filesChanged: changedFiles });
-        consecutiveFailures++;
-        continue;
+        execFileSync('sh', ['-c', testCommand], { cwd: worktreeDir, stdio: 'pipe', timeout: 300_000 });
+        testsPassing = true;
+        break;
+      } catch (testErr) {
+        const testOutput = ((testErr as { stdout?: Buffer }).stdout?.toString() ?? '');
+        const failMatch = testOutput.match(/(\d+) failed/);
+        const newFailCount = failMatch ? parseInt(failMatch[1]!, 10) : 999;
+
+        if (newFailCount <= baselineFailCount) {
+          out(`    ${c.yellow('⚠')} Same pre-existing failures (${newFailCount}) — accepting\n`);
+          testsPassing = true;
+          break;
+        }
+
+        out(`    ${c.red('✗')} ${newFailCount} failures (${newFailCount - baselineFailCount} new)\n`);
+
+        const elapsed = Math.round((Date.now() - cycleStart) / 1000);
+        if (Date.now() - cycleStart >= CYCLE_BUDGET_MS) {
+          out(`    ${c.red('✗')} Time budget exhausted (${elapsed}s) — rollback\n`);
+          break;
+        }
+
+        // Extract failing test names for the assistant
+        const failedTests = testOutput.match(/FAIL .+/g)?.slice(0, 5).join('\n') ?? 'unknown failures';
+
+        // Ask assistant to fix the test failures — same conversation, it has context
+        out(`    ${c.dim(`Fixing failures (attempt ${attempt + 1})...`)}\n`);
+        try {
+          const fixMsg = `Tests failed with ${newFailCount - baselineFailCount} new failures. Fix them. You are working in: ${worktreeDir}
+
+Failing tests:
+${failedTests}
+
+Fix the failures without reverting your improvement. If you can't fix them, revert only the parts that broke tests.`;
+          const fixRaw = await withTimeout(runAssistantInDir(worktreeDir, fixMsg, conversationId), 300_000);
+          const fixParsed = JSON.parse(fixRaw);
+          conversationId = String(fixParsed.conversationId ?? conversationId);
+        } catch {
+          out(`    ${c.dim('Fix attempt timed out')}\n`);
+          break;
+        }
       }
     }
 
-    // Step 6: Test in worktree — tolerate pre-existing baseline failures
-    out(`    ${c.dim('Testing...')}\n`);
-    try {
-      execFileSync('sh', ['-c', testCommand], { cwd: worktreeDir, stdio: 'pipe', timeout: 300_000 });
-    } catch (testErr) {
-      const testOutput = ((testErr as { stdout?: Buffer }).stdout?.toString() ?? '');
-      const failMatch = testOutput.match(/(\d+) failed/);
-      const newFailCount = failMatch ? parseInt(failMatch[1]!, 10) : 999;
-      if (newFailCount <= baselineFailCount) {
-        out(`    ${c.yellow('⚠')} Same pre-existing failures (${newFailCount}) — accepting\n`);
-      } else {
-        out(`    ${c.red('✗')} Tests failed (${newFailCount} vs ${baselineFailCount} baseline) — rollback\n`);
-        rollback(worktreeDir);
-        cycles.push({ cycle, outcome: 'failure', description: `Tests failed: ${newFailCount} failures (baseline: ${baselineFailCount})`, filesChanged: changedFiles });
-        consecutiveFailures++;
-        continue;
-      }
+    if (!testsPassing) {
+      rollback(worktreeDir);
+      const elapsed = Math.round((Date.now() - cycleStart) / 1000);
+      cycles.push({ cycle, outcome: 'failure', description: `Tests failed after ${attempt} attempts (${elapsed}s)`, filesChanged: getChangedFiles(worktreeDir) });
+      consecutiveFailures++;
+      continue;
     }
 
     // Step 7: Commit in worktree (exclude symlinks and node_modules)
@@ -305,13 +352,13 @@ Keep changes to 1-3 files. All paths relative to ${worktreeDir}.${planContext}${
       execFileSync('git', ['commit', '-m', `${commitMsg}\n\nCo-authored-by: Weaver Assistant <weaver@synergenius.dev>`], { cwd: worktreeDir, stdio: 'pipe' });
       const hash = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
       out(`    ${c.green('✓')} ${c.dim(hash)} ${commitMsg}\n\n`);
-      cycles.push({ cycle, outcome: 'success', description: commitDescription, filesChanged: changedFiles, commitHash: hash });
+      cycles.push({ cycle, outcome: 'success', description: commitDescription, filesChanged: stagedFiles, commitHash: hash });
       completedWork.push(`${commitDescription} (${stagedFiles.join(', ')})`);
       consecutiveFailures = 0;
     } catch (err) {
       out(`    ${c.red('✗')} Commit failed: ${err instanceof Error ? err.message.split('\n')[0] : 'unknown'}\n`);
       rollback(worktreeDir);
-      cycles.push({ cycle, outcome: 'failure', description: 'Commit failed', filesChanged: changedFiles, error: String(err) });
+      cycles.push({ cycle, outcome: 'failure', description: 'Commit failed', filesChanged: getChangedFiles(worktreeDir), error: String(err) });
       consecutiveFailures++;
     }
   }
