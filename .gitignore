@@ -6,3 +6,4 @@ dist/
 fw-exec-*
 .weaver-improve/
 .weaver-improve-output.log
+node_modules
