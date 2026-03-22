@@ -58,8 +58,18 @@ export async function withFileLock<T>(
           continue;
         }
       } catch {
-        // Can't read lock info, try to clean up
-        try { fs.rmSync(lockDir, { recursive: true }); } catch { /* ignore */ }
+        // Can't read lock info — lock holder may still be writing it.
+        // Only clean up if the lock directory itself is stale.
+        try {
+          const stat = fs.statSync(lockDir);
+          if (Date.now() - stat.mtimeMs > staleMs) {
+            try { fs.rmSync(lockDir, { recursive: true }); } catch { /* ignore */ }
+          }
+        } catch { /* lockDir gone, will retry */ }
+
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, retryWait));
+        }
         continue;
       }
 

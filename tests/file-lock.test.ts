@@ -77,6 +77,39 @@ describe('withFileLock', () => {
     expect(result).toBe('recovered');
   });
 
+  it('does not steal lock when info.json is missing (race window)', async () => {
+    // Simulate the race: lock dir exists but info.json not yet written
+    // This happens between mkdirSync and writeFileSync in the lock holder
+    const lockDir = lockPath + '.lock';
+    fs.mkdirSync(lockDir);
+    // No info.json written — simulates the brief window
+
+    // With very few retries and short wait, the lock should NOT be stolen
+    // because the lock dir was just created (fresh mtime)
+    await expect(
+      withFileLock(lockPath, () => 'stolen', { retries: 2, retryWait: 10, staleMs: 10_000 }),
+    ).rejects.toThrow('Failed to acquire file lock');
+
+    // Lock dir should still exist (not cleaned up)
+    expect(fs.existsSync(lockDir)).toBe(true);
+
+    // Clean up
+    fs.rmSync(lockDir, { recursive: true });
+  });
+
+  it('cleans up lock dir with missing info.json only when stale', async () => {
+    // Lock dir exists with no info.json, but it's old (stale)
+    const lockDir = lockPath + '.lock';
+    fs.mkdirSync(lockDir);
+
+    // Set mtime to the past by using utimesSync
+    const past = new Date(Date.now() - 20_000);
+    fs.utimesSync(lockDir, past, past);
+
+    const result = await withFileLock(lockPath, () => 'recovered', { staleMs: 5_000 });
+    expect(result).toBe('recovered');
+  });
+
   it('throws after exhausting retries', async () => {
     const lockDir = lockPath + '.lock';
     fs.mkdirSync(lockDir);
