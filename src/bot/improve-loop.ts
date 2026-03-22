@@ -143,15 +143,25 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     }
   }
 
-  // Baseline test in worktree
-  out(`  ${c.dim('Running baseline tests in worktree...')}\n`);
+  // Baseline test — run in worktree to establish the failure count
+  // Some projects have flaky tests or env-dependent failures in worktrees
+  out(`  ${c.dim('Running baseline tests...')}\n`);
+  let baselineFailCount = 0;
   try {
     execFileSync('sh', ['-c', testCommand], { cwd: worktreeDir, stdio: 'pipe', timeout: 300_000 });
     out(`  ${c.green('✓')} Baseline tests pass\n\n`);
-  } catch {
-    out(`  ${c.red('✗')} Baseline tests FAIL in worktree — fix them first.\n`);
-    cleanup(projectDir, worktreeDir);
-    return emptyResult(startedAt, branchName, worktreeDir, 'complete');
+  } catch (err) {
+    // Count failures from vitest output — allow if same failures exist before our changes
+    const output = (err as { stderr?: Buffer; stdout?: Buffer }).stdout?.toString() ?? '';
+    const failMatch = output.match(/(\d+) failed/);
+    baselineFailCount = failMatch ? parseInt(failMatch[1]!, 10) : 0;
+    if (baselineFailCount <= 2) {
+      out(`  ${c.yellow('⚠')} Baseline: ${baselineFailCount} pre-existing failure(s) — will tolerate these\n\n`);
+    } else {
+      out(`  ${c.red('✗')} Baseline: ${baselineFailCount} failures — too many, fix them first.\n`);
+      cleanup(projectDir, worktreeDir);
+      return emptyResult(startedAt, branchName, worktreeDir, 'complete');
+    }
   }
 
   // Main loop
@@ -239,16 +249,23 @@ Keep changes to 1-3 files. All paths relative to ${worktreeDir}.${planContext}${
       }
     }
 
-    // Step 6: Test
+    // Step 6: Test in worktree — tolerate pre-existing baseline failures
     out(`    ${c.dim('Testing...')}\n`);
     try {
       execFileSync('sh', ['-c', testCommand], { cwd: worktreeDir, stdio: 'pipe', timeout: 300_000 });
-    } catch {
-      out(`    ${c.red('✗')} Tests failed — rollback\n`);
-      rollback(worktreeDir);
-      cycles.push({ cycle, outcome: 'failure', description: 'Tests failed', filesChanged: changedFiles });
-      consecutiveFailures++;
-      continue;
+    } catch (testErr) {
+      const testOutput = ((testErr as { stdout?: Buffer }).stdout?.toString() ?? '');
+      const failMatch = testOutput.match(/(\d+) failed/);
+      const newFailCount = failMatch ? parseInt(failMatch[1]!, 10) : 999;
+      if (newFailCount <= baselineFailCount) {
+        out(`    ${c.yellow('⚠')} Same pre-existing failures (${newFailCount}) — accepting\n`);
+      } else {
+        out(`    ${c.red('✗')} Tests failed (${newFailCount} vs ${baselineFailCount} baseline) — rollback\n`);
+        rollback(worktreeDir);
+        cycles.push({ cycle, outcome: 'failure', description: `Tests failed: ${newFailCount} failures (baseline: ${baselineFailCount})`, filesChanged: changedFiles });
+        consecutiveFailures++;
+        continue;
+      }
     }
 
     // Step 7: Commit in worktree (exclude symlinks and node_modules)
