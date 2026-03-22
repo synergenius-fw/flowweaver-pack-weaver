@@ -1,6 +1,6 @@
 {
   "name": "@synergenius/flow-weaver-pack-weaver",
-  "version": "0.9.12",
+  "version": "0.9.13",
   "description": "AI bot for Flow Weaver. Execute tasks, run workflows, evolve autonomously.",
   "type": "module",
   "main": "./dist/index.js",
@@ -57,7 +57,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc && cp -r src/docs dist/docs && node -e \"require('fs').writeFileSync('templates.js','export{workflowTemplates}from\\\"./dist/templates/index.js\\\";\\n')\"",
+    "build": "tsc && cp -r src/docs dist/docs && node scripts/bundle-ui.mjs && node -e \"require('fs').writeFileSync('templates.js','export{workflowTemplates}from\\\"./dist/templates/index.js\\\";\\n')\"",
     "prepublishOnly": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -69,6 +69,7 @@
   "devDependencies": {
     "@synergenius/flow-weaver": "^0.23.1",
     "@types/node": "^25.3.5",
+    "esbuild": "^0.27.4",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.0.18"

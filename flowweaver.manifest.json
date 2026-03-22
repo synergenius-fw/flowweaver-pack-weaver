@@ -949,7 +949,7 @@
     },
     {
       "name": "improve",
-      "description": "Autonomous codebase improvement — finds issues, fixes with tests, commits or rolls back"
+      "description": "Autonomous codebase improvement \u2014 finds issues, fixes with tests, commits or rolls back"
     },
     {
       "name": "status",
@@ -1075,24 +1075,9 @@
   "uiContributions": [
     {
       "type": "dashboard-widget",
-      "id": "weaver-status",
-      "name": "Weaver Bot Status",
-      "component": "dist/ui/status-widget.js",
-      "area": "dashboard",
-      "size": "medium"
-    },
-    {
-      "type": "result-renderer",
-      "id": "weaver-report",
-      "name": "Weaver Report View",
-      "component": "dist/ui/report-renderer.js",
-      "mimeType": "application/x-weaver-report"
-    },
-    {
-      "type": "dashboard-widget",
       "id": "weaver-insights",
       "name": "Project Insights",
-      "component": "dist/ui/insights-widget.js",
+      "component": "insights-widget.js",
       "area": "dashboard",
       "size": "large"
     },
@@ -1100,7 +1085,7 @@
       "type": "panel",
       "id": "weaver-evolution",
       "name": "Evolution History",
-      "component": "dist/ui/evolution-panel.js"
+      "component": "evolution-panel.js"
     }
   ],
   "sandboxCapabilities": [
