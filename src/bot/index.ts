@@ -133,3 +133,7 @@ export type { QueuedTask } from './task-queue.js';
 export { SessionStore } from './session-state.js';
 export type { SessionState } from './session-state.js';
 export { buildBotSystemPrompt } from './system-prompt.js';
+
+// Device bridge handlers
+export { register as registerDeviceHandlers, getActiveConnection } from './device-handlers.js';
+export type { DeviceHandlerContext } from './device-handlers.js';

@@ -861,6 +861,7 @@
   ],
   "workflows": [],
   "patterns": [],
+  "deviceHandlers": "dist/bot/device-handlers.js",
   "cliEntrypoint": "dist/cli-bridge.js",
   "cliCommands": [
     {

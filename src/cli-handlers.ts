@@ -2244,6 +2244,13 @@ export async function handleInit(opts: ParsedArgs): Promise<void> {
 export async function handleImprove(opts: ParsedArgs): Promise<void> {
   const projectDir = opts.file ? path.resolve(opts.file) : process.cwd();
   const { runImproveLoop, DEFAULT_PROTECTED } = await import('./bot/improve-loop.js');
+
+  let deviceConnection;
+  try {
+    const { getActiveConnection } = await import('./bot/device-handlers.js');
+    deviceConnection = getActiveConnection() ?? undefined;
+  } catch { /* not available */ }
+
   await runImproveLoop({
     maxCycles: opts.improveMaxCycles ?? 0,
     maxConsecutiveFailures: opts.improveMaxFailures ?? 5,
@@ -2251,6 +2258,7 @@ export async function handleImprove(opts: ParsedArgs): Promise<void> {
     testCommand: opts.improveTestCmd ?? 'npx vitest run',
     buildCommand: opts.improveBuildCmd,
     projectDir,
+    deviceConnection,
   });
 }
 
