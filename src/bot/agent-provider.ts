@@ -53,8 +53,9 @@ export async function createProvider(
         maxTokens: config.maxTokens,
         options: config.options,
       });
-    } catch {
-      // Try next candidate
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`Failed to load provider candidate "${candidate}": ${msg}`);
     }
   }
 

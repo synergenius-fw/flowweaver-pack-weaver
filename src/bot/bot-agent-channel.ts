@@ -72,6 +72,7 @@ export class BotAgentChannel {
     if (this.provider.decideWithTools) {
       return this.provider.decideWithTools({ ...agentRequest, tools });
     }
+    console.warn('[BotAgentChannel] Provider does not support decideWithTools — falling back to decide (tool results will be dropped)');
     const result = await this.provider.decide(agentRequest);
     return { result };
   }
@@ -85,6 +86,7 @@ export class BotAgentChannel {
       yield* this.provider.stream(agentRequest);
       return;
     }
+    console.warn('[BotAgentChannel] Provider does not support stream — falling back to decide (response will be non-streaming)');
     const result = await this.provider.decide(agentRequest);
     yield { type: 'text', text: JSON.stringify(result) };
     yield { type: 'done' };
