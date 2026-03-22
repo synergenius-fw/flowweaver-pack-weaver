@@ -2210,13 +2210,11 @@ export async function handleInit(opts: ParsedArgs): Promise<void> {
   console.log(`    provider: ${provider}`);
   console.log('    approval: auto');
   console.log('');
-  console.log('  Try it now:');
-  console.log('    \x1b[36mweaver bot "Create a hello world workflow"\x1b[0m');
-  console.log('    \x1b[36mweaver assistant\x1b[0m');
+  console.log('  \x1b[1mNext step:\x1b[0m');
+  console.log('    \x1b[36mweaver assistant\x1b[0m              \x1b[2m# start your AI companion\x1b[0m');
   console.log('');
-  console.log('  Learn more:');
-  console.log('    weaver examples         \x1b[2m# see what weaver can do\x1b[0m');
-  console.log('    weaver doctor           \x1b[2m# validate your setup\x1b[0m');
+  console.log('  The assistant will read your project and help you create');
+  console.log('  your first workflow. Just tell it what you want to build.');
   console.log('');
 }
 

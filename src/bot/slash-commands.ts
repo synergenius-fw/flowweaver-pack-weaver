@@ -23,15 +23,35 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     name: '/help',
     description: 'Show available commands and capabilities',
     handler: async (ctx) => {
+      // Check if this is a new project (no workflows)
+      let hasWorkflows = false;
+      try {
+        const fsMod = await import('node:fs');
+        const pathMod = await import('node:path');
+        const srcDir = pathMod.join(ctx.projectDir, 'src');
+        if (fsMod.existsSync(srcDir)) {
+          const files = fsMod.readdirSync(srcDir, { recursive: true }) as string[];
+          hasWorkflows = files.some(f => f.endsWith('.ts'));
+        }
+      } catch { /* scan failed */ }
+
       ctx.out(`\n  ${c.bold('Weaver Assistant')}\n`);
       ctx.out(`  Tell me what to build, fix, or explore. I use tools to do the work.\n\n`);
+
+      if (!hasWorkflows) {
+        ctx.out(`  ${c.bold('Getting Started:')}\n`);
+        ctx.out(`    ${c.cyan('1.')} "create a hello world workflow"\n`);
+        ctx.out(`    ${c.cyan('2.')} "create a data pipeline that reads an API and transforms the result"\n`);
+        ctx.out(`    ${c.cyan('3.')} "what is Flow Weaver and how does it work?"\n\n`);
+      }
+
       ctx.out(`  ${c.bold('Capabilities:')}\n`);
-      ctx.out(`    Workflows    Validate, compile, diagram, describe, and modify\n`);
+      ctx.out(`    Workflows    Create, validate, compile, diagram, describe, and modify\n`);
       ctx.out(`    Bots         Spawn background workers that execute tasks autonomously\n`);
       ctx.out(`    Code         Read, write, and patch files in your project\n`);
-      ctx.out(`    Shell        Run commands, check TypeScript, run tests\n`);
-      ctx.out(`    Knowledge    Store and recall project-specific notes\n`);
-      ctx.out(`    Cloud        Sync conversations, check CI status\n\n`);
+      ctx.out(`    Health       Track project health, insights, cost, and trust level\n`);
+      ctx.out(`    Evolution    Propose and apply genesis improvements to bot workflows\n`);
+      ctx.out(`    Shell        Run commands, check TypeScript, run tests\n\n`);
       ctx.out(`  ${c.bold('Commands:')}\n`);
       for (const cmd of SLASH_COMMANDS) {
         if (cmd.name === '/help') continue;

@@ -250,26 +250,54 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     }
   } catch { /* credentials not available */ }
 
+  // Detect first-run: scan for existing workflows and conversation count
+  let workflowCount = 0;
+  let projectName = path.basename(projectDir);
+  let packageDesc = '';
+  let isFirstRun = !conversation.title;
+  try {
+    const fsMod = await import('node:fs');
+    const pkgPath = path.join(projectDir, 'package.json');
+    if (fsMod.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fsMod.readFileSync(pkgPath, 'utf-8'));
+      projectName = pkg.name ?? projectName;
+      packageDesc = pkg.description ?? '';
+    }
+    const { execFileSync: fwExec } = await import('node:child_process');
+    try {
+      const found = fwExec('npx', ['flow-weaver', 'find-workflows', '--json'], {
+        encoding: 'utf-8', cwd: projectDir, timeout: 10_000, stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      const parsed = JSON.parse(found);
+      workflowCount = Array.isArray(parsed) ? parsed.length : (parsed.count ?? 0);
+    } catch { /* find-workflows not available */ }
+  } catch { /* scan failed */ }
+
   if (!isDebug) {
     const header = [`weaver assistant v${weaverVersion}`, `flow-weaver v${fwVersion}`];
     if (cloudStatus) header.push(cloudStatus);
     out(`\n  ${c.bold(header[0])}  ${c.dim(`· ${header.slice(1).join('  · ')}`)}\n`);
-    out(`  ${c.dim(`Project: ${path.basename(projectDir)}`)}\n`);
+    out(`  ${c.dim(`Project: ${projectName}`)}\n`);
     if (!cloudStatus) {
       out(`  ${c.dim('AI: Local (set ANTHROPIC_API_KEY or run "fw login" to connect)')}\n`);
     }
     if (conversation.title) {
       const ago = Math.round((Date.now() - conversation.lastMessageAt) / 60000);
       out(`  ${c.dim(`Resuming: "${conversation.title}" (${conversation.messageCount} messages, ${ago}m ago). /new to start fresh`)}\n`);
+    } else if (workflowCount === 0 && isFirstRun) {
+      out(`  ${c.dim('Welcome! No workflows found yet.')}\n`);
+      out(`  ${c.dim('Try: "create a hello world workflow" or "what can you do?"')}\n`);
+    } else if (workflowCount > 0 && isFirstRun) {
+      out(`  ${c.dim(`Found ${workflowCount} workflow${workflowCount !== 1 ? 's' : ''}. New conversation.`)}\n`);
+      out(`  ${c.dim('Try: "validate my workflows" or "show project health"')}\n`);
     } else {
-      out(`  ${c.dim('New conversation')}\n`);
+      out(`  ${c.dim('Type your request. /help for commands.')}\n`);
     }
-    out(`  ${c.dim('Type your request. Ctrl+C to exit. /help for commands.')}\n`);
-    out(`  ${c.dim('Try: "describe my workflows" or "fix validation errors"')}\n\n`);
+    out('\n');
   }
 
-  // Proactive session greeting with project status
-  if (!isDebug) {
+  // Proactive session greeting with project status (for returning users with data)
+  if (!isDebug && !isFirstRun) {
     try {
       const { ProjectModelStore } = await import('./project-model.js');
       const pms = new ProjectModelStore(projectDir);
@@ -278,6 +306,16 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
         out(`  ${c.dim(pms.formatSessionGreeting(model))}\n`);
       }
     } catch { /* project model not available yet */ }
+  }
+
+  // Inject first-run context into system prompt so the assistant adapts
+  if (workflowCount === 0 && isFirstRun) {
+    systemPrompt += '\n\n## First-Run Context\n\nThis is a NEW user with NO workflows yet. Be welcoming. Suggest creating their first workflow. If they describe what they want to build, offer to create it immediately. Do NOT assume they know Flow Weaver concepts — explain briefly as you go.';
+    if (packageDesc) {
+      systemPrompt += `\nProject description: "${packageDesc}". Use this to suggest a relevant first workflow.`;
+    }
+  } else if (workflowCount > 0 && isFirstRun) {
+    systemPrompt += `\n\n## First Conversation Context\n\nThis user has ${workflowCount} existing workflow${workflowCount !== 1 ? 's' : ''} but this is their first conversation with you. Offer to validate, describe, or improve their workflows. Be helpful but don't assume they're a beginner.`;
   }
 
   // Rich input with history, arrows, tab completion, slash commands
