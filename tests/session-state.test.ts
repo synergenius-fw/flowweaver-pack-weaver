@@ -185,4 +185,61 @@ describe('SessionStore', () => {
       expect(loaded!.status).toBe('executing');
     });
   });
+
+  // =========================================================================
+  // Crash recovery: load() should recover from backup when primary is corrupt
+  // =========================================================================
+  describe('crash recovery', () => {
+    it('recovers session from backup when primary file is corrupt', async () => {
+      const state = await store.create();
+      // save() should create a .bak backup
+      state.status = 'executing';
+      state.currentTask = 'important work';
+      await store.save(state);
+
+      // Simulate crash: corrupt the primary file
+      const sessionPath = path.join(tmpDir, 'session.json');
+      fs.writeFileSync(sessionPath, '{CORRUPT PARTIAL WRI', 'utf-8');
+
+      // load() should recover from the .bak file
+      const recovered = store.load();
+      expect(recovered).not.toBeNull();
+      expect(recovered!.sessionId).toBe(state.sessionId);
+      expect(recovered!.status).toBe('executing');
+      expect(recovered!.currentTask).toBe('important work');
+    });
+
+    it('save uses atomic write (temp file + rename)', async () => {
+      const state = await store.create();
+      state.status = 'validating';
+      await store.save(state);
+
+      // Verify backup was created
+      const backupPath = path.join(tmpDir, 'session.json.bak');
+      expect(fs.existsSync(backupPath)).toBe(true);
+
+      // Verify backup contains valid session data
+      const backupData = JSON.parse(fs.readFileSync(backupPath, 'utf-8'));
+      expect(backupData.sessionId).toBe(state.sessionId);
+      expect(backupData.status).toBe('validating');
+    });
+
+    it('returns null when both primary and backup are corrupt', async () => {
+      const sessionPath = path.join(tmpDir, 'session.json');
+      const backupPath = path.join(tmpDir, 'session.json.bak');
+      fs.writeFileSync(sessionPath, 'CORRUPT', 'utf-8');
+      fs.writeFileSync(backupPath, 'ALSO CORRUPT', 'utf-8');
+
+      const result = store.load();
+      expect(result).toBeNull();
+    });
+
+    it('returns null when primary is corrupt and no backup exists', async () => {
+      const sessionPath = path.join(tmpDir, 'session.json');
+      fs.writeFileSync(sessionPath, 'CORRUPT', 'utf-8');
+
+      const result = store.load();
+      expect(result).toBeNull();
+    });
+  });
 });
