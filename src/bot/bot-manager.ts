@@ -300,15 +300,23 @@ function wrapWithSleepInhibitor(command: string, args: string[]): { cmd: string;
 export function sendDesktopNotification(title: string, message: string): void {
   try {
     switch (process.platform) {
-      case 'darwin':
-        execFileSync('osascript', ['-e', `display notification "${message}" with title "${title}"`], { stdio: 'ignore' });
+      case 'darwin': {
+        // Escape backslashes and double-quotes for AppleScript string literals
+        const safeTitle = title.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const safeMessage = message.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        execFileSync('osascript', ['-e', `display notification "${safeMessage}" with title "${safeTitle}"`], { stdio: 'ignore' });
         break;
+      }
       case 'linux':
         execFileSync('notify-send', [title, message], { stdio: 'ignore' });
         break;
-      case 'win32':
-        execFileSync('powershell', ['-Command', `[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); [System.Windows.Forms.MessageBox]::Show('${message}','${title}')`], { stdio: 'ignore' });
+      case 'win32': {
+        // Escape single-quotes for PowerShell single-quoted strings (double them)
+        const psTitle = title.replace(/'/g, "''");
+        const psMessage = message.replace(/'/g, "''");
+        execFileSync('powershell', ['-Command', `[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); [System.Windows.Forms.MessageBox]::Show('${psMessage}','${psTitle}')`], { stdio: 'ignore' });
         break;
+      }
     }
   } catch {
     // Non-fatal — notification is best-effort
