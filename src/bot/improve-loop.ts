@@ -164,14 +164,26 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     execFileSync('sh', ['-c', testCommand], { cwd: worktreeDir, stdio: 'pipe', timeout: 300_000 });
     out(`  ${c.green('✓')} Baseline tests pass\n\n`);
   } catch (err) {
-    // Count failures from vitest output — allow if same failures exist before our changes
+    // Count failures and extract names from vitest output
     const output = (err as { stderr?: Buffer; stdout?: Buffer }).stdout?.toString() ?? '';
+    const stderrOutput = (err as { stderr?: Buffer }).stderr?.toString() ?? '';
     const failMatch = output.match(/(\d+) failed/);
     baselineFailCount = failMatch ? parseInt(failMatch[1]!, 10) : 0;
+
+    // Extract failing test file names for diagnostics
+    const failedFiles = (output + stderrOutput).match(/FAIL\s+\S+/g)?.slice(0, 10) ?? [];
+
     if (baselineFailCount <= 5) {
-      out(`  ${c.yellow('⚠')} Baseline: ${baselineFailCount} pre-existing failure(s) — will tolerate these\n\n`);
+      out(`  ${c.yellow('⚠')} Baseline: ${baselineFailCount} pre-existing failure(s) — will tolerate these\n`);
+      if (failedFiles.length > 0) {
+        for (const f of failedFiles) out(`    ${c.dim(f)}\n`);
+      }
+      out('\n');
     } else {
       out(`  ${c.red('✗')} Baseline: ${baselineFailCount} failures — too many, fix them first.\n`);
+      if (failedFiles.length > 0) {
+        for (const f of failedFiles) out(`    ${c.dim(f)}\n`);
+      }
       cleanup(projectDir, worktreeDir);
       return emptyResult(startedAt, branchName, worktreeDir, 'complete');
     }
