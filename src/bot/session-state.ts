@@ -69,6 +69,10 @@ export class SessionStore {
   }
 
   clear(): void {
-    try { fs.unlinkSync(this.filePath); } catch { /* ignore */ }
+    try {
+      fs.unlinkSync(this.filePath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
   }
 }
