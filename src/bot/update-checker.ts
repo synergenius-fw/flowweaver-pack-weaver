@@ -6,6 +6,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { safeJsonParse } from './safe-json.js';
 
 export interface UpdateInfo {
   packageName: string;
@@ -26,8 +27,13 @@ interface CacheEntry {
 function readCache(): CacheEntry | null {
   try {
     if (!fs.existsSync(CACHE_FILE)) return null;
-    const raw = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf-8')) as CacheEntry;
-    if (Date.now() - raw.checkedAt < CACHE_TTL_MS) return raw;
+    const text = fs.readFileSync(CACHE_FILE, 'utf-8');
+    const parsed = safeJsonParse<CacheEntry>(text, 'update-cache');
+    if (!parsed.ok) {
+      console.error(`[weaver] ${parsed.error}`);
+      return null;
+    }
+    if (Date.now() - parsed.value.checkedAt < CACHE_TTL_MS) return parsed.value;
     return null; // stale
   } catch {
     return null;
@@ -80,13 +86,19 @@ export async function checkForUpdates(projectDir: string): Promise<UpdateInfo[]>
   try {
     const packPkgPath = path.resolve(projectDir, 'node_modules', '@synergenius', 'flow-weaver-pack-weaver', 'package.json');
     if (fs.existsSync(packPkgPath)) {
-      const pkg = JSON.parse(fs.readFileSync(packPkgPath, 'utf-8'));
-      const current = pkg.version;
-      const latest = await fetchLatestVersion(pkg.name);
-      if (latest && compareVersions(latest, current) > 0) {
-        updates.push({ packageName: pkg.name, currentVersion: current, latestVersion: latest, updateAvailable: true });
-      } else if (latest) {
-        updates.push({ packageName: pkg.name, currentVersion: current, latestVersion: latest, updateAvailable: false });
+      const text = fs.readFileSync(packPkgPath, 'utf-8');
+      const parsed = safeJsonParse<{ name: string; version: string }>(text, 'pack-weaver package.json');
+      if (!parsed.ok) {
+        console.error(`[weaver] ${parsed.error}`);
+      } else {
+        const pkg = parsed.value;
+        const current = pkg.version;
+        const latest = await fetchLatestVersion(pkg.name);
+        if (latest && compareVersions(latest, current) > 0) {
+          updates.push({ packageName: pkg.name, currentVersion: current, latestVersion: latest, updateAvailable: true });
+        } else if (latest) {
+          updates.push({ packageName: pkg.name, currentVersion: current, latestVersion: latest, updateAvailable: false });
+        }
       }
     }
   } catch { /* not installed or unreadable */ }
@@ -95,11 +107,17 @@ export async function checkForUpdates(projectDir: string): Promise<UpdateInfo[]>
   try {
     const corePkgPath = path.resolve(projectDir, 'node_modules', '@synergenius', 'flow-weaver', 'package.json');
     if (fs.existsSync(corePkgPath)) {
-      const pkg = JSON.parse(fs.readFileSync(corePkgPath, 'utf-8'));
-      const current = pkg.version;
-      const latest = await fetchLatestVersion(pkg.name);
-      if (latest && compareVersions(latest, current) > 0) {
-        updates.push({ packageName: pkg.name, currentVersion: current, latestVersion: latest, updateAvailable: true });
+      const text = fs.readFileSync(corePkgPath, 'utf-8');
+      const parsed = safeJsonParse<{ name: string; version: string }>(text, 'flow-weaver package.json');
+      if (!parsed.ok) {
+        console.error(`[weaver] ${parsed.error}`);
+      } else {
+        const pkg = parsed.value;
+        const current = pkg.version;
+        const latest = await fetchLatestVersion(pkg.name);
+        if (latest && compareVersions(latest, current) > 0) {
+          updates.push({ packageName: pkg.name, currentVersion: current, latestVersion: latest, updateAvailable: true });
+        }
       }
     }
   } catch { /* not installed */ }
