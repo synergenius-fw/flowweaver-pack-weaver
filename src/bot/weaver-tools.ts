@@ -41,9 +41,14 @@ export function createWeaverExecutor(projectDir: string) {
         if (isBlockedUrl(url)) {
           return { result: 'Blocked: cannot fetch internal/localhost URLs.', isError: true };
         }
-        const resp = await fetch(url, { method: (args.method as string) ?? 'GET', signal: AbortSignal.timeout(15_000) });
-        const text = await resp.text();
-        return { result: text.slice(0, 10_000), isError: !resp.ok };
+        try {
+          const resp = await fetch(url, { method: (args.method as string) ?? 'GET', signal: AbortSignal.timeout(15_000) });
+          const text = await resp.text();
+          return { result: text.slice(0, 10_000), isError: !resp.ok };
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return { result: `Fetch error: ${msg}`, isError: true };
+        }
       }
 
       case 'tsc_check': {
@@ -68,7 +73,8 @@ export function createWeaverExecutor(projectDir: string) {
             const failures = (json.testResults ?? []).filter((t: any) => t.status === 'failed').map((t: any) => t.name).slice(0, 10);
             return { result: JSON.stringify({ passed, failed, total: passed + failed, failures }), isError: failed > 0 };
           } catch {
-            return { result: output.slice(0, 5000), isError: false };
+            // JSON parse failed — output is not structured, flag as error
+            return { result: output.slice(0, 5000), isError: true };
           }
         } catch (err: any) {
           return { result: (err.stdout ?? err.stderr ?? err.message ?? '').slice(0, 5000), isError: true };
