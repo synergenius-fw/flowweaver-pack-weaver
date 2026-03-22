@@ -207,7 +207,7 @@ Use write_file to create test files and patch_file to modify existing code. All 
 
 After fixing, use knowledge_search and learn to store any important patterns or insights you discovered about the codebase (e.g. "pattern:error-handling: this project uses X approach", "gotcha:file-lock: withFileLock requires async callback").`;
     try {
-      const fixRaw = await withTimeout(runAssistantInDir(worktreeDir, fixMsg, conversationId), 180_000);
+      const fixRaw = await withTimeout(runAssistantInDir(worktreeDir, fixMsg, conversationId), 300_000);
       const fixParsed = JSON.parse(fixRaw);
       conversationId = String(fixParsed.conversationId ?? conversationId);
     } catch {
@@ -282,7 +282,7 @@ After fixing, use knowledge_search and learn to store any important patterns or 
     const commitMsg = `[improve] ${commitDescription}`;
     try {
       // Stage only tracked/changed files, exclude node_modules and symlinks
-      execFileSync('git', ['add', '-A', '--', '.', ':!node_modules'], { cwd: worktreeDir, stdio: 'pipe' });
+      execFileSync('git', ['add', '--all'], { cwd: worktreeDir, stdio: 'pipe' });
 
       // Check if there's actually anything staged
       const staged = execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
