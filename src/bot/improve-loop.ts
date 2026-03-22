@@ -334,6 +334,22 @@ Fix the failures without reverting your improvement. If you can't fix them, reve
       }
     }
 
+    // Check if the assistant already committed (the test_pass steer tells it to commit immediately)
+    try {
+      const latestCommit = execFileSync('git', ['log', '-1', '--format=%H %s', branchName], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
+      const headBefore = execFileSync('git', ['log', '-1', '--format=%H', 'HEAD~1'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
+      if (latestCommit && !latestCommit.startsWith(headBefore)) {
+        // There are new commits — the assistant committed during its turn
+        const commitHash = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
+        const commitMsg = execFileSync('git', ['log', '-1', '--format=%s'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
+        out(`    ${c.green('✓')} ${c.dim(commitHash)} (committed by assistant)\n\n`);
+        cycles.push({ cycle, outcome: 'success', description: commitMsg.slice(0, 70), filesChanged: getChangedFiles(worktreeDir), commitHash });
+        completedWork.push(commitMsg.slice(0, 80));
+        consecutiveFailures = 0;
+        continue;
+      }
+    } catch { /* git check failed — fall through to normal flow */ }
+
     if (!testsPassing) {
       // Record what was attempted so next cycle can learn from it
       const failSummary = discovery.split('\n').filter(l => l.trim()).slice(0, 2).join(' ').slice(0, 100);
