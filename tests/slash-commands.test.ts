@@ -21,8 +21,8 @@ function createMockCtx(overrides: Partial<SlashContext> = {}): SlashContext {
 }
 
 describe('SLASH_COMMANDS', () => {
-  it('has 13 commands', () => {
-    expect(SLASH_COMMANDS).toHaveLength(13);
+  it('has 14 commands', () => {
+    expect(SLASH_COMMANDS).toHaveLength(14);
   });
 
   it('contains the expected command names', () => {

@@ -141,6 +141,51 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     },
   },
   {
+    name: '/improve',
+    description: 'Show status of the current or last improve run',
+    handler: async (ctx) => {
+      try {
+        const fsMod = await import('node:fs');
+        const pathMod = await import('node:path');
+        const osMod = await import('node:os');
+        const summaryDir = pathMod.join(osMod.homedir(), '.weaver', 'improve');
+        if (!fsMod.existsSync(summaryDir)) {
+          ctx.out(`\n  No improve runs found. Start one with: weaver improve\n\n`);
+          return;
+        }
+        const files = fsMod.readdirSync(summaryDir).filter((f: string) => f.endsWith('.json')).sort().reverse();
+        if (files.length === 0) {
+          ctx.out(`\n  No improve runs found.\n\n`);
+          return;
+        }
+        const latest = JSON.parse(fsMod.readFileSync(pathMod.join(summaryDir, files[0]!), 'utf-8'));
+        const duration = Math.round((new Date(latest.finishedAt).getTime() - new Date(latest.startedAt).getTime()) / 1000);
+
+        ctx.out(`\n  Improve Run (${latest.reason})\n`);
+        ctx.out(`  Branch: ${latest.branch}\n`);
+        ctx.out(`  Duration: ${duration}s\n`);
+        ctx.out(`  Successes: ${latest.successes}  Failures: ${latest.failures}  Skips: ${latest.skips}  Blocked: ${latest.blocked}\n\n`);
+        for (const cy of latest.cycles) {
+          const icon = cy.outcome === 'success' ? '✓' : cy.outcome === 'failure' ? '✗' : '○';
+          ctx.out(`  ${icon} Cycle ${cy.cycle}: [${cy.outcome}] ${cy.description.slice(0, 70)}\n`);
+        }
+
+        // Check if a run is currently active
+        try {
+          const { execFileSync } = await import('node:child_process');
+          const worktrees = execFileSync('git', ['worktree', 'list'], { encoding: 'utf-8', cwd: ctx.projectDir });
+          if (worktrees.includes('weaver-improve')) {
+            ctx.out(`\n  LIVE: improve worktree active — run is in progress\n`);
+          }
+        } catch { /* git not available */ }
+
+        ctx.out('\n');
+      } catch (err) {
+        ctx.out(`\n  Error reading improve status: ${err instanceof Error ? err.message : err}\n\n`);
+      }
+    },
+  },
+  {
     name: '/genesis',
     description: 'Propose a workflow evolution based on project insights',
     handler: async (ctx: SlashContext) => {

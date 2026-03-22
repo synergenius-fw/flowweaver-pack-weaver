@@ -476,6 +476,13 @@ export const ALL_TOOLS: WeaverTool[] = [
     contexts: ['assistant'],
   },
   {
+    name: 'improve_status',
+    description: 'Get status of the current or most recent weaver improve run — cycles, commits, successes, failures.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    category: 'overseer',
+    contexts: ['assistant'],
+  },
+  {
     name: 'genesis_apply',
     description: 'Apply an approved Genesis proposal to the bot workflow.',
     inputSchema: {

@@ -440,6 +440,35 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
           return { result: lines.join('\n'), isError: false };
         }
 
+        case 'improve_status': {
+          const summaryDir = path.join(os.homedir(), '.weaver', 'improve');
+          if (!fs.existsSync(summaryDir)) return { result: 'No improve runs found. Start one with: weaver improve', isError: false };
+          const files = fs.readdirSync(summaryDir).filter(f => f.endsWith('.json')).sort().reverse();
+          if (files.length === 0) return { result: 'No improve runs found.', isError: false };
+          const latest = JSON.parse(fs.readFileSync(path.join(summaryDir, files[0]!), 'utf-8'));
+          const duration = Math.round((new Date(latest.finishedAt).getTime() - new Date(latest.startedAt).getTime()) / 1000);
+          const lines: string[] = [
+            `Improve Run: ${latest.reason}`,
+            `Branch: ${latest.branch}`,
+            `Duration: ${duration}s`,
+            `Successes: ${latest.successes}  Failures: ${latest.failures}  Skips: ${latest.skips}`,
+            '',
+          ];
+          for (const cy of latest.cycles) {
+            const icon = cy.outcome === 'success' ? '✓' : cy.outcome === 'failure' ? '✗' : '○';
+            lines.push(`${icon} Cycle ${cy.cycle}: [${cy.outcome}] ${cy.description.slice(0, 70)}`);
+            if (cy.commitHash) lines.push(`  Commit: ${cy.commitHash}`);
+          }
+          // Check if worktree is active (run in progress)
+          try {
+            const worktrees = execFileSync('git', ['worktree', 'list'], { encoding: 'utf-8', cwd: projectDir });
+            if (worktrees.includes('weaver-improve')) {
+              lines.push('', 'LIVE: improve worktree active — run in progress');
+            }
+          } catch { /* git not available */ }
+          return { result: lines.join('\n'), isError: false };
+        }
+
         case 'genesis_propose': {
           const { ProjectModelStore } = await import('./project-model.js');
           const pms = new ProjectModelStore(projectDir);

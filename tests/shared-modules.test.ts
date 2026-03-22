@@ -6,7 +6,7 @@ import * as os from 'node:os';
 describe('tool-registry', () => {
   it('exports ALL_TOOLS with 36 tools', async () => {
     const { ALL_TOOLS } = await import('../src/bot/tool-registry.js');
-    expect(ALL_TOOLS.length).toBe(41);
+    expect(ALL_TOOLS.length).toBe(42);
   });
 
   it('BOT_TOOLS contains only tools with bot context', async () => {
@@ -20,7 +20,7 @@ describe('tool-registry', () => {
     const { ALL_TOOLS, ASSISTANT_TOOLS } = await import('../src/bot/tool-registry.js');
     const expected = ALL_TOOLS.filter(t => t.contexts.includes('assistant'));
     expect(ASSISTANT_TOOLS.length).toBe(expected.length);
-    expect(ASSISTANT_TOOLS.length).toBe(37);
+    expect(ASSISTANT_TOOLS.length).toBe(38);
   });
 
   it('VERBOSE_TOOL_NAMES contains all verboseOutput tools', async () => {
