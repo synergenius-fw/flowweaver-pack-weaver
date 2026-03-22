@@ -179,7 +179,7 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     }
 
     // Step 2: Fix
-    const fixMsg = 'Fix it now. Write failing tests first, then implement the minimal fix. Run the tests to verify. Keep changes small.';
+    const fixMsg = 'Fix it now. Use write_file to create the test file and patch_file to modify existing code. Write failing tests first, then implement the minimal fix. Run the tests with run_tests to verify. Keep changes small — 1-3 files max.';
     try {
       const fixRaw = await runAssistantInDir(worktreeDir, fixMsg, conversationId);
       const fixParsed = JSON.parse(fixRaw);
@@ -322,6 +322,11 @@ async function runAssistantInDir(worktreeDir: string, message: string, conversat
 
   const { handleCommand } = await import('../cli-bridge.js');
 
+  // Change cwd to worktree so the Claude CLI provider's subprocess
+  // runs in the right directory (its built-in tools use cwd)
+  const originalCwd = process.cwd();
+  process.chdir(worktreeDir);
+
   let output = '';
   const originalWrite = process.stdout.write.bind(process.stdout);
   process.stdout.write = ((chunk: string | Buffer) => {
@@ -333,6 +338,7 @@ async function runAssistantInDir(worktreeDir: string, message: string, conversat
     await handleCommand('assistant', args);
   } finally {
     process.stdout.write = originalWrite;
+    process.chdir(originalCwd);
   }
 
   const lines = output.trim().split('\n').filter(Boolean);
