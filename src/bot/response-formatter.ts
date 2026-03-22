@@ -36,7 +36,6 @@ export function formatResponse(text: string, cwd: string): string {
 
 function supportsHyperlinks(): boolean {
   const term = process.env.TERM_PROGRAM ?? '';
-  // Known terminals that support OSC 8
-  return ['iTerm.app', 'WezTerm', 'vscode', 'Hyper'].includes(term)
-    || !!process.env.TERM_PROGRAM_VERSION; // Most modern terminals
+  // Known terminals that support OSC 8 hyperlinks
+  return ['iTerm.app', 'WezTerm', 'vscode', 'Hyper'].includes(term);
 }

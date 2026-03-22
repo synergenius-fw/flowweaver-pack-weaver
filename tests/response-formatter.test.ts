@@ -161,12 +161,28 @@ describe('linkifyPaths', () => {
     expect(result).toContain('\x1b]8;;file://');
   });
 
-  it('supports terminals with TERM_PROGRAM_VERSION set', () => {
+  it('supports terminals with TERM_PROGRAM_VERSION set and known TERM_PROGRAM', () => {
+    process.env.TERM_PROGRAM = 'Hyper';
+    process.env.TERM_PROGRAM_VERSION = '3.0.0';
+    const text = 'See src/app.ts';
+    const result = linkifyPaths(text, cwd);
+    expect(result).toContain('\x1b]8;;file://');
+  });
+
+  it('does NOT enable hyperlinks for Apple_Terminal even with TERM_PROGRAM_VERSION', () => {
+    process.env.TERM_PROGRAM = 'Apple_Terminal';
+    process.env.TERM_PROGRAM_VERSION = '453';
+    const text = 'See src/app.ts';
+    const result = linkifyPaths(text, cwd);
+    expect(result).toBe(text);
+  });
+
+  it('does NOT enable hyperlinks when only TERM_PROGRAM_VERSION is set (unknown terminal)', () => {
     delete process.env.TERM_PROGRAM;
     process.env.TERM_PROGRAM_VERSION = '1.2.3';
     const text = 'See src/app.ts';
     const result = linkifyPaths(text, cwd);
-    expect(result).toContain('\x1b]8;;file://');
+    expect(result).toBe(text);
   });
 });
 
