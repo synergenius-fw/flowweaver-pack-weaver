@@ -4,3 +4,4 @@ dist/
 .genesis/
 .weaver.json
 fw-exec-*
+.weaver-improve/
