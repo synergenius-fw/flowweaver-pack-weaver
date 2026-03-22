@@ -159,13 +159,14 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
 
     let discovery = '';
     try {
-      const raw = await runAssistantInDir(worktreeDir, discoverMsg, conversationId);
+      const raw = await withTimeout(runAssistantInDir(worktreeDir, discoverMsg, conversationId), 180_000);
       const parsed = JSON.parse(raw);
       conversationId = String(parsed.conversationId ?? conversationId);
       discovery = String(parsed.response ?? '');
-    } catch {
-      out(`    ${c.dim('Skip: assistant did not respond')}\n`);
-      cycles.push({ cycle, outcome: 'skip', description: 'Assistant did not respond', filesChanged: [] });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      out(`    ${c.dim(`Skip: ${msg.includes('timeout') ? 'timed out (3min)' : 'assistant did not respond'}`)}\n`);
+      cycles.push({ cycle, outcome: 'skip', description: msg.includes('timeout') ? 'Timed out' : 'No response', filesChanged: [] });
       consecutiveFailures++;
       continue;
     }
@@ -181,11 +182,11 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     // Step 2: Fix
     const fixMsg = 'Fix it now. Use write_file to create the test file and patch_file to modify existing code. Write failing tests first, then implement the minimal fix. Run the tests with run_tests to verify. Keep changes small — 1-3 files max.';
     try {
-      const fixRaw = await runAssistantInDir(worktreeDir, fixMsg, conversationId);
+      const fixRaw = await withTimeout(runAssistantInDir(worktreeDir, fixMsg, conversationId), 180_000);
       const fixParsed = JSON.parse(fixRaw);
       conversationId = String(fixParsed.conversationId ?? conversationId);
     } catch {
-      out(`    ${c.dim('Skip: fix failed')}\n`);
+      out(`    ${c.dim('Skip: fix failed or timed out')}\n`);
       rollback(worktreeDir);
       cycles.push({ cycle, outcome: 'skip', description: 'Fix failed', filesChanged: [] });
       consecutiveFailures++;
@@ -309,6 +310,16 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
   return result;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
 function emptyResult(startedAt: string, branch: string, worktreePath: string, reason: ImproveResult['reason']): ImproveResult {
   return { totalCycles: 0, successes: 0, failures: 0, skips: 0, blocked: 0, cycles: [], startedAt, finishedAt: new Date().toISOString(), branch, worktreePath, reason };
 }
@@ -327,10 +338,14 @@ async function runAssistantInDir(worktreeDir: string, message: string, conversat
   const originalCwd = process.cwd();
   process.chdir(worktreeDir);
 
+  // Capture stdout (debug JSON) but let it also pass through for visibility
   let output = '';
   const originalWrite = process.stdout.write.bind(process.stdout);
   process.stdout.write = ((chunk: string | Buffer) => {
-    output += typeof chunk === 'string' ? chunk : chunk.toString();
+    const str = typeof chunk === 'string' ? chunk : chunk.toString();
+    output += str;
+    // Pass through so the user sees what's happening
+    process.stderr.write(`    ${str}`);
     return true;
   }) as typeof process.stdout.write;
 
