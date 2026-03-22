@@ -14,7 +14,7 @@ import type { ExecutionEvent, WeaverConfig, RunRecord, RunOutcome, RunCostSummar
 import { AuditStore } from './bot/audit-store.js';
 
 export interface ParsedArgs {
-  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'status' | 'genesis' | 'audit' | 'init' | 'assistant' | 'examples' | 'doctor' | 'improve' | 'connect';
+  command: 'run' | 'history' | 'costs' | 'providers' | 'watch' | 'cron' | 'pipeline' | 'dashboard' | 'eject' | 'bot' | 'session' | 'steer' | 'queue' | 'status' | 'genesis' | 'audit' | 'init' | 'assistant' | 'examples' | 'doctor' | 'improve';
   file?: string;
   verbose: boolean;
   dryRun: boolean;
@@ -268,8 +268,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.command = 'genesis';
     } else if (arg === 'improve') {
       result.command = 'improve';
-    } else if (arg === 'connect') {
-      result.command = 'connect';
     } else if (arg === 'init') {
       result.command = 'init';
     } else if (arg === '--init') {
@@ -2241,63 +2239,6 @@ export async function handleInit(opts: ParsedArgs): Promise<void> {
   console.log('  The assistant will read your project and help you create');
   console.log('  your first workflow. Just tell it what you want to build.');
   console.log('');
-}
-
-export async function handleConnect(opts: ParsedArgs): Promise<void> {
-  const projectDir = opts.file ? path.resolve(opts.file) : process.cwd();
-
-  // Load platform credentials
-  const credPath = path.join(os.homedir(), '.fw', 'credentials.json');
-  if (!fs.existsSync(credPath)) {
-    console.error('\n  Not logged in. Run: fw login\n');
-    process.exit(1);
-  }
-
-  const creds = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
-  if (!creds.token || !creds.platformUrl || creds.expiresAt < Date.now()) {
-    console.error('\n  Credentials expired. Run: fw login\n');
-    process.exit(1);
-  }
-
-  const { DeviceConnection, registerWeaverHandlers } = await import('./bot/device-connection.js');
-
-  const conn = new DeviceConnection({
-    platformUrl: creds.platformUrl,
-    token: creds.token,
-    projectDir,
-    deviceName: opts.file ? path.basename(opts.file) : path.basename(projectDir),
-    logger: (msg) => process.stderr.write(`  \x1b[2m${msg}\x1b[0m\n`),
-  });
-
-  registerWeaverHandlers(conn, projectDir);
-
-  console.log('');
-  console.log('  \x1b[1mweaver connect\x1b[0m');
-  console.log(`  \x1b[2mProject: ${path.basename(projectDir)}\x1b[0m`);
-  console.log(`  \x1b[2mPlatform: ${creds.platformUrl}\x1b[0m`);
-  console.log('');
-
-  try {
-    await conn.connect();
-    console.log('  \x1b[2mPress Ctrl+C to disconnect.\x1b[0m\n');
-
-    // Keep process alive
-    await new Promise<void>((resolve) => {
-      process.on('SIGINT', () => {
-        console.log('\n  \x1b[2mDisconnecting...\x1b[0m');
-        conn.disconnect();
-        resolve();
-      });
-      process.on('SIGTERM', () => {
-        conn.disconnect();
-        resolve();
-      });
-    });
-  } catch (err) {
-    console.error(`  \x1b[31m✗\x1b[0m Connection failed: ${err instanceof Error ? err.message : err}`);
-    console.error('  Check your credentials and platform URL.');
-    process.exit(1);
-  }
 }
 
 export async function handleImprove(opts: ParsedArgs): Promise<void> {

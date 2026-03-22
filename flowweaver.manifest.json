@@ -951,10 +951,6 @@
       "description": "Autonomous codebase improvement — finds issues, fixes with tests, commits or rolls back"
     },
     {
-      "name": "connect",
-      "description": "Connect this device to the Flow Weaver platform — mount into Studio for remote control"
-    },
-    {
       "name": "status",
       "description": "Get bot session status"
     },
