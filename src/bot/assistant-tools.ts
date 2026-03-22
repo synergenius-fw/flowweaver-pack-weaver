@@ -22,7 +22,7 @@ function getManager(): BotManager {
   return manager;
 }
 
-export function createAssistantExecutor(projectDir: string): ToolExecutor {
+export function createAssistantExecutor(projectDir: string, steeringEngine?: import('./steering-engine.js').SteeringEngine): ToolExecutor {
   const mgr = getManager();
 
   return async (name: string, args: Record<string, unknown>) => {
@@ -186,22 +186,26 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
           const filePath = path.isAbsolute(String(args.file)) ? String(args.file) : path.resolve(projectDir, String(args.file));
           // Safety: must be within project directory
           if (!filePath.startsWith(projectDir)) {
+            steeringEngine?.recordEvent('file_write_blocked');
             return { result: 'Blocked: cannot write files outside project directory.', isError: true };
           }
           const content = String(args.content);
           if (!content.trim()) {
+            steeringEngine?.recordEvent('file_write_blocked');
             return { result: 'Blocked: cannot write empty file.', isError: true };
           }
           // Check shrink protection for existing files
           if (fs.existsSync(filePath)) {
             const existing = fs.readFileSync(filePath, 'utf-8');
             if (existing.length > 0 && content.length < existing.length * 0.5) {
+              steeringEngine?.recordEvent('file_write_blocked');
               return { result: `Blocked: write would shrink file by more than 50% (${existing.length} -> ${content.length} chars).`, isError: true };
             }
           }
           const dir = path.dirname(filePath);
           if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
           fs.writeFileSync(filePath, content, 'utf-8');
+          steeringEngine?.recordEvent('file_write');
           return { result: `Wrote ${content.length} chars to ${path.relative(projectDir, filePath)}`, isError: false };
         }
         case 'patch_file': {
@@ -222,24 +226,40 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
             }
           }
           if (applied === 0) {
+            steeringEngine?.recordEvent('file_patch_blocked');
             return { result: `No patches matched in ${args.file}. Check exact strings.`, isError: true };
           }
           fs.writeFileSync(filePath, content, 'utf-8');
+          steeringEngine?.recordEvent('file_patch');
           return { result: `Applied ${applied}/${patches.length} patches to ${path.relative(projectDir, filePath)}`, isError: false };
         }
         case 'tsc_check': {
-          const output = execFileSync('npx', ['tsc', '--noEmit'], {
-            encoding: 'utf-8', cwd: projectDir, timeout: 60_000, stdio: ['pipe', 'pipe', 'pipe'],
-          });
-          return { result: output.trim() || 'TypeScript check passed — no errors.', isError: false };
+          try {
+            const output = execFileSync('npx', ['tsc', '--noEmit'], {
+              encoding: 'utf-8', cwd: projectDir, timeout: 60_000, stdio: ['pipe', 'pipe', 'pipe'],
+            });
+            steeringEngine?.recordEvent('build_pass');
+            return { result: output.trim() || 'TypeScript check passed — no errors.', isError: false };
+          } catch (tscErr: any) {
+            steeringEngine?.recordEvent('build_fail');
+            const msg = tscErr instanceof Error ? tscErr.message : String(tscErr);
+            return { result: msg.length > 500 ? msg.slice(0, 497) + '...' : msg, isError: true };
+          }
         }
         case 'run_tests': {
           const testArgs = ['vitest', 'run'];
           if (args.pattern) testArgs.push(String(args.pattern));
-          const output = execFileSync('npx', testArgs, {
-            encoding: 'utf-8', cwd: projectDir, timeout: 120_000, stdio: ['pipe', 'pipe', 'pipe'],
-          });
-          return { result: output.trim().slice(-3000) || 'Tests completed.', isError: false };
+          try {
+            const output = execFileSync('npx', testArgs, {
+              encoding: 'utf-8', cwd: projectDir, timeout: 120_000, stdio: ['pipe', 'pipe', 'pipe'],
+            });
+            steeringEngine?.recordEvent('test_pass');
+            return { result: output.trim().slice(-3000) || 'Tests completed.', isError: false };
+          } catch (testErr: any) {
+            steeringEngine?.recordEvent('test_fail');
+            const msg = testErr instanceof Error ? testErr.message : String(testErr);
+            return { result: msg.length > 3000 ? msg.slice(-3000) : msg, isError: true };
+          }
         }
 
         // Conversation management
@@ -572,6 +592,7 @@ export function createAssistantExecutor(projectDir: string): ToolExecutor {
           return { result: `Unknown tool: ${name}`, isError: true };
       }
     } catch (err: unknown) {
+      steeringEngine?.recordEvent('tool_error');
       const msg = err instanceof Error ? err.message : String(err);
       return { result: msg.length > 500 ? msg.slice(0, 497) + '...' : msg, isError: true };
     }

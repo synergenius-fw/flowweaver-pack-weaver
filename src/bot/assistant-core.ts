@@ -178,6 +178,14 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
     }
   } catch { /* plan not available */ }
 
+  // Load steering configuration
+  let steeringEngine: import('./steering-engine.js').SteeringEngine | undefined;
+  try {
+    const { SteeringEngine, loadSteers } = await import('./steering-engine.js');
+    const steers = loadSteers(projectDir);
+    steeringEngine = new SteeringEngine(steers);
+  } catch { /* steering not available */ }
+
   // Inject project intelligence (ambient awareness)
   try {
     const { ProjectModelStore } = await import('./project-model.js');
@@ -643,6 +651,19 @@ export async function runAssistant(opts: AssistantOptions): Promise<void> {
             }
           }
         } catch { /* insights not available */ }
+      }
+
+      // Check steering engine for time/event-based nudges
+      if (steeringEngine) {
+        const steerMsg = steeringEngine.check();
+        if (steerMsg) {
+          // Append to system prompt for next turn
+          if (systemPrompt.includes('[STEER') || systemPrompt.includes('[CONTEXT NOTE]') || systemPrompt.includes('[URGENT STEER]')) {
+            systemPrompt = systemPrompt.replace(/\n\n\[(CONTEXT NOTE|STEER|URGENT STEER)\].*$/s, '\n\n' + steerMsg);
+          } else {
+            systemPrompt += '\n\n' + steerMsg;
+          }
+        }
       }
 
       // Debug mode: emit structured NDJSON per turn

@@ -164,6 +164,10 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     }
   }
 
+  // Load steering configuration
+  const { SteeringEngine, loadSteers, IMPROVE_STEERS } = await import('./steering-engine.js');
+  const steers = loadSteers(projectDir, IMPROVE_STEERS);
+
   // Main loop
   for (let cycle = 1; maxCycles === 0 || cycle <= maxCycles; cycle++) {
     if (consecutiveFailures >= maxConsecutiveFailures) {
@@ -172,6 +176,8 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     }
 
     out(`  ${c.bold(`--- Cycle ${cycle}/${maxCycles === 0 ? '∞' : maxCycles} ---`)}\n`);
+
+    const cycleEngine = new SteeringEngine(steers);
 
     // Build context for the assistant
     let planContext = '';
@@ -201,7 +207,7 @@ Keep changes to 1-3 files. All paths relative to ${worktreeDir}.${planContext}${
     let conversationId = '';
     let discovery = '';
     try {
-      const raw = await withTimeout(runAssistantInDir(worktreeDir, improveMsg, ''), 300_000);
+      const raw = await runAssistantInDir(worktreeDir, improveMsg, '', cycleEngine);
       const parsed = JSON.parse(raw);
       conversationId = String(parsed.conversationId ?? '');
       discovery = String(parsed.response ?? '');
@@ -215,6 +221,18 @@ Keep changes to 1-3 files. All paths relative to ${worktreeDir}.${planContext}${
 
     out(`    ${c.dim('Done:')} ${discovery.split('\n')[0]?.slice(0, 80)}\n`);
 
+    // Check steering engine after initial assistant call
+    {
+      const steerMsg = cycleEngine.check();
+      if (steerMsg) {
+        out(`    ${c.dim(steerMsg.replace(/\[.*?\]\s*/g, ''))}\n`);
+      }
+      if (cycleEngine.hasHardStop()) {
+        cycles.push({ cycle, outcome: 'skip', description: 'Hard stop from steering engine', filesChanged: [] });
+        break;
+      }
+    }
+
     if (/^(nothing to improve|no issues found|all good|clean bill of health|i can.t find any|couldn.t find any|no improvements needed)/im.test(discovery)) {
       out(`    ${c.green('✓')} Nothing more to improve.\n`);
       cycles.push({ cycle, outcome: 'skip', description: 'Nothing to improve', filesChanged: [] });
@@ -222,13 +240,12 @@ Keep changes to 1-3 files. All paths relative to ${worktreeDir}.${planContext}${
     }
 
     // Step 2: Iterative test-fix loop (like a developer would)
-    // Time budget: 10 minutes per cycle — keep iterating until green or time's up
-    const CYCLE_BUDGET_MS = 10 * 60 * 1000;
+    // Steering engine controls cycle duration — hard stop is the safety valve
     const cycleStart = Date.now();
     let testsPassing = false;
     let attempt = 0;
 
-    while (Date.now() - cycleStart < CYCLE_BUDGET_MS) {
+    while (!cycleEngine.hasHardStop()) {
       attempt++;
       const changedFiles = getChangedFiles(worktreeDir);
       if (changedFiles.length === 0) {
@@ -249,10 +266,10 @@ Keep changes to 1-3 files. All paths relative to ${worktreeDir}.${planContext}${
           execFileSync('sh', ['-c', buildCommand], { cwd: worktreeDir, stdio: 'pipe', timeout: 120_000 });
         } catch {
           out(`    ${c.red('✗')} Build failed (attempt ${attempt})\n`);
-          if (Date.now() - cycleStart >= CYCLE_BUDGET_MS) break;
+          if (cycleEngine.hasHardStop()) break;
           // Ask assistant to fix build errors
           try {
-            const fixRaw = await withTimeout(runAssistantInDir(worktreeDir, `Build failed. Fix the build errors. You are working in: ${worktreeDir}`, conversationId), 180_000);
+            const fixRaw = await runAssistantInDir(worktreeDir, `Build failed. Fix the build errors. You are working in: ${worktreeDir}`, conversationId, cycleEngine);
             const fixParsed = JSON.parse(fixRaw);
             conversationId = String(fixParsed.conversationId ?? conversationId);
           } catch { break; }
@@ -264,9 +281,11 @@ Keep changes to 1-3 files. All paths relative to ${worktreeDir}.${planContext}${
       out(`    ${c.dim(`Testing (attempt ${attempt})...`)}\n`);
       try {
         execFileSync('sh', ['-c', testCommand], { cwd: worktreeDir, stdio: 'pipe', timeout: 300_000 });
+        cycleEngine.recordEvent('test_pass');
         testsPassing = true;
         break;
       } catch (testErr) {
+        cycleEngine.recordEvent('test_fail');
         const testOutput = ((testErr as { stdout?: Buffer }).stdout?.toString() ?? '');
         const failMatch = testOutput.match(/(\d+) failed/);
         const newFailCount = failMatch ? parseInt(failMatch[1]!, 10) : 999;
@@ -279,9 +298,17 @@ Keep changes to 1-3 files. All paths relative to ${worktreeDir}.${planContext}${
 
         out(`    ${c.red('✗')} ${newFailCount} failures (${newFailCount - baselineFailCount} new)\n`);
 
+        // Check steering engine for nudges
+        {
+          const steerMsg = cycleEngine.check();
+          if (steerMsg) {
+            out(`    ${c.dim(steerMsg.replace(/\[.*?\]\s*/g, ''))}\n`);
+          }
+        }
+
         const elapsed = Math.round((Date.now() - cycleStart) / 1000);
-        if (Date.now() - cycleStart >= CYCLE_BUDGET_MS) {
-          out(`    ${c.red('✗')} Time budget exhausted (${elapsed}s) — rollback\n`);
+        if (cycleEngine.hasHardStop()) {
+          out(`    ${c.red('✗')} Steering engine hard stop (${elapsed}s) — rollback\n`);
           break;
         }
 
@@ -297,7 +324,7 @@ Failing tests:
 ${failedTests}
 
 Fix the failures without reverting your improvement. If you can't fix them, revert only the parts that broke tests.`;
-          const fixRaw = await withTimeout(runAssistantInDir(worktreeDir, fixMsg, conversationId), 300_000);
+          const fixRaw = await runAssistantInDir(worktreeDir, fixMsg, conversationId, cycleEngine);
           const fixParsed = JSON.parse(fixRaw);
           conversationId = String(fixParsed.conversationId ?? conversationId);
         } catch {
@@ -421,16 +448,6 @@ Fix the failures without reverting your improvement. If you can't fix them, reve
   return result;
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('timeout')), ms);
-    promise.then(
-      (val) => { clearTimeout(timer); resolve(val); },
-      (err) => { clearTimeout(timer); reject(err); },
-    );
-  });
-}
-
 function emptyResult(startedAt: string, branch: string, worktreePath: string, reason: ImproveResult['reason']): ImproveResult {
   return { totalCycles: 0, successes: 0, failures: 0, skips: 0, blocked: 0, cycles: [], startedAt, finishedAt: new Date().toISOString(), branch, worktreePath, reason };
 }
@@ -441,7 +458,7 @@ let cachedProvider: unknown = null;
 let cachedTools: unknown[] = [];
 let cachedExecutor: unknown = null;
 
-async function runAssistantInDir(worktreeDir: string, message: string, _conversationId: string): Promise<string> {
+async function runAssistantInDir(worktreeDir: string, message: string, _conversationId: string, steeringEngine?: import('./steering-engine.js').SteeringEngine): Promise<string> {
   const originalCwd = process.cwd();
   process.chdir(worktreeDir);
 
@@ -451,7 +468,7 @@ async function runAssistantInDir(worktreeDir: string, message: string, _conversa
       const agentMod = await import('@synergenius/flow-weaver/agent');
       const { ASSISTANT_TOOLS, createAssistantExecutor } = await import('./assistant-tools.js');
       cachedTools = ASSISTANT_TOOLS;
-      cachedExecutor = createAssistantExecutor(worktreeDir);
+      cachedExecutor = createAssistantExecutor(worktreeDir, steeringEngine);
 
       if (process.env.ANTHROPIC_API_KEY) {
         cachedProvider = agentMod.createAnthropicProvider({
