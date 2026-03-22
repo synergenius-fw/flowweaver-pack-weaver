@@ -211,12 +211,23 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
       headAtCycleStart = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
     } catch { /* not a git repo? */ }
 
-    // Build context for the assistant
+    // Build context: read the plan and extract top priority
     let planContext = '';
     try {
       const planPath = path.join(worktreeDir, '.weaver-plan.md');
       if (fs.existsSync(planPath)) {
-        planContext = `\nFollow the project plan in .weaver-plan.md. Rotate between priorities.`;
+        const planContent = fs.readFileSync(planPath, 'utf-8');
+        // Extract the first priority section (### 0. or ### 1.)
+        const priorityMatch = planContent.match(/### 0\.[^\n]*\n([\s\S]*?)(?=\n### \d|$)/);
+        if (priorityMatch) {
+          planContext = `\n\nTOP PRIORITY FROM PROJECT PLAN — you MUST work on this:\n${priorityMatch[0].trim()}\n\nDo NOT work on anything else until the top priority is complete.`;
+        } else {
+          // Fall back to the full priorities section
+          const prioritiesMatch = planContent.match(/## Current Priorities[\s\S]*?(?=\n## [A-Z]|$)/);
+          if (prioritiesMatch) {
+            planContext = `\n\nPROJECT PLAN PRIORITIES:\n${prioritiesMatch[0].slice(0, 1500)}`;
+          }
+        }
       }
     } catch { /* no plan */ }
 
@@ -227,10 +238,12 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     // Step 1: Find and fix in one turn
     const improveMsg = `You are working in: ${worktreeDir}
 
-Find ONE small improvement and fix it. Steps:
+Work on the TOP PRIORITY from the project plan. If no specific priority, find ONE small improvement. Steps:
 1. Recall what you know: knowledge_search "project"
-2. Find one concrete issue (real bug, missing error handling, reliability gap, or untested critical path)
-3. Write a failing test first, then implement the minimal fix
+2. Read .weaver-plan.md to understand the top priority
+3. Do exactly what the top priority says — one handler migration, one fix, one concrete step
+4. Write a failing test first, then implement
+5. Run tests to verify
 4. Run tests with run_tests to verify
 5. Store any insights with learn()
 
