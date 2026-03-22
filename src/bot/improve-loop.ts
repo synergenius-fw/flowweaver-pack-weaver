@@ -458,7 +458,12 @@ async function runAssistantInDir(worktreeDir: string, message: string, _conversa
           apiKey: process.env.ANTHROPIC_API_KEY,
         });
       } else {
-        cachedProvider = agentMod.createClaudeCliProvider({});
+        // Disable Claude CLI's built-in file tools so it uses our MCP-bridged
+        // tools which respect projectDir (critical for worktree isolation)
+        cachedProvider = agentMod.createClaudeCliProvider({
+          cwd: worktreeDir,
+          disallowedTools: ['Read', 'Edit', 'Write', 'MultiEdit'],
+        });
       }
     }
 
