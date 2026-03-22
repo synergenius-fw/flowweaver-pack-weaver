@@ -175,7 +175,7 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
       const msg = err instanceof Error ? err.message : '';
       out(`    ${c.dim(`Skip: ${msg.includes('timeout') ? 'timed out (3min)' : 'assistant did not respond'}`)}\n`);
       cycles.push({ cycle, outcome: 'skip', description: msg.includes('timeout') ? 'Timed out' : 'No response', filesChanged: [] });
-      consecutiveFailures++;
+      // Timeouts don't count as hard failures — the assistant just needs more time
       continue;
     }
 
@@ -196,8 +196,8 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     } catch {
       out(`    ${c.dim('Skip: fix failed or timed out')}\n`);
       rollback(worktreeDir);
-      cycles.push({ cycle, outcome: 'skip', description: 'Fix failed', filesChanged: [] });
-      consecutiveFailures++;
+      cycles.push({ cycle, outcome: 'skip', description: 'Fix failed or timed out', filesChanged: [] });
+      // Fix skips don't count as hard failures — only test/build failures do
       continue;
     }
 
