@@ -110,7 +110,10 @@ export class RunStore {
             });
             fs.unlinkSync(path.join(this.dir, file));
           }
-        } catch (err) { console.warn(`[weaver] checkOrphans: skipping corrupt marker file ${file}:`, err); }
+        } catch (err) {
+          console.warn(`[weaver] checkOrphans: removing corrupt marker file ${file}:`, err);
+          try { fs.unlinkSync(path.join(this.dir, file)); } catch { /* already gone */ }
+        }
       }
     } catch (err) { console.warn(`[weaver] checkOrphans: failed to read directory ${this.dir}:`, err); }
     return orphans;

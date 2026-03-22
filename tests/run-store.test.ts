@@ -225,9 +225,28 @@ describe('RunStore', () => {
     expect(orphans).toHaveLength(0);
 
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('marker'),
+      expect.stringContaining('corrupt marker'),
       expect.anything(),
     );
+    warnSpy.mockRestore();
+  });
+
+  it('deletes corrupt marker files so they do not persist across restarts', () => {
+    const marker = path.join(tmpDir, 'running-corrupt-2.json');
+    fs.writeFileSync(marker, '{not valid json', 'utf-8');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    store.checkOrphans();
+
+    // Corrupt marker file should be removed after detection
+    expect(fs.existsSync(marker)).toBe(false);
+
+    // Second call should NOT warn again (file is gone)
+    warnSpy.mockClear();
+    store.checkOrphans();
+    expect(warnSpy).not.toHaveBeenCalled();
+
     warnSpy.mockRestore();
   });
 
