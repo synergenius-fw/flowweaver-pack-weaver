@@ -1077,7 +1077,7 @@
       "type": "dashboard-widget",
       "id": "weaver-insights",
       "name": "Project Insights",
-      "component": "insights-widget.js",
+      "component": "dist/ui/insights-widget.js",
       "area": "dashboard",
       "size": "large"
     },
@@ -1085,7 +1085,7 @@
       "type": "panel",
       "id": "weaver-evolution",
       "name": "Evolution History",
-      "component": "evolution-panel.js"
+      "component": "dist/ui/evolution-panel.js"
     }
   ],
   "sandboxCapabilities": [
