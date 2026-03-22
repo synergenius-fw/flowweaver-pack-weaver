@@ -14,7 +14,9 @@ export class InsightEngine {
 
     const severityOrder: Record<string, number> = { critical: 0, warning: 1, info: 2 };
     insights.sort((a, b) => {
-      const sevDiff = severityOrder[a.severity] - severityOrder[b.severity];
+      const sevA = severityOrder[a.severity] ?? 999;
+      const sevB = severityOrder[b.severity] ?? 999;
+      const sevDiff = sevA - sevB;
       if (sevDiff !== 0) return sevDiff;
       return b.confidence - a.confidence;
     });
@@ -51,7 +53,7 @@ export class InsightEngine {
   }
 
   private detectHealthTrends(model: ProjectModel): Insight[] {
-    return model.health.workflows
+    return (model.health.workflows ?? [])
       .filter((w) => w.trend === 'degrading')
       .map((w) => {
         const type = 'health-trend' as const;
@@ -120,8 +122,8 @@ export class InsightEngine {
       }
     }
 
-    for (const hw of model.cost.highCostWorkflows) {
-      const wf = model.health.workflows.find((w) => w.file === hw.workflow);
+    for (const hw of (model.cost.highCostWorkflows ?? [])) {
+      const wf = (model.health.workflows ?? []).find((w) => w.file === hw.workflow);
       if (wf && wf.successRate < 0.5 && wf.totalRuns > 5) {
         const type = 'cost-optimization' as const;
         const title = `Wasted spend on workflow: ${hw.workflow}`;
@@ -152,7 +154,7 @@ export class InsightEngine {
 
     if (
       model.evolution.totalCycles === 0 &&
-      model.health.workflows.length > 0 &&
+      (model.health.workflows ?? []).length > 0 &&
       model.failurePatterns.length > 0
     ) {
       const title = 'Ready for first genesis cycle';
@@ -247,7 +249,7 @@ export class InsightEngine {
   }
 
   private detectUnusedWorkflows(model: ProjectModel): Insight[] {
-    return model.health.workflows
+    return (model.health.workflows ?? [])
       .filter((w) => w.totalRuns === 0)
       .map((w) => {
         const type = 'unused-workflow' as const;
