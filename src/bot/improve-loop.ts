@@ -359,38 +359,69 @@ function emptyResult(startedAt: string, branch: string, worktreePath: string, re
 
 // --- Helpers ---
 
-async function runAssistantInDir(worktreeDir: string, message: string, conversationId: string): Promise<string> {
-  const args = ['--debug', '--project-dir', worktreeDir];
-  if (conversationId) args.push('--resume', conversationId);
-  args.push('-m', message);
+let cachedProvider: unknown = null;
+let cachedTools: unknown[] = [];
+let cachedExecutor: unknown = null;
 
-  const { handleCommand } = await import('../cli-bridge.js');
-
-  // Change cwd to worktree so the Claude CLI provider's subprocess
-  // runs in the right directory (its built-in tools use cwd)
+async function runAssistantInDir(worktreeDir: string, message: string, _conversationId: string): Promise<string> {
   const originalCwd = process.cwd();
   process.chdir(worktreeDir);
 
-  // Capture stdout (debug JSON) but let it also pass through for visibility
-  let output = '';
-  const originalWrite = process.stdout.write.bind(process.stdout);
-  process.stdout.write = ((chunk: string | Buffer) => {
-    const str = typeof chunk === 'string' ? chunk : chunk.toString();
-    output += str;
-    // Pass through so the user sees what's happening
-    process.stderr.write(`    ${str}`);
-    return true;
-  }) as typeof process.stdout.write;
-
   try {
-    await handleCommand('assistant', args);
+    // Reuse provider across cycles (keeps Claude CLI subprocess alive)
+    if (!cachedProvider) {
+      const agentMod = await import('@synergenius/flow-weaver/agent');
+      const { ASSISTANT_TOOLS, createAssistantExecutor } = await import('./assistant-tools.js');
+      cachedTools = ASSISTANT_TOOLS;
+      cachedExecutor = createAssistantExecutor(worktreeDir);
+
+      if (process.env.ANTHROPIC_API_KEY) {
+        cachedProvider = agentMod.createAnthropicProvider({
+          apiKey: process.env.ANTHROPIC_API_KEY,
+        });
+      } else {
+        cachedProvider = agentMod.createClaudeCliProvider({});
+      }
+    }
+
+    const { runAgentLoop } = await import('@synergenius/flow-weaver/agent');
+
+    let responseText = '';
+    const toolCalls: Array<{ name: string; isError: boolean }> = [];
+
+    const result = await runAgentLoop(
+      cachedProvider as any,
+      cachedTools as any,
+      cachedExecutor as any,
+      [{ role: 'user' as const, content: message }],
+      {
+        maxIterations: 20,
+        onStreamEvent: (e: any) => {
+          if (e.type === 'text_delta') {
+            responseText += e.text;
+            process.stderr.write(e.text);
+          }
+        },
+        onToolEvent: (e: any) => {
+          if (e.type === 'tool_call_start') {
+            process.stderr.write(`\n    ${e.name} `);
+          }
+          if (e.type === 'tool_call_result') {
+            toolCalls.push({ name: e.name ?? '', isError: !!e.isError });
+            process.stderr.write(e.isError ? '✗ ' : '✓ ');
+          }
+        },
+      },
+    );
+
+    return JSON.stringify({
+      response: responseText,
+      toolCalls,
+      tokensUsed: result.usage.promptTokens + result.usage.completionTokens,
+    });
   } finally {
-    process.stdout.write = originalWrite;
     process.chdir(originalCwd);
   }
-
-  const lines = output.trim().split('\n').filter(Boolean);
-  return lines[lines.length - 1] ?? '{}';
 }
 
 function getChangedFiles(dir: string): string[] {
