@@ -94,9 +94,17 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     return emptyResult(startedAt, branchName, worktreeDir, 'complete');
   }
 
-  // Create worktree
+  // Create worktree (clean up stale ones first)
   out(`  ${c.dim('Creating worktree...')}\n`);
   try {
+    // Remove stale worktree/branch from previous runs
+    if (fs.existsSync(worktreeDir)) {
+      try { execFileSync('git', ['worktree', 'remove', worktreeDir, '--force'], { cwd: projectDir, stdio: 'pipe' }); } catch { /* best effort */ }
+      if (fs.existsSync(worktreeDir)) fs.rmSync(worktreeDir, { recursive: true, force: true });
+    }
+    try { execFileSync('git', ['branch', '-D', branchName], { cwd: projectDir, stdio: 'pipe' }); } catch { /* branch may not exist */ }
+    execFileSync('git', ['worktree', 'prune'], { cwd: projectDir, stdio: 'pipe' });
+
     fs.mkdirSync(path.dirname(worktreeDir), { recursive: true });
     execFileSync('git', ['worktree', 'add', worktreeDir, '-b', branchName], { cwd: projectDir, stdio: 'pipe' });
   } catch {
