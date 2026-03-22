@@ -22,6 +22,8 @@ export interface ImproveConfig {
   protectedPatterns: string[];
   testCommand: string;
   buildCommand?: string;
+  /** Optional device connection for streaming events to Studio */
+  deviceConnection?: import('@synergenius/flow-weaver/agent').DeviceConnection;
   projectDir: string;
 }
 
@@ -58,8 +60,11 @@ const DEFAULT_PROTECTED = [
 ];
 
 export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResult> {
-  const { maxCycles, maxConsecutiveFailures, protectedPatterns, testCommand, buildCommand, projectDir } = config;
+  const { maxCycles, maxConsecutiveFailures, protectedPatterns, testCommand, buildCommand, projectDir, deviceConnection } = config;
   const out = (s: string) => process.stderr.write(s);
+  const emitEvent = (type: string, data: Record<string, unknown> = {}) => {
+    deviceConnection?.emit({ type, data, timestamp: Date.now() });
+  };
   const cycles: ImproveCycleResult[] = [];
   let consecutiveFailures = 0;
   const completedWork: string[] = []; // track what's been done so it doesn't repeat
@@ -184,6 +189,7 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
     }
 
     out(`  ${c.bold(`--- Cycle ${cycle}/${maxCycles === 0 ? '∞' : maxCycles} ---`)}\n`);
+    emitEvent('improve:cycle_start', { cycle, maxCycles });
 
     const cycleEngine = new SteeringEngine(steers);
 
@@ -358,6 +364,7 @@ Fix the failures without reverting your improvement. If you can't fix them, reve
         const commitMsg = execFileSync('git', ['log', '-1', '--format=%s'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
         const commitCount = newCommits.split('\n').filter(Boolean).length;
         out(`    ${c.green('✓')} ${c.dim(commitHash)} (${commitCount} commit${commitCount > 1 ? 's' : ''} by assistant)\n\n`);
+        emitEvent('improve:commit', { cycle, commitHash, description: commitMsg.slice(0, 70) });
         cycles.push({ cycle, outcome: 'success', description: commitMsg.slice(0, 70), filesChanged: [], commitHash });
         completedWork.push(commitMsg.slice(0, 80));
         consecutiveFailures = 0;
@@ -413,6 +420,7 @@ Fix the failures without reverting your improvement. If you can't fix them, reve
       execFileSync('git', ['commit', '-m', `${commitMsg}\n\nCo-authored-by: Weaver Assistant <weaver@synergenius.dev>`], { cwd: worktreeDir, stdio: 'pipe' });
       const hash = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
       out(`    ${c.green('✓')} ${c.dim(hash)} ${commitMsg}\n\n`);
+      emitEvent('improve:commit', { cycle, commitHash: hash, description: commitDescription });
       cycles.push({ cycle, outcome: 'success', description: commitDescription, filesChanged: stagedFiles, commitHash: hash });
       completedWork.push(`${commitDescription} (${stagedFiles.join(', ')})`);
       consecutiveFailures = 0;
@@ -444,6 +452,9 @@ Fix the failures without reverting your improvement. If you can't fix them, reve
   if (caffeinate) {
     try { caffeinate.kill(); } catch { /* already dead */ }
   }
+
+  // Emit completion event
+  emitEvent('improve:complete', { successes: cycles.filter(cy => cy.outcome === 'success').length, failures: cycles.filter(cy => cy.outcome === 'failure').length, totalCycles: cycles.length });
 
   // Summary
   out(`\n  ${c.bold('=== Improve Complete ===')}\n`);
