@@ -54,6 +54,9 @@ export class KnowledgeStore {
   private writeAll(entries: KnowledgeEntry[]): void {
     const dir = path.dirname(this.filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(this.filePath, entries.map(e => JSON.stringify(e)).join('\n') + (entries.length > 0 ? '\n' : ''));
+    // Atomic write: write to temp file then rename to avoid partial reads on crash
+    const tmpPath = this.filePath + '.tmp.' + process.pid;
+    fs.writeFileSync(tmpPath, entries.map(e => JSON.stringify(e)).join('\n') + (entries.length > 0 ? '\n' : ''));
+    fs.renameSync(tmpPath, this.filePath);
   }
 }

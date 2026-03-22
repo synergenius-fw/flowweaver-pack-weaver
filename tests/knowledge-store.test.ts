@@ -6,6 +6,10 @@ import * as os from 'node:os';
 // Mock os.homedir() so KnowledgeStore writes to a temp directory
 let tmpDir: string;
 
+// Track fs.writeFileSync and fs.renameSync calls for atomicity tests
+let fsWritePaths: string[] = [];
+let fsRenamePairs: Array<[string, string]> = [];
+
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof import('node:os')>('node:os');
   return {
@@ -14,11 +18,28 @@ vi.mock('node:os', async () => {
   };
 });
 
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
+  return {
+    ...actual,
+    writeFileSync: (...args: any[]) => {
+      fsWritePaths.push(String(args[0]));
+      return (actual.writeFileSync as any)(...args);
+    },
+    renameSync: (...args: any[]) => {
+      fsRenamePairs.push([String(args[0]), String(args[1])]);
+      return (actual.renameSync as any)(...args);
+    },
+  };
+});
+
 import { KnowledgeStore, type KnowledgeEntry } from '../src/bot/knowledge-store.js';
 
 describe('KnowledgeStore', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-'));
+    fsWritePaths = [];
+    fsRenamePairs = [];
   });
 
   afterEach(() => {
@@ -283,6 +304,41 @@ describe('KnowledgeStore', () => {
       const entries = store2.list();
       expect(entries).toHaveLength(1);
       expect(entries[0].key).toBe('persistent');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Atomic write (crash safety)
+  // -----------------------------------------------------------------------
+
+  describe('atomic write', () => {
+    it('writes to a temp file then renames, never directly to knowledge.ndjson', () => {
+      const store = new KnowledgeStore();
+      fsWritePaths = [];
+      fsRenamePairs = [];
+
+      store.learn('key1', 'val1', 'src');
+
+      // writeFileSync should target a .tmp file, NOT knowledge.ndjson directly
+      const directWrites = fsWritePaths.filter(p => p.endsWith('knowledge.ndjson'));
+      expect(directWrites).toHaveLength(0);
+
+      // renameSync should move the .tmp file to knowledge.ndjson
+      const renames = fsRenamePairs.filter(([, to]) => to.endsWith('knowledge.ndjson'));
+      expect(renames.length).toBeGreaterThan(0);
+      expect(renames[0][0]).toContain('.tmp.');
+    });
+
+    it('does not leave orphaned temp files after successful write', () => {
+      const store = new KnowledgeStore();
+      store.learn('a', '1', 's');
+      store.learn('b', '2', 's');
+      store.learn('c', '3', 's');
+
+      const dir = path.join(tmpDir, '.weaver');
+      const files = fs.readdirSync(dir);
+      const tmpFiles = files.filter(f => f.includes('.tmp.'));
+      expect(tmpFiles).toHaveLength(0);
     });
   });
 });
