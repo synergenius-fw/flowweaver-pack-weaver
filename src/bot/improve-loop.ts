@@ -154,68 +154,50 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
 
     out(`  ${c.bold(`--- Cycle ${cycle}/${maxCycles === 0 ? '∞' : maxCycles} ---`)}\n`);
 
-    // Fresh conversation per cycle — discover and fix share context within a cycle,
-    // but each cycle starts clean to avoid context window bloat.
-    // The work log carries memory of what was already done.
-    let conversationId = '';
-
-    // Step 1: Discover — guided by .weaver-plan.md and work log
+    // Single call per cycle: find AND fix in one turn.
+    // Cuts Claude CLI overhead in half (one subprocess instead of two).
     let planContext = '';
     try {
       const planPath = path.join(worktreeDir, '.weaver-plan.md');
       if (fs.existsSync(planPath)) {
-        planContext = `\n\nIMPORTANT: All improvements MUST align with the project plan in .weaver-plan.md. Do NOT work on things outside the plan's scope. If the plan specifies priorities, rotate between them.`;
+        planContext = `\nFollow the project plan in .weaver-plan.md. Rotate between priorities.`;
       }
     } catch { /* no plan */ }
 
     const workLog = completedWork.length > 0
-      ? `\n\nALREADY DONE (do NOT repeat these):\n${completedWork.map(w => `- ${w}`).join('\n')}`
+      ? `\nALREADY DONE (do NOT repeat): ${completedWork.join('; ')}`
       : '';
 
-    const discoverMsg = `You are working in: ${worktreeDir}
+    const improveMsg = `You are working in: ${worktreeDir}
 
-First, use knowledge_search with query "project" to recall what you know about this codebase. Then find ONE specific, small improvement. Focus on: real bugs, missing error handling, reliability gaps, UX issues, or untested critical paths. Pick something concrete (1-3 files max). Tell me what you found and which files — do NOT fix it yet.
+Find ONE small improvement and fix it in this single turn. Steps:
+1. Recall what you know: knowledge_search "project"
+2. Find one concrete issue (real bug, missing error handling, reliability gap, or untested critical path)
+3. Write a failing test first, then implement the minimal fix
+4. Run tests with run_tests to verify
+5. Store any insights with learn()
 
-All file paths MUST be relative to ${worktreeDir}.${planContext}${workLog}`;
+Keep changes to 1-3 files. All paths relative to ${worktreeDir}.${planContext}${workLog}`;
 
     let discovery = '';
     try {
-      const raw = await withTimeout(runAssistantInDir(worktreeDir, discoverMsg, conversationId), 180_000);
+      const raw = await withTimeout(runAssistantInDir(worktreeDir, improveMsg, ''), 300_000);
       const parsed = JSON.parse(raw);
-      conversationId = String(parsed.conversationId ?? conversationId);
       discovery = String(parsed.response ?? '');
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
-      out(`    ${c.dim(`Skip: ${msg.includes('timeout') ? 'timed out (3min)' : 'assistant did not respond'}`)}\n`);
+      out(`    ${c.dim(`Skip: ${msg.includes('timeout') ? 'timed out' : 'no response'}`)}\n`);
+      rollback(worktreeDir);
       cycles.push({ cycle, outcome: 'skip', description: msg.includes('timeout') ? 'Timed out' : 'No response', filesChanged: [] });
-      // Timeouts don't count as hard failures — the assistant just needs more time
       continue;
     }
 
-    out(`    ${c.dim('Found:')} ${discovery.split('\n')[0]?.slice(0, 80)}\n`);
+    out(`    ${c.dim('Done:')} ${discovery.split('\n')[0]?.slice(0, 80)}\n`);
 
     if (/^(nothing to improve|no issues found|all good|clean bill of health|i can.t find any|couldn.t find any|no improvements needed)/im.test(discovery)) {
       out(`    ${c.green('✓')} Nothing more to improve.\n`);
       cycles.push({ cycle, outcome: 'skip', description: 'Nothing to improve', filesChanged: [] });
       break;
-    }
-
-    // Step 2: Fix
-    const fixMsg = `Fix it now. You are working in: ${worktreeDir}
-
-Use write_file to create test files and patch_file to modify existing code. All paths must be relative to ${worktreeDir}. Write failing tests first, then implement the minimal fix. Run the tests with run_tests to verify. Keep changes small — 1-3 files max.
-
-After fixing, use knowledge_search and learn to store any important patterns or insights you discovered about the codebase (e.g. "pattern:error-handling: this project uses X approach", "gotcha:file-lock: withFileLock requires async callback").`;
-    try {
-      const fixRaw = await withTimeout(runAssistantInDir(worktreeDir, fixMsg, conversationId), 300_000);
-      const fixParsed = JSON.parse(fixRaw);
-      conversationId = String(fixParsed.conversationId ?? conversationId);
-    } catch {
-      out(`    ${c.dim('Skip: fix failed or timed out')}\n`);
-      rollback(worktreeDir);
-      cycles.push({ cycle, outcome: 'skip', description: 'Fix failed or timed out', filesChanged: [] });
-      // Fix skips don't count as hard failures — only test/build failures do
-      continue;
     }
 
     // Step 3: Check changes
