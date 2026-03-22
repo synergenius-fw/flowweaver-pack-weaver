@@ -33,9 +33,13 @@ export class GenesisStore {
       fs.writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2), 'utf-8');
       return { ...DEFAULT_CONFIG };
     }
-    const content = fs.readFileSync(configPath, 'utf-8');
-    const raw = jsonParseOr(content, {} as Record<string, unknown>, 'genesis config');
-    return { ...DEFAULT_CONFIG, ...raw };
+    try {
+      const content = fs.readFileSync(configPath, 'utf-8');
+      const raw = jsonParseOr(content, {} as Record<string, unknown>, 'genesis config');
+      return { ...DEFAULT_CONFIG, ...raw };
+    } catch {
+      return { ...DEFAULT_CONFIG };
+    }
   }
 
   saveConfig(config: GenesisConfig): void {
@@ -48,8 +52,12 @@ export class GenesisStore {
     if (!fs.existsSync(historyPath)) {
       return { configHash: '', cycles: [] };
     }
-    const content = fs.readFileSync(historyPath, 'utf-8');
-    return jsonParseOr<GenesisHistory>(content, { configHash: '', cycles: [] }, 'genesis history');
+    try {
+      const content = fs.readFileSync(historyPath, 'utf-8');
+      return jsonParseOr<GenesisHistory>(content, { configHash: '', cycles: [] }, 'genesis history');
+    } catch {
+      return { configHash: '', cycles: [] };
+    }
   }
 
   appendCycle(cycle: GenesisCycleRecord): void {
@@ -82,8 +90,12 @@ export class GenesisStore {
   getLastFingerprint(): GenesisFingerprint | null {
     const fpPath = path.join(this.genesisDir, 'fingerprint.json');
     if (!fs.existsSync(fpPath)) return null;
-    const content = fs.readFileSync(fpPath, 'utf-8');
-    return jsonParseOr<GenesisFingerprint | null>(content, null, 'genesis fingerprint');
+    try {
+      const content = fs.readFileSync(fpPath, 'utf-8');
+      return jsonParseOr<GenesisFingerprint | null>(content, null, 'genesis fingerprint');
+    } catch {
+      return null;
+    }
   }
 
   getRecentOutcomes(count: number): string[] {
