@@ -15,6 +15,7 @@ export class CronScheduler extends EventEmitter {
   }
 
   start(): void {
+    this.stop();
     this.stopped = false;
     this.scheduleNext();
   }
