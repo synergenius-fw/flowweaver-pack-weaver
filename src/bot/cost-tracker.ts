@@ -33,7 +33,19 @@ export class CostTracker {
   }
 
   static estimateCost(model: string, usage: TokenUsage): number {
-    const pricing = MODEL_PRICING[model];
+    let pricing = MODEL_PRICING[model];
+    if (!pricing) {
+      // Fallback: prefix match for model variants with date suffixes
+      // e.g., 'claude-sonnet-4-6-20260301' matches 'claude-sonnet-4-6'
+      // Use longest matching prefix to avoid ambiguity.
+      let bestKey = '';
+      for (const key of Object.keys(MODEL_PRICING)) {
+        if (model.startsWith(key) && key.length > bestKey.length) {
+          bestKey = key;
+        }
+      }
+      if (bestKey) pricing = MODEL_PRICING[bestKey];
+    }
     if (!pricing) return 0;
 
     return (

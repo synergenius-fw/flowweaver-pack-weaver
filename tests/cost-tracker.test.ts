@@ -9,6 +9,34 @@ describe('CostTracker', () => {
       expect(CostTracker.estimateCost('unknown-model-xyz', usage)).toBe(0);
     });
 
+    it('falls back to prefix match for model variants with date suffixes', () => {
+      const usage: TokenUsage = { inputTokens: 1_000_000, outputTokens: 1_000_000 };
+      // 'claude-sonnet-4-6-20260301' should match 'claude-sonnet-4-6' pricing
+      expect(CostTracker.estimateCost('claude-sonnet-4-6-20260301', usage)).toBe(18);
+    });
+
+    it('prefers longest prefix match when multiple keys could match', () => {
+      const usage: TokenUsage = { inputTokens: 1_000_000, outputTokens: 1_000_000 };
+      // 'claude-sonnet-4-20250514' is in the table and is a longer match than 'claude-sonnet-4'
+      // (if such a shorter key existed). Verify exact match still wins.
+      expect(CostTracker.estimateCost('claude-sonnet-4-20250514', usage)).toBe(18);
+    });
+
+    it('prefix match works for opus variants', () => {
+      const usage: TokenUsage = { inputTokens: 1_000_000, outputTokens: 1_000_000 };
+      expect(CostTracker.estimateCost('claude-opus-4-6-20260401', usage)).toBe(90);
+    });
+
+    it('prefix match works for haiku variants', () => {
+      const usage: TokenUsage = { inputTokens: 1_000_000, outputTokens: 1_000_000 };
+      expect(CostTracker.estimateCost('claude-haiku-4-5-20260101', usage)).toBe(4.8);
+    });
+
+    it('still returns 0 when no prefix matches either', () => {
+      const usage: TokenUsage = { inputTokens: 1000, outputTokens: 500 };
+      expect(CostTracker.estimateCost('gpt-4o-mini', usage)).toBe(0);
+    });
+
     it('calculates cost for claude-sonnet-4-6 with no cache tokens', () => {
       const usage: TokenUsage = { inputTokens: 1_000_000, outputTokens: 1_000_000 };
       // input: 1M * 3/1M = 3, output: 1M * 15/1M = 15
