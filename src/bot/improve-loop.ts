@@ -264,6 +264,9 @@ Keep changes to 1-3 files. All paths relative to ${worktreeDir}.${planContext}${
       continue;
     }
 
+    // Stage all work immediately so it's recoverable even if the cycle doesn't complete
+    try { execFileSync('git', ['add', '--all'], { cwd: worktreeDir, stdio: 'pipe' }); } catch { /* non-fatal */ }
+
     out(`    ${c.dim('Done:')} ${discovery.split('\n')[0]?.slice(0, 80)}\n`);
 
     // Check steering engine after initial assistant call
@@ -372,6 +375,8 @@ Fix the failures without reverting your improvement. If you can't fix them, reve
           const fixRaw = await runAssistantInDir(worktreeDir, fixMsg, conversationId, cycleEngine);
           const fixParsed = JSON.parse(fixRaw);
           conversationId = String(fixParsed.conversationId ?? conversationId);
+          // Stage work immediately after each fix attempt
+          try { execFileSync('git', ['add', '--all'], { cwd: worktreeDir, stdio: 'pipe' }); } catch { /* non-fatal */ }
         } catch {
           out(`    ${c.dim('Fix attempt timed out')}\n`);
           break;
@@ -609,11 +614,18 @@ function rollback(dir: string): void {
 }
 
 function cleanup(projectDir: string, worktreeDir: string): void {
+  // Safety: stash any staged work before removing worktree so blobs survive in git
+  try {
+    const staged = execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
+    if (staged) {
+      execFileSync('git', ['stash', 'push', '-m', `weaver-improve: work-in-progress (${staged.split('\n').length} files)`], { cwd: worktreeDir, stdio: 'pipe' });
+    }
+  } catch { /* stash failed — work may be lost but at least blobs are in git objects if staged */ }
+
   try {
     execFileSync('git', ['worktree', 'remove', worktreeDir, '--force'], { cwd: projectDir, stdio: 'pipe' });
   } catch { /* best effort */ }
   try {
-    // Remove empty parent dir
     const parent = path.dirname(worktreeDir);
     if (fs.existsSync(parent) && fs.readdirSync(parent).length === 0) {
       fs.rmdirSync(parent);
