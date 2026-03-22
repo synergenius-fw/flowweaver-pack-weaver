@@ -25,6 +25,7 @@ export class FileWatcher extends EventEmitter {
   }
 
   start(): void {
+    this.stop();
     this.stopped = false;
     this.lastMtime = this.getMtime();
     this.attachFsWatch();
