@@ -146,8 +146,16 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
 
     out(`  ${c.bold(`--- Cycle ${cycle}/${maxCycles} ---`)}\n`);
 
-    // Step 1: Discover
-    const discoverMsg = 'Look at this project and find ONE specific, small improvement. Focus on: untested code, missing error handling, reliability gaps, or code quality issues. Pick something concrete (1-3 files max). Tell me what you found and which files — do NOT fix it yet.';
+    // Step 1: Discover — guided by .weaver-plan.md if it exists
+    let planContext = '';
+    try {
+      const planPath = path.join(worktreeDir, '.weaver-plan.md');
+      if (fs.existsSync(planPath)) {
+        planContext = `\n\nIMPORTANT: All improvements MUST align with the project plan in .weaver-plan.md. Do NOT work on things outside the plan's scope. If the plan specifies priorities, follow them.`;
+      }
+    } catch { /* no plan */ }
+
+    const discoverMsg = `Look at this project and find ONE specific, small improvement. Focus on: untested code, missing error handling, reliability gaps, or code quality issues. Pick something concrete (1-3 files max). Tell me what you found and which files — do NOT fix it yet.${planContext}`;
 
     let discovery = '';
     try {
@@ -226,10 +234,18 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
       continue;
     }
 
-    // Step 7: Commit in worktree
-    const commitMsg = `[improve] ${discovery.split('\n')[0]!.slice(0, 70)}`;
+    // Step 7: Commit in worktree (exclude symlinks and node_modules)
+    // Filter staged files to only include actual code changes
+    const commitDescription = discovery
+      .split('\n')
+      .filter(l => l.trim() && !l.startsWith('Here') && !l.startsWith('Let me') && !l.startsWith('I found'))
+      .slice(0, 2)
+      .join(' ')
+      .slice(0, 70) || 'code improvement';
+    const commitMsg = `[improve] ${commitDescription}`;
     try {
-      execFileSync('git', ['add', '-A'], { cwd: worktreeDir, stdio: 'pipe' });
+      // Stage only tracked/changed files, exclude node_modules and symlinks
+      execFileSync('git', ['add', '-A', '--', '.', ':!node_modules'], { cwd: worktreeDir, stdio: 'pipe' });
       execFileSync('git', ['commit', '-m', `${commitMsg}\n\nCo-authored-by: Weaver Assistant <weaver@synergenius.dev>`], { cwd: worktreeDir, stdio: 'pipe' });
       const hash = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: worktreeDir, encoding: 'utf-8' }).trim();
       out(`    ${c.green('✓')} ${c.dim(hash)} ${commitMsg}\n\n`);
@@ -327,7 +343,9 @@ function getChangedFiles(dir: string): string[] {
   try {
     const modified = execFileSync('git', ['diff', '--name-only'], { cwd: dir, encoding: 'utf-8' }).trim();
     const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: dir, encoding: 'utf-8' }).trim();
-    return [...modified.split('\n'), ...untracked.split('\n')].filter(Boolean);
+    return [...modified.split('\n'), ...untracked.split('\n')]
+      .filter(Boolean)
+      .filter(f => !f.startsWith('node_modules') && !f.includes('/node_modules/'));
   } catch { return []; }
 }
 
