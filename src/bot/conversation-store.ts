@@ -182,9 +182,13 @@ export class ConversationStore {
         index.unshift(record);
       }
 
-      // Cap index size
+      // Cap index size — clean up evicted conversation directories
       if (index.length > MAX_INDEX_SIZE) {
-        index.splice(MAX_INDEX_SIZE);
+        const evicted = index.splice(MAX_INDEX_SIZE);
+        for (const conv of evicted) {
+          const convDir = path.join(this.baseDir, conv.id);
+          try { fs.rmSync(convDir, { recursive: true, force: true }); } catch { /* best effort */ }
+        }
       }
 
       this.writeIndexAtomic(index);
