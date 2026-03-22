@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import type { CostRecord, CostSummary } from './types.js';
 import { parseNdjson } from './safe-json.js';
+import { withFileLock } from './file-lock.js';
 
 const MAX_ENTRIES = 10_000;
 const CAP_CHECK_INTERVAL = 100;
@@ -11,6 +12,7 @@ export class CostStore {
   private readonly dir: string;
   private readonly filePath: string;
   private appendCount = 0;
+  private pendingCap: Promise<void> | null = null;
 
   constructor(dir?: string) {
     this.dir = dir ?? process.env.WEAVER_DATA_DIR ?? path.join(os.homedir(), '.weaver');
@@ -22,8 +24,13 @@ export class CostStore {
     fs.appendFileSync(this.filePath, JSON.stringify(record) + '\n', 'utf-8');
     this.appendCount++;
     if (this.appendCount % CAP_CHECK_INTERVAL === 0) {
-      this.enforceCap();
+      this.pendingCap = this.enforceCap().catch(() => {}).finally(() => { this.pendingCap = null; });
     }
+  }
+
+  /** Wait for any in-flight cap enforcement to finish (used in tests). */
+  async waitForPendingCap(): Promise<void> {
+    if (this.pendingCap) await this.pendingCap;
   }
 
   query(filters?: { since?: number; model?: string }): CostRecord[] {
@@ -75,17 +82,21 @@ export class CostStore {
     return summary;
   }
 
-  private enforceCap(): void {
+  private async enforceCap(): Promise<void> {
     if (!fs.existsSync(this.filePath)) return;
 
-    const content = fs.readFileSync(this.filePath, 'utf-8');
-    const lines = content.split('\n').filter((l) => l.trim().length > 0);
+    await withFileLock(this.filePath, () => {
+      if (!fs.existsSync(this.filePath)) return;
 
-    if (lines.length <= MAX_ENTRIES) return;
+      const content = fs.readFileSync(this.filePath, 'utf-8');
+      const lines = content.split('\n').filter((l) => l.trim().length > 0);
 
-    const kept = lines.slice(lines.length - MAX_ENTRIES);
-    const tmpPath = this.filePath + '.tmp';
-    fs.writeFileSync(tmpPath, kept.join('\n') + '\n', 'utf-8');
-    fs.renameSync(tmpPath, this.filePath);
+      if (lines.length <= MAX_ENTRIES) return;
+
+      const kept = lines.slice(lines.length - MAX_ENTRIES);
+      const tmpPath = this.filePath + '.tmp';
+      fs.writeFileSync(tmpPath, kept.join('\n') + '\n', 'utf-8');
+      fs.renameSync(tmpPath, this.filePath);
+    });
   }
 }

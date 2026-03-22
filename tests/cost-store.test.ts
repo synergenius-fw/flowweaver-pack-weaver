@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { CostStore } from '../src/bot/cost-store.js';
 import type { CostRecord } from '../src/bot/types.js';
+import { withFileLock } from '../src/bot/file-lock.js';
 
 function makeTmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'cost-store-test-'));
@@ -245,6 +246,49 @@ describe('CostStore', () => {
       const lineCount = content.trim().split('\n').length;
       // 10050 original + 99 new = 10149, no truncation yet
       expect(lineCount).toBe(10_149);
+    });
+
+    it('does not lose appends from concurrent processes during cap enforcement', async () => {
+      const store = new CostStore(tmpDir);
+      const filePath = path.join(tmpDir, 'costs.ndjson');
+
+      // Pre-fill with entries over cap
+      const lines: string[] = [];
+      for (let i = 0; i < 10_050; i++) {
+        lines.push(JSON.stringify(makeRecord({ timestamp: i })));
+      }
+      fs.writeFileSync(filePath, lines.join('\n') + '\n', 'utf-8');
+
+      // Hold a file lock while enforceCap tries to run.
+      // If enforceCap doesn't use file locking, it will read-modify-write
+      // without coordination, potentially losing data.
+      // With locking, enforceCap must wait until the lock is released.
+      const lockPath = filePath;
+      let lockReleased = false;
+
+      const lockPromise = withFileLock(lockPath, async () => {
+        // While holding the lock, append a record directly
+        const importantRecord = makeRecord({ timestamp: 999_999, inputTokens: 999_999 });
+        fs.appendFileSync(filePath, JSON.stringify(importantRecord) + '\n', 'utf-8');
+        // Small delay to ensure enforceCap has a chance to try
+        await new Promise(r => setTimeout(r, 100));
+        lockReleased = true;
+      });
+
+      // Trigger enforceCap by appending 100 records
+      for (let i = 0; i < 100; i++) {
+        store.append(makeRecord({ timestamp: 80_000 + i }));
+      }
+
+      // Wait for pending cap enforcement to complete
+      await store.waitForPendingCap();
+      await lockPromise;
+
+      // The important record (timestamp 999_999) must be present
+      const results = store.query();
+      const hasImportantRecord = results.some(r => r.timestamp === 999_999);
+      expect(hasImportantRecord).toBe(true);
+      expect(results.length).toBeLessThanOrEqual(10_000);
     });
   });
 });
