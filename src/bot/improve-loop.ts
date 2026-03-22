@@ -181,7 +181,7 @@ export async function runImproveLoop(config: ImproveConfig): Promise<ImproveResu
 
     out(`    ${c.dim('Found:')} ${discovery.split('\n')[0]?.slice(0, 80)}\n`);
 
-    if (/nothing|no issues|all good|can.t find|couldn.t find|clean bill|no .* to improve/i.test(discovery)) {
+    if (/^(nothing to improve|no issues found|all good|clean bill of health|i can.t find any|couldn.t find any|no improvements needed)/im.test(discovery)) {
       out(`    ${c.green('✓')} Nothing more to improve.\n`);
       cycles.push({ cycle, outcome: 'skip', description: 'Nothing to improve', filesChanged: [] });
       break;
