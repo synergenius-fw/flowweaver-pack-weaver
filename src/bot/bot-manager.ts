@@ -199,20 +199,24 @@ export class BotManager {
   stop(name: string): void {
     const bot = this.bots.get(name);
     if (!bot) throw new Error(`Bot "${name}" not found.`);
-    // Send SIGTERM for graceful shutdown (process is null for discovered bots)
-    if (bot.process?.pid && !bot.process.killed) {
-      bot.process.kill('SIGTERM');
-    }
+    this.sendSignal(bot, 'SIGTERM');
     bot.meta.status = 'stopped';
   }
 
   kill(name: string): void {
     const bot = this.bots.get(name);
     if (!bot) throw new Error(`Bot "${name}" not found.`);
-    if (bot.process?.pid && !bot.process.killed) {
-      bot.process.kill('SIGKILL');
-    }
+    this.sendSignal(bot, 'SIGKILL');
     bot.meta.status = 'stopped';
+  }
+
+  /** Send a signal to a bot, using the process handle if available, otherwise the PID from meta. */
+  private sendSignal(bot: { meta: ManagedBot; process: ChildProcess | null }, signal: NodeJS.Signals): void {
+    if (bot.process?.pid && !bot.process.killed) {
+      bot.process.kill(signal);
+    } else if (bot.meta.pid > 0) {
+      try { process.kill(bot.meta.pid, signal); } catch { /* process already gone */ }
+    }
   }
 
   logs(name: string, lines = 50): string {
