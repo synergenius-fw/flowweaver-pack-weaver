@@ -274,6 +274,38 @@ describe('ConversationStore', () => {
     expect(ids.size).toBe(50);
   });
 
+  it('appendMessages survives write failure without crashing', async () => {
+    const c = await store.create('/tmp/project');
+    const convDir = path.join(testDir, c.id);
+
+    // Make the conversation directory read-only so appendFileSync fails
+    fs.chmodSync(convDir, 0o444);
+
+    // Should NOT throw — graceful degradation
+    expect(() => {
+      store.appendMessages(c.id, [{ role: 'user', content: 'hello' }]);
+    }).not.toThrow();
+
+    // Restore permissions for cleanup
+    fs.chmodSync(convDir, 0o755);
+  });
+
+  it('appendMessages returns false on write failure', async () => {
+    const c = await store.create('/tmp/project');
+    const convDir = path.join(testDir, c.id);
+
+    fs.chmodSync(convDir, 0o444);
+    const result = store.appendMessages(c.id, [{ role: 'user', content: 'hello' }]);
+    expect(result).toBe(false);
+    fs.chmodSync(convDir, 0o755);
+  });
+
+  it('appendMessages returns true on success', async () => {
+    const c = await store.create('/tmp/project');
+    const result = store.appendMessages(c.id, [{ role: 'user', content: 'hello' }]);
+    expect(result).toBe(true);
+  });
+
   it('handles corrupt NDJSON gracefully', async () => {
     const c = await store.create('/tmp/project');
     const msgPath = path.join(testDir, c.id, 'messages.ndjson');

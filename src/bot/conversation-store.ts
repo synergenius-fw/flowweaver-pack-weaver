@@ -137,26 +137,32 @@ export class ConversationStore {
     return messages;
   }
 
-  appendMessages(id: string, messages: AgentMessage[]): void {
-    if (messages.length === 0) return;
+  appendMessages(id: string, messages: AgentMessage[]): boolean {
+    if (messages.length === 0) return true;
 
-    const convDir = path.join(this.baseDir, id);
-    fs.mkdirSync(convDir, { recursive: true });
-    const msgPath = path.join(convDir, 'messages.ndjson');
+    try {
+      const convDir = path.join(this.baseDir, id);
+      fs.mkdirSync(convDir, { recursive: true });
+      const msgPath = path.join(convDir, 'messages.ndjson');
 
-    const lines = messages.map(m => {
-      const stored: StoredMessage = {
-        role: m.role,
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-        timestamp: Date.now(),
-        tokens: Math.ceil((typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length) / CHARS_PER_TOKEN),
-      };
-      if (m.toolCalls) stored.toolCalls = m.toolCalls;
-      if (m.toolCallId) stored.toolCallId = m.toolCallId;
-      return JSON.stringify(stored);
-    });
+      const lines = messages.map(m => {
+        const stored: StoredMessage = {
+          role: m.role,
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+          timestamp: Date.now(),
+          tokens: Math.ceil((typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length) / CHARS_PER_TOKEN),
+        };
+        if (m.toolCalls) stored.toolCalls = m.toolCalls;
+        if (m.toolCallId) stored.toolCallId = m.toolCallId;
+        return JSON.stringify(stored);
+      });
 
-    fs.appendFileSync(msgPath, lines.join('\n') + '\n');
+      fs.appendFileSync(msgPath, lines.join('\n') + '\n');
+      return true;
+    } catch (err) {
+      process.stderr.write(`[weaver] failed to persist ${messages.length} message(s) for conversation ${id}: ${err instanceof Error ? err.message : err}\n`);
+      return false;
+    }
   }
 
   async updateAfterTurn(id: string, newMessages: AgentMessage[], tokensUsed: number): Promise<void> {
